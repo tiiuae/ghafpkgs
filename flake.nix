@@ -47,6 +47,5 @@
         "aarch64-linux"
         "riscv64-linux"
       ];
-      flake.overlays.default = import ./packages/overlays.nix;
     };
 }
