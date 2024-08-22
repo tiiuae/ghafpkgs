@@ -1,15 +1,24 @@
 # Copyright 2024 TII (SSRC) and the Ghaf contributors
 # SPDX-License-Identifier: Apache-2.0
-_: {
-  perSystem =
-    { pkgs, ... }:
+_:
+let
+  ghafpkgs =
+    pkgs:
     let
-      inherit (pkgs) callPackage;
+      callPackage = pkgs.lib.callPackageWith pkgs;
     in
     {
-      packages = {
-        ghaf-artwork = callPackage ./ghaf-artwork { };
-        ghaf-theme = callPackage ./ghaf-theme { };
-      };
+
+      ghaf-artwork = callPackage ./ghaf-artwork { };
+      ghaf-theme = callPackage ./ghaf-theme { };
     };
+in
+{
+  perSystem =
+    { pkgs, ... }:
+    {
+      packages = ghafpkgs pkgs;
+    };
+
+  flake.overlays.default = _final: ghafpkgs;
 }
