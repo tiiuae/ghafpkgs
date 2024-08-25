@@ -10,6 +10,7 @@ let
     {
 
       ghaf-artwork = callPackage ./ghaf-artwork { };
+      ghaf-audio-control = callPackage ./ghaf-audio-control { };
       ghaf-theme = callPackage ./ghaf-theme { };
     };
 in
