@@ -80,7 +80,7 @@ GeneralDeviceImpl::GeneralDeviceImpl(const pa_source_info& info, pa_context& con
 [[nodiscard]] std::string GeneralDeviceImpl::toString() const
 {
     const std::lock_guard l{m_mutex};
-    return std::format("index: {}, name: {}, volume: {}, isMuted: {}", m_index, m_description, m_volume.values[0], m_isMuted);
+    return std::format("index: {}, name: {}, volume: {}, isMuted: {}, cardId: {}", m_index, m_description, m_volume.values[0], m_isMuted, m_cardIndex);
 }
 
 [[nodiscard]] std::string GeneralDeviceImpl::getDescription() const
@@ -126,19 +126,28 @@ void GeneralDeviceImpl::update(const pa_card_info& info)
     {
         const std::lock_guard l{m_mutex};
 
-        m_isEnabled = false;
+        m_isEnabled = true;
 
-        if (m_cardIndex == info.index)
+        if (m_cardIndex != info.index)
+            return;
+
+        for (size_t i = 0; i < info.n_ports; ++i)
         {
-            for (size_t i = 0; i < info.n_ports; ++i)
-            {
-                pa_card_port_info const* port = info.ports[i];
+            pa_card_port_info const& port = *info.ports[i];
 
-                if (m_description == port->description && port->available == PA_PORT_AVAILABLE_YES)
+            if (m_description.ends_with(port.description))
+            {
+                switch (port.type)
                 {
-                    m_isEnabled = true;
+                case pa_device_port_type::PA_DEVICE_PORT_TYPE_HDMI:
+                    m_isEnabled = port.available == pa_port_available::PA_PORT_AVAILABLE_YES;
                     break;
+
+                default:
+                    m_isEnabled = true;
                 }
+
+                break;
             }
         }
     }

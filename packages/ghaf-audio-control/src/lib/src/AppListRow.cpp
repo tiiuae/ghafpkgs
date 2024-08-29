@@ -90,16 +90,6 @@ void AppRaw::updateSource(IAudioControlBackend::ISource::Ptr source)
     m_hasSource = m_source != nullptr;
 }
 
-bool AppRaw::sendSinkVolume()
-{
-    Logger::debug(std::format("SoundVolume has changed to: {0}", m_soundVolume.get_value()));
-
-    if (m_sink)
-        m_sink->setVolume(Volume::fromPercents(m_soundVolume.get_value()));
-
-    return true;
-}
-
 void AppRaw::onSoundEnabledChange()
 {
     const auto isEnabled = m_isSoundEnabled.get_value();
@@ -112,12 +102,10 @@ void AppRaw::onSoundEnabledChange()
 
 void AppRaw::onSoundVolumeChange()
 {
-    sendSinkVolume();
-    // if (m_sinkUpdateConnection)
-    // m_sinkUpdateConnection.disconnect();
+    Logger::debug(std::format("SoundVolume has changed to: {0}", m_soundVolume.get_value()));
 
-    // const sigc::slot<bool> slot = sigc::mem_fun(*this, &AppRaw::sendSinkVolume);
-    // m_sinkUpdateConnection = Glib::signal_timeout().connect(slot, 200);
+    if (m_sink)
+        m_sink->setVolume(Volume::fromPercents(m_soundVolume.get_value()));
 }
 
 void AppRaw::onMicroEnabledChange()

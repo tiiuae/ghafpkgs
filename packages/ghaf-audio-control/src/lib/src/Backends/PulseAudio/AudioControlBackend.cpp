@@ -6,7 +6,6 @@
 #include <GhafAudioControl/Backends/PulseAudio/AudioControlBackend.hpp>
 
 #include <GhafAudioControl/Backends/PulseAudio/Helpers.hpp>
-
 #include <GhafAudioControl/Backends/PulseAudio/Sink.hpp>
 #include <GhafAudioControl/Backends/PulseAudio/Source.hpp>
 
@@ -26,6 +25,11 @@ namespace ghaf::AudioControl::Backend::PulseAudio
 
 namespace
 {
+
+std::string ToString(const pa_card_port_info& port)
+{
+    return std::format("Port. Name: {}, descript: {}, available: {}", port.name, port.description, port.available);
+}
 
 constexpr pa_subscription_mask GetSubscriptionMask(auto... masks)
 {
@@ -86,7 +90,7 @@ constexpr pa_subscription_mask SubscriptionMask = GetSubscriptionMask(pa_subscri
 
         pa_context_set_state_callback(context, contextCallback, &self);
 
-        if (auto& server = self.getServerAddress(); pa_context_connect(context, server.empty() ? nullptr : server.c_str(), PA_CONTEXT_NOFAIL, nullptr) < 0)
+        if (const auto& server = self.getServerAddress(); pa_context_connect(context, server.empty() ? nullptr : server.c_str(), PA_CONTEXT_NOFAIL, nullptr) < 0)
             throw std::runtime_error(std::format("pa_context_connect() failed: {}", pa_strerror(pa_context_errno(context))));
     };
 
@@ -152,13 +156,9 @@ void AudioControlBackend::onSourceInfo(const pa_source_info& info)
     const Index index = info.index;
 
     if (auto sourceIt = m_sources.findByKey(index))
-    {
         m_sources.update(*sourceIt, [&info](ISource& source) { dynamic_cast<Source&>(source).update(info); });
-    }
     else
-    {
         m_sources.add(index, std::make_shared<Source>(info, *m_context->get()));
-    }
 }
 
 void AudioControlBackend::deleteSource(Sources::IndexT index)
@@ -236,9 +236,6 @@ void AudioControlBackend::contextStateCallback(pa_context* context, void* data)
 
     case pa_context_state_t::PA_CONTEXT_FAILED:
         self->m_onError(std::format("Connection to the server '{}' has failed", self->getServerAddress()));
-        // std::this_thread::sleep_for(1s);
-        // self->m_context = InitContext(*self->m_mainloopApi, AudioControlBackend::contextStateCallback, *self);
-
         break;
 
     case pa_context_state_t::PA_CONTEXT_CONNECTING:
@@ -289,6 +286,14 @@ void AudioControlBackend::cardInfoCallback(pa_context* context, const pa_card_in
 
     if (info == nullptr)
         return;
+
+    Logger::debug("\n###############################################");
+    Logger::debug(std::format("Card. index: {}, name: {}", info->index, info->name));
+
+    for (size_t i = 0; i < info->n_ports; ++i)
+        Logger::info(ToString(*info->ports[i]));
+
+    Logger::debug("###############################################\n");
 
     auto* self = static_cast<AudioControlBackend*>(data);
 

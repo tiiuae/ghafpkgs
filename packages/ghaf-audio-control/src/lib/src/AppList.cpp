@@ -182,8 +182,10 @@ Gtk::Widget* AppList::createWidgetsForApp(const Glib::RefPtr<Glib::Object>& appV
     auto* stackGrid = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_HORIZONTAL, BoxPlaces);
     stackGrid->add(*soundEnableSwitch);
     stackGrid->add(*soundScale);
-    stackGrid->add(*microEnableSwitch);
-    stackGrid->add(*microScale);
+
+    // Disable micro control for now
+    // stackGrid->add(*microEnableSwitch);
+    // stackGrid->add(*microScale);
 
     stackGrid->set_valign(Gtk::ALIGN_START);
 
