@@ -5,8 +5,9 @@
 
 #include <GhafAudioControl/Backends/PulseAudio/Helpers.hpp>
 
-#include <format>
 #include <pulse/error.h>
+
+#include <format>
 
 namespace ghaf::AudioControl::Backend::PulseAudio
 {
@@ -24,7 +25,7 @@ bool PulseCallbackCheck(const pa_context* context, int eol, std::string_view cal
 
     const auto error = pa_context_errno(context);
 
-    if (error == PA_ERR_NOENTITY || error == PA_OK)
+    if (error == pa_error_code::PA_ERR_NOENTITY || error == pa_error_code::PA_OK)
         return true;
 
     Logger::error(std::format("pulseCallbackCheck: callback: {} failed with error: {}", callbackName, pa_strerror(error)));

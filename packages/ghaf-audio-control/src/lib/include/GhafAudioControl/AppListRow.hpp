@@ -82,8 +82,6 @@ public:
     }
 
 private:
-    [[nodiscard]] bool sendSinkVolume();
-
     void onSoundEnabledChange();
     void onSoundVolumeChange();
 
