@@ -12,8 +12,9 @@ SPDX-License-Identifier = "Apache-2.0"
 SPDX-FileCopyrightText = "2022-2024 TII (SSRC) and the Ghaf contributors"
 precedence = "closest"
 path = [
-	"flake.lock",
+  "flake.lock",
   "packages/ghaf-artwork/**/*.png",
+  "packages/ghaf-artwork/**/*.jpg",
   "packages/ghaf-artwork/**/*.svg",
   "packages/ghaf-theme/**/*.svg",
 ]
@@ -23,7 +24,7 @@ SPDX-License-Identifier = "CC-BY-SA-4.0"
 SPDX-FileCopyrightText = "2022-2024 TII (SSRC) and the Ghaf contributors"
 precedence = "closest"
 path = [
-	"docs/**/*.svg", "docs/**/*.png",
+  "docs/**/*.svg", "docs/**/*.png",
 ]
 
 # External code
