@@ -14,10 +14,10 @@
 namespace ghaf::AudioControl::Backend::PulseAudio
 {
 
-class Source final : public IAudioControlBackend::ISource
+class SourceOutput final : public IAudioControlBackend::ISourceOutput
 {
 public:
-    Source(const pa_source_info& info, pa_context& context);
+    SourceOutput(const pa_source_output_info& info, pa_context& context);
 
     bool operator==(const IDevice& other) const override;
 
@@ -52,12 +52,21 @@ public:
 
     std::string toString() const override;
 
-    std::string getDescription() const;
+    std::string getDescription() const
+    {
+        return m_device.getDescription();
+    }
 
-    uint32_t getCardIndex() const;
+    uint32_t getCardIndex() const noexcept
+    {
+        return m_device.getCardIndex();
+    }
 
-    void update(const pa_source_info& info);
-    void update(const pa_card_info& info);
+    void update(const pa_source_output_info& info)
+    {
+        m_device.update(info);
+        m_onUpdate();
+    }
 
     void markDeleted();
 

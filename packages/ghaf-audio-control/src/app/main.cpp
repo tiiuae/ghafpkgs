@@ -7,8 +7,9 @@
 #include <GhafAudioControl/Backends/PulseAudio/AudioControlBackend.hpp>
 #include <GhafAudioControl/utils/Logger.hpp>
 
-#include <glibmm/optioncontext.h>
 #include <gtkmm/applicationwindow.h>
+
+#include <glibmm/optioncontext.h>
 
 #include <format>
 

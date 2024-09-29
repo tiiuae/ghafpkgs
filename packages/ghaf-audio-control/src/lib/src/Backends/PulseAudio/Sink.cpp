@@ -28,11 +28,14 @@ bool Sink::operator==(const IDevice& other) const
 
 void Sink::setMuted(bool mute)
 {
+    deleteCheck();
     ExecutePulseFunc(pa_context_set_sink_mute_by_index, &m_device.getContext(), m_device.getIndex(), mute, nullptr, nullptr);
 }
 
 void Sink::setVolume(Volume volume)
 {
+    deleteCheck();
+
     pa_cvolume paChannelVolume;
     std::ignore = pa_cvolume_set(&paChannelVolume, m_device.getPulseChannelVolume().channels, ToPulseAudioVolume(volume));
 
@@ -42,6 +45,18 @@ void Sink::setVolume(Volume volume)
 std::string Sink::toString() const
 {
     return std::format("PulseSink: [ {} ]", m_device.toString());
+}
+
+void Sink::markDeleted()
+{
+    m_device.markDeleted();
+    m_onDelete();
+}
+
+void Sink::deleteCheck()
+{
+    if (m_device.isDeleted())
+        throw std::logic_error{std::format("Using deleted device: {}", toString())};
 }
 
 } // namespace ghaf::AudioControl::Backend::PulseAudio

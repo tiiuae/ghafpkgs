@@ -21,6 +21,11 @@ public:
 
     bool operator==(const IDevice& other) const override;
 
+    Index getIndex() const override
+    {
+        return m_device.getIndex();
+    }
+
     std::string getName() const override
     {
         return m_device.getName();
@@ -65,10 +70,29 @@ public:
     void update(const pa_card_info& info)
     {
         m_device.update(info);
+        m_onUpdate();
+    }
+
+    void markDeleted();
+
+    OnUpdateSignal onUpdate() const override
+    {
+        return m_onUpdate;
+    }
+
+    OnDeleteSignal onDelete() const override
+    {
+        return m_onDelete;
     }
 
 private:
+    void deleteCheck();
+
+private:
     GeneralDeviceImpl m_device;
+
+    OnUpdateSignal m_onUpdate;
+    OnDeleteSignal m_onDelete;
 };
 
 } // namespace ghaf::AudioControl::Backend::PulseAudio

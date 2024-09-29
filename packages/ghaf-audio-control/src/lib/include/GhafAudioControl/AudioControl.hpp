@@ -21,9 +21,7 @@ namespace ghaf::AudioControl
 class AudioControl final : public Gtk::Box
 {
 public:
-    static inline std::string ModuleName = "ghaf-audio-control";
-
-    AudioControl(std::unique_ptr<IAudioControlBackend> backend);
+    explicit AudioControl(std::unique_ptr<IAudioControlBackend> backend);
     ~AudioControl() override = default;
 
     AudioControl(AudioControl&) = delete;
@@ -36,8 +34,15 @@ private:
     void init();
 
     void onPulseSinksChanged(IAudioControlBackend::EventType eventType, IAudioControlBackend::Sinks::IndexT extIndex, IAudioControlBackend::Sinks::PtrT sink);
-    void onPulseSourcesChanged(IAudioControlBackend::EventType eventType, IAudioControlBackend::Sinks::IndexT extIndex,
+
+    void onPulseSourcesChanged(IAudioControlBackend::EventType eventType, IAudioControlBackend::Sources::IndexT extIndex,
                                IAudioControlBackend::Sources::PtrT source);
+
+    void onPulseSinkInputsChanged(IAudioControlBackend::EventType eventType, IAudioControlBackend::SinkInputs::IndexT extIndex,
+                                  IAudioControlBackend::SinkInputs::PtrT sinkInput);
+
+    void onPulseSourcesOutputsChanged(IAudioControlBackend::EventType eventType, IAudioControlBackend::SourceOutputs::IndexT extIndex,
+                                      IAudioControlBackend::SourceOutputs::PtrT sourceOutput);
     void onPulseError(std::string_view error);
 
 private:

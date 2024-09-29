@@ -14,43 +14,59 @@ add_library(${LIBRARY_NAME})
 
 target_sources(${LIBRARY_NAME}
 PRIVATE
+    src/AppList.cpp
+    src/AudioControl.cpp
+
     src/Backends/PulseAudio/AudioControlBackend.cpp
     src/Backends/PulseAudio/GeneralDevide.cpp
     src/Backends/PulseAudio/Helpers.cpp
     src/Backends/PulseAudio/Sink.cpp
+    src/Backends/PulseAudio/SinkInput.cpp
     src/Backends/PulseAudio/Source.cpp
+    src/Backends/PulseAudio/SourceOutput.cpp
     src/Backends/PulseAudio/Volume.cpp
+
+    src/models/AppVmModel.cpp
+    src/models/DeviceModel.cpp
 
     src/utils/ConnectionContainer.cpp
     src/utils/Logger.cpp
 
-    src/AppList.cpp
-    src/AppListRow.cpp
-    src/AudioControl.cpp
+    src/widgets/AppVmWidget.cpp
+    src/widgets/DeviceWidget.cpp
+    src/widgets/SinkWidget.cpp
 
 PUBLIC
     FILE_SET public_headers
     TYPE HEADERS
     BASE_DIRS include
     FILES
+        include/GhafAudioControl/AppList.hpp
+        include/GhafAudioControl/AudioControl.hpp
+
         include/GhafAudioControl/Backends/PulseAudio/AudioControlBackend.hpp
         include/GhafAudioControl/Backends/PulseAudio/GeneralDevice.hpp
         include/GhafAudioControl/Backends/PulseAudio/Helpers.hpp
         include/GhafAudioControl/Backends/PulseAudio/Sink.hpp
+        include/GhafAudioControl/Backends/PulseAudio/SinkInput.hpp
         include/GhafAudioControl/Backends/PulseAudio/Source.hpp
+        include/GhafAudioControl/Backends/PulseAudio/SourceOutput.hpp
         include/GhafAudioControl/Backends/PulseAudio/Volume.hpp
+
+        include/GhafAudioControl/IAudioControlBackend.hpp
+        include/GhafAudioControl/Volume.hpp
+
+        include/GhafAudioControl/models/AppVmModel.hpp
+        include/GhafAudioControl/models/DeviceModel.hpp
 
         include/GhafAudioControl/utils/ConnectionContainer.hpp
         include/GhafAudioControl/utils/Logger.hpp
         include/GhafAudioControl/utils/RaiiWrap.hpp
         include/GhafAudioControl/utils/ScopeExit.hpp
-
-        include/GhafAudioControl/AppList.hpp
-        include/GhafAudioControl/AppListRow.hpp
-        include/GhafAudioControl/AudioControl.hpp
-        include/GhafAudioControl/IAudioControlBackend.hpp
-
-        include/GhafAudioControl/Volume.hpp
+        
+        include/GhafAudioControl/widgets/AppVmWidget.hpp
+        include/GhafAudioControl/widgets/DeviceWidget.hpp
+        include/GhafAudioControl/widgets/SinkWidget.hpp
 )
 
 target_link_libraries(
