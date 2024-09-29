@@ -28,11 +28,14 @@ bool Source::operator==(const IDevice& other) const
 
 void Source::setMuted(bool mute)
 {
-    ExecutePulseFunc(pa_context_set_sink_mute_by_index, &m_device.getContext(), m_device.getIndex(), mute, nullptr, nullptr);
+    deleteCheck();
+    ExecutePulseFunc(pa_context_set_source_mute_by_index, &m_device.getContext(), m_device.getIndex(), mute, nullptr, nullptr);
 }
 
 void Source::setVolume(Volume volume)
 {
+    deleteCheck();
+
     pa_cvolume paChannelVolume;
     std::ignore = pa_cvolume_set(&paChannelVolume, m_device.getPulseChannelVolume().channels, ToPulseAudioVolume(volume));
 
@@ -42,6 +45,39 @@ void Source::setVolume(Volume volume)
 std::string Source::toString() const
 {
     return std::format("PulseSource: [ {} ]", m_device.toString());
+}
+
+std::string Source::getDescription() const
+{
+    return m_device.getDescription();
+}
+
+void Source::markDeleted()
+{
+    m_device.markDeleted();
+    m_onDelete();
+}
+
+void Source::deleteCheck()
+{
+    if (m_device.isDeleted())
+        throw std::logic_error{std::format("Using deleted device: {}", toString())};
+}
+
+uint32_t Source::getCardIndex() const
+{
+    return m_device.getCardIndex();
+}
+
+void Source::update(const pa_source_info& info)
+{
+    m_device.update(info);
+}
+
+void Source::update(const pa_card_info& info)
+{
+    m_device.update(info);
+    m_onUpdate();
 }
 
 } // namespace ghaf::AudioControl::Backend::PulseAudio

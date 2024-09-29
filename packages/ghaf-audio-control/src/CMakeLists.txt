@@ -17,8 +17,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 #set(CMAKE_CXX_FLAGS_DEBUG -fsanitize=thread)
 
 #add_definitions(-DLIBCXX_HARDENING_MODE=debug)
-#add_compile_options(-fsanitize=address -fsanitize-recover=all)
-#add_link_options(-fsanitize=address -fsanitize-recover=all)
+# add_compile_options(-fsanitize=address -fsanitize-recover=all)
+# add_link_options(-fsanitize=address -fsanitize-recover=all)
 
 add_subdirectory(app)
 add_subdirectory(lib)

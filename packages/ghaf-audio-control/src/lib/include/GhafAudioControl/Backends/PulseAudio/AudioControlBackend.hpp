@@ -39,6 +39,16 @@ public:
         return m_sources.onChange();
     }
 
+    SinkInputs::OnChangeSignal onSinkInputsChanged() const override
+    {
+        return m_sinkInputs.onChange();
+    }
+
+    SourceOutputs::OnChangeSignal onSourceOutputsChanged() const override
+    {
+        return m_sourceOutputs.onChange();
+    }
+
     OnErrorSignal onError() const override
     {
         return m_onError;
@@ -49,6 +59,8 @@ private:
     static void contextStateCallback(pa_context* context, void* data);
     static void sinkInfoCallback(pa_context* context, const pa_sink_info* info, int eol, void* data);
     static void sourceInfoCallback(pa_context* context, const pa_source_info* info, int eol, void* data);
+    static void sinkInputInfoCallback(pa_context* context, const pa_sink_input_info* info, int eol, void* data);
+    static void sourceOutputInfoCallback(pa_context* context, const pa_source_output_info* info, int eol, void* data);
     static void serverInfoCallback(pa_context* context, const pa_server_info* info, void* data);
     static void cardInfoCallback(pa_context* context, const pa_card_info* info, int eol, void* data);
 
@@ -58,9 +70,17 @@ private:
     void onSourceInfo(const pa_source_info& info);
     void deleteSource(Sources::IndexT index);
 
+    void onSinkInputInfo(const pa_sink_input_info& info);
+    void deleteSinkInput(SinkInputs::IndexT index);
+
+    void onSourceOutputInfo(const pa_source_output_info& info);
+    void deleteSourceOutput(SourceOutputs::IndexT index);
+
 private:
     Sinks m_sinks;
     Sources m_sources;
+    SinkInputs m_sinkInputs;
+    SourceOutputs m_sourceOutputs;
 
     OnErrorSignal m_onError;
 

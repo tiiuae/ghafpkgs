@@ -27,7 +27,7 @@ public:
 
     void add(sigc::connection&& connection)
     {
-        m_connections.emplace_back(std::move(connection));
+        std::ignore = m_connections.emplace_back(std::move(connection));
     }
 
     ScopeExit blockGuarded();

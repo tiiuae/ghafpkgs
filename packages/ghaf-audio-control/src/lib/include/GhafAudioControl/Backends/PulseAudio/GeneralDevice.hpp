@@ -26,6 +26,8 @@ class GeneralDeviceImpl final
 public:
     GeneralDeviceImpl(const pa_sink_info& info, pa_context& context);
     GeneralDeviceImpl(const pa_source_info& info, pa_context& context);
+    GeneralDeviceImpl(const pa_sink_input_info& info, pa_context& context);
+    GeneralDeviceImpl(const pa_source_output_info& info, pa_context& context);
 
     bool operator==(const GeneralDeviceImpl& other) const
     {
@@ -39,8 +41,8 @@ public:
 
     [[nodiscard]] uint32_t getCardIndex() const noexcept;
 
+    [[nodiscard]] bool isDeleted() const noexcept;
     [[nodiscard]] bool isEnabled() const noexcept;
-
     [[nodiscard]] bool isMuted() const;
 
     [[nodiscard]] Volume getVolume() const;
@@ -49,12 +51,6 @@ public:
     [[nodiscard]] pa_cvolume getPulseChannelVolume() const noexcept;
 
     [[nodiscard]] std::string getName() const;
-
-    [[nodiscard]] sigc::signal<void()> onChanged() const
-    {
-        return m_onChanged;
-    }
-
     [[nodiscard]] std::string getDescription() const;
 
     [[nodiscard]] pa_context& getContext() const noexcept
@@ -64,14 +60,23 @@ public:
 
     void update(const pa_sink_info& info);
     void update(const pa_source_info& info);
+    void update(const pa_sink_input_info& info);
+    void update(const pa_source_output_info& info);
+
     void update(const pa_card_info& info);
 
+    void markDeleted();
+
     [[nodiscard]] std::string toString() const;
+
+private:
+    void deleteCheck();
 
 private:
     const uint32_t m_index;
     uint32_t m_cardIndex;
 
+    bool m_isDeleted = false;
     bool m_isEnabled = false;
     std::string m_name;
     std::string m_description;
@@ -83,7 +88,6 @@ private:
     bool m_isMuted;
 
     mutable std::mutex m_mutex;
-    sigc::signal<void()> m_onChanged;
 };
 
 } // namespace ghaf::AudioControl::Backend::PulseAudio

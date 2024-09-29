@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include <GhafAudioControl/AppListRow.hpp>
+#include <GhafAudioControl/models/AppVmModel.hpp>
 
 #include <gtkmm/box.h>
 #include <gtkmm/listbox.h>
@@ -22,24 +22,15 @@ class AppList final : public Gtk::Box
 public:
     AppList();
 
-    void addApp(AppRaw::AppIdType id, IAudioControlBackend::ISink::Ptr sink, IAudioControlBackend::ISource::Ptr source);
-    void updateApp(AppRaw::AppIdType id, IAudioControlBackend::ISink::Ptr sink, IAudioControlBackend::ISource::Ptr source);
-    void removeApp(AppRaw::AppIdType id);
+    void addDevice(IAudioControlBackend::ISinkInput::Ptr device);
+
     void removeAllApps();
 
 private:
-    void doUpdateApp(size_t modelIndex, IAudioControlBackend::ISink::Ptr sink, IAudioControlBackend::ISource::Ptr source);
-
-    [[nodiscard]] Gtk::Widget* createWidgetsForApp(const Glib::RefPtr<Glib::Object>& appVmPtr);
-
-private:
     Gtk::ListBox m_listBox;
-    Gtk::Separator m_separator;
-    Gtk::Stack m_stack;
 
-    Glib::RefPtr<Gio::ListStore<AppRaw>> m_appsModel;
-    std::map<AppRaw::AppIdType, std::vector<Glib::RefPtr<Glib::Binding>>> m_appsBindings;
-    sigc::connection m_connection;
+    Glib::RefPtr<Gio::ListStore<AppVmModel>> m_appsModel;
+    std::map<AppVmModel::AppIdType, std::vector<Glib::RefPtr<Glib::Binding>>> m_appsBindings;
 };
 
 } // namespace ghaf::AudioControl

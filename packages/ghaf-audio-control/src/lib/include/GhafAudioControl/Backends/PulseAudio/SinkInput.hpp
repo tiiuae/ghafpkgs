@@ -14,10 +14,10 @@
 namespace ghaf::AudioControl::Backend::PulseAudio
 {
 
-class Source final : public IAudioControlBackend::ISource
+class SinkInput final : public IAudioControlBackend::ISinkInput
 {
 public:
-    Source(const pa_source_info& info, pa_context& context);
+    SinkInput(const pa_sink_input_info& info, pa_context& context);
 
     bool operator==(const IDevice& other) const override;
 
@@ -50,14 +50,19 @@ public:
 
     void setVolume(Volume volume) override;
 
+    uint32_t getCardIndex() const noexcept
+    {
+        return m_device.getCardIndex();
+    }
+
     std::string toString() const override;
 
-    std::string getDescription() const;
+    std::string getDescription() const
+    {
+        return m_device.getDescription();
+    }
 
-    uint32_t getCardIndex() const;
-
-    void update(const pa_source_info& info);
-    void update(const pa_card_info& info);
+    void update(const pa_sink_input_info& info);
 
     void markDeleted();
 

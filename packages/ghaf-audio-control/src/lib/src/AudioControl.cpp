@@ -21,6 +21,49 @@
 namespace ghaf::AudioControl
 {
 
+template<class IndexT, class DevicePtrT>
+void OnPulseDeviceChanged(IAudioControlBackend::EventType eventType, IndexT index, DevicePtrT device, AppList& appList)
+{
+    std::string deviceType;
+
+    if constexpr (std::is_same<DevicePtrT, IAudioControlBackend::Sinks::PtrT>())
+    {
+        deviceType = "sink";
+    }
+    else if constexpr (std::is_same<DevicePtrT, IAudioControlBackend::Sources::PtrT>())
+    {
+        deviceType = "source";
+    }
+    else if constexpr (std::is_same<DevicePtrT, IAudioControlBackend::SinkInputs::PtrT>())
+    {
+        deviceType = "sinkInput";
+    }
+    else if constexpr (std::is_same<DevicePtrT, IAudioControlBackend::SourceOutputs::PtrT>())
+    {
+        deviceType = "sourceOutput";
+    }
+    else
+    {
+        static_assert(true, "Unknow type");
+    }
+
+    switch (eventType)
+    {
+    case IAudioControlBackend::EventType::Add:
+        Logger::debug(std::format("OnPulseDeviceChanged: ADD {}: {}", deviceType, device->toString()));
+        appList.addDevice(std::move(device));
+        break;
+
+    case IAudioControlBackend::EventType::Update:
+        Logger::debug(std::format("OnPulseDeviceChanged: UPDATE {}: {}", deviceType, device->toString()));
+        break;
+
+    case IAudioControlBackend::EventType::Delete:
+        Logger::debug(std::format("OnPulseDeviceChanged: DELETE {} with index: {}", deviceType, index));
+        break;
+    }
+}
+
 AudioControl::AudioControl(std::unique_ptr<IAudioControlBackend> backend)
     : Gtk::Box(Gtk::ORIENTATION_HORIZONTAL)
     , m_audioControl(std::move(backend))
@@ -34,8 +77,10 @@ void AudioControl::init()
     {
         pack_start(m_appList);
 
-        m_connections.add(m_audioControl->onSinksChanged().connect(sigc::mem_fun(*this, &AudioControl::onPulseSinksChanged)));
-        m_connections.add(m_audioControl->onSourcesChanged().connect(sigc::mem_fun(*this, &AudioControl::onPulseSourcesChanged)));
+        // m_connections.add(m_audioControl->onSinksChanged().connect(sigc::mem_fun(*this, &AudioControl::onPulseSinksChanged)));
+        // m_connections.add(m_audioControl->onSourcesChanged().connect(sigc::mem_fun(*this, &AudioControl::onPulseSourcesChanged)));
+        m_connections.add(m_audioControl->onSinkInputsChanged().connect(sigc::mem_fun(*this, &AudioControl::onPulseSinkInputsChanged)));
+        // m_connections.add(m_audioControl->onSourceOutputsChanged().connect(sigc::mem_fun(*this, &AudioControl::onPulseSourcesOutputsChanged)));
         m_connections.add(m_audioControl->onError().connect(sigc::mem_fun(*this, &AudioControl::onPulseError)));
 
         show_all_children();
@@ -48,53 +93,32 @@ void AudioControl::init()
     }
 }
 
-void AudioControl::onPulseSinksChanged(IAudioControlBackend::EventType eventType, IAudioControlBackend::Sinks::IndexT index,
+void AudioControl::onPulseSinksChanged(IAudioControlBackend::EventType eventType, IAudioControlBackend::Sinks::IndexT extIndex,
                                        IAudioControlBackend::Sinks::PtrT sink)
 {
-    switch (eventType)
-    {
-    case IAudioControlBackend::EventType::Add:
-        Logger::debug(std::format("onPulseSinksChanged: ADD sink: {}", sink->toString()));
-        m_appList.addApp(index, std::move(sink), nullptr);
-        break;
-
-    case IAudioControlBackend::EventType::Update:
-        Logger::debug(std::format("onPulseSinksChanged: UPDATE sink: {}", sink->toString()));
-        m_appList.updateApp(index, std::move(sink), nullptr);
-        break;
-
-    case IAudioControlBackend::EventType::Delete:
-        Logger::debug(std::format("onPulseSinksChanged: DELETE sink with index: {}", index));
-        m_appList.removeApp(index);
-        break;
-    }
-
+    OnPulseDeviceChanged(eventType, extIndex, std::move(sink), m_appList);
     show_all_children();
 }
 
-void AudioControl::onPulseSourcesChanged(IAudioControlBackend::EventType eventType, IAudioControlBackend::Sources::IndexT index,
+void AudioControl::onPulseSourcesChanged(IAudioControlBackend::EventType eventType, IAudioControlBackend::Sources::IndexT extIndex,
                                          IAudioControlBackend::Sources::PtrT source)
 {
-    // Disable sources for now
-    return;
+    OnPulseDeviceChanged(eventType, extIndex, std::move(source), m_appList);
+    show_all_children();
+}
 
-    switch (eventType)
-    {
-    case IAudioControlBackend::EventType::Add:
-        Logger::debug(std::format("onPulseSourcesChanged: ADD source: {}", source->toString()));
-        m_appList.addApp(index, nullptr, std::move(source));
-        break;
+void AudioControl::onPulseSinkInputsChanged(IAudioControlBackend::EventType eventType, IAudioControlBackend::SinkInputs::IndexT extIndex,
+                                            IAudioControlBackend::SinkInputs::PtrT sinkInput)
+{
+    OnPulseDeviceChanged(eventType, extIndex, std::move(sinkInput), m_appList);
+    show_all_children();
+}
 
-    case IAudioControlBackend::EventType::Update:
-        Logger::debug(std::format("onPulseSourcesChanged: UPDATE source: {}", source->toString()));
-        m_appList.updateApp(index, nullptr, std::move(source));
-        break;
-
-    case IAudioControlBackend::EventType::Delete:
-        Logger::debug(std::format("onPulseSourcesChanged: DELETE source with index: {}", index));
-        m_appList.removeApp(index);
-        break;
-    }
+void AudioControl::onPulseSourcesOutputsChanged(IAudioControlBackend::EventType eventType, IAudioControlBackend::SourceOutputs::IndexT extIndex,
+                                                IAudioControlBackend::SourceOutputs::PtrT sourceOutput)
+{
+    OnPulseDeviceChanged(eventType, extIndex, std::move(sourceOutput), m_appList);
+    show_all_children();
 }
 
 void AudioControl::onPulseError(std::string_view error)

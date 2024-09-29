@@ -17,6 +17,8 @@
 namespace ghaf::AudioControl
 {
 
+using Index = uint64_t;
+
 class IAudioControlBackend
 {
 public:
@@ -27,7 +29,7 @@ public:
         Delete
     };
 
-    template<class Index, class T>
+    template<class T>
     class SignalMap final
     {
     public:
@@ -43,7 +45,7 @@ public:
 
         SignalMap() = default;
 
-        void add(const Index& key, PtrT&& data)
+        void add(Index key, PtrT&& data)
         {
             auto result = m_map.emplace(key, std::forward<PtrT&&>(data));
             auto iter = result.first;
@@ -51,7 +53,7 @@ public:
             m_onChange(EventType::Add, iter->first, iter->second);
         }
 
-        [[nodiscard]] std::optional<Iter> findByKey(const Index& key)
+        [[nodiscard]] std::optional<Iter> findByKey(Index key)
         {
             if (auto iter = m_map.find(key); iter != m_map.end())
                 return iter;
@@ -80,8 +82,11 @@ public:
             m_onChange(EventType::Update, iter->first, ptr);
         }
 
-        void remove(Iter iter)
+        void remove(Iter iter, const std::function<void(T&)>& deleteFunction)
         {
+            PtrT ptr = iter->second;
+            deleteFunction(*ptr);
+
             const auto key = iter->first;
             std::ignore = m_map.erase(key);
 
@@ -102,10 +107,16 @@ public:
     {
     public:
         using Ptr = std::shared_ptr<IDevice>;
+        using IntexT = Index;
+
+        using OnUpdateSignal = sigc::signal<void()>;
+        using OnDeleteSignal = sigc::signal<void()>;
 
         virtual ~IDevice() = default;
 
         virtual bool operator==(const IDevice& other) const = 0;
+
+        [[nodiscard]] virtual Index getIndex() const = 0;
 
         [[nodiscard]] virtual std::string getName() const = 0;
 
@@ -118,6 +129,9 @@ public:
         virtual void setVolume(Volume volume) = 0;
 
         [[nodiscard]] virtual std::string toString() const = 0;
+
+        [[nodiscard]] virtual OnUpdateSignal onUpdate() const = 0;
+        [[nodiscard]] virtual OnDeleteSignal onDelete() const = 0;
     };
 
     class ISink : public IDevice
@@ -128,9 +142,19 @@ public:
     {
     };
 
-    using Index = uint64_t;
-    using Sinks = SignalMap<Index, ISink>;
-    using Sources = SignalMap<Index, ISource>;
+    class ISinkInput : public IDevice
+    {
+    };
+
+    class ISourceOutput : public IDevice
+    {
+    };
+
+    using Sinks = SignalMap<ISink>;
+    using Sources = SignalMap<ISource>;
+    using SinkInputs = SignalMap<ISinkInput>;
+    using SourceOutputs = SignalMap<ISourceOutput>;
+
     using OnErrorSignal = sigc::signal<void(std::string)>;
 
     virtual ~IAudioControlBackend() = default;
@@ -140,6 +164,9 @@ public:
 
     [[nodiscard]] virtual Sinks::OnChangeSignal onSinksChanged() const = 0;
     [[nodiscard]] virtual Sources::OnChangeSignal onSourcesChanged() const = 0;
+    [[nodiscard]] virtual SinkInputs::OnChangeSignal onSinkInputsChanged() const = 0;
+    [[nodiscard]] virtual SourceOutputs::OnChangeSignal onSourceOutputsChanged() const = 0;
+
     [[nodiscard]] virtual OnErrorSignal onError() const = 0;
 };
 

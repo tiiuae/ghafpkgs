@@ -7,7 +7,9 @@
 
 #include <GhafAudioControl/Backends/PulseAudio/Helpers.hpp>
 #include <GhafAudioControl/Backends/PulseAudio/Sink.hpp>
+#include <GhafAudioControl/Backends/PulseAudio/SinkInput.hpp>
 #include <GhafAudioControl/Backends/PulseAudio/Source.hpp>
+#include <GhafAudioControl/Backends/PulseAudio/SourceOutput.hpp>
 
 #include <GhafAudioControl/utils/Logger.hpp>
 
@@ -25,6 +27,37 @@ namespace ghaf::AudioControl::Backend::PulseAudio
 
 namespace
 {
+
+template<class DeviceT, class InfoT, class IDeviceT>
+void OnPulseDeviceInfo(const InfoT& info, IAudioControlBackend::SignalMap<IDeviceT>& map, pa_context& context)
+{
+    const Index index = info.index;
+
+    if (auto deviceIt = map.findByKey(index))
+    {
+        const IDeviceT& device = *deviceIt.value()->second;
+
+        Logger::debug(std::format("Updating... Before: {}", device.toString()));
+        map.update(*deviceIt, [&info](IDeviceT& device) { dynamic_cast<DeviceT&>(device).update(info); });
+        Logger::debug(std::format("Updating... After: {}", device.toString()));
+    }
+    else
+    {
+        map.add(index, std::make_shared<DeviceT>(info, context));
+    }
+}
+
+template<class DeviceT, class IndexT, class IDeviceT>
+void DeletePulseDevice(IAudioControlBackend::SignalMap<IDeviceT>& map, IndexT index)
+{
+    if (auto deviceIt = map.findByKey(index))
+    {
+        Logger::debug(std::format("AudioControlBackend::DeletePulseDevice: delete device with id: {}", index));
+        map.remove(*deviceIt, [](IDeviceT& device) { dynamic_cast<DeviceT&>(device).markDeleted(); });
+    }
+    else
+        Logger::error(std::format("AudioControlBackend::DeletePulseDevice: no device with id: {}", index));
+}
 
 std::string ToString(const pa_card_port_info& port)
 {
@@ -124,52 +157,42 @@ void AudioControlBackend::stop()
 
 void AudioControlBackend::onSinkInfo(const pa_sink_info& info)
 {
-    const Index index = info.index;
-
-    if (auto sinkIt = m_sinks.findByKey(index))
-    {
-        const ISink& sink = *sinkIt.value()->second;
-
-        Logger::debug(std::format("Updating... Before: {}", sink.toString()));
-        m_sinks.update(*sinkIt, [&info](ISink& sink) { dynamic_cast<Sink&>(sink).update(info); });
-        Logger::debug(std::format("Updating... After: {}", sink.toString()));
-    }
-    else
-    {
-        m_sinks.add(index, std::make_shared<Sink>(info, *m_context->get()));
-    }
+    OnPulseDeviceInfo<Sink>(info, m_sinks, *m_context->get());
 }
 
 void AudioControlBackend::deleteSink(Sinks::IndexT index)
 {
-    if (auto sinkIt = m_sinks.findByKey(index))
-    {
-        Logger::debug(std::format("AudioControlBackend::deleteSink: delete sink with id: {}", index));
-        m_sinks.remove(*sinkIt);
-    }
-    else
-        Logger::error(std::format("AudioControlBackend::deleteSink: no sink with id: {}", index));
+    DeletePulseDevice<Sink>(m_sinks, index);
 }
 
 void AudioControlBackend::onSourceInfo(const pa_source_info& info)
 {
-    const Index index = info.index;
-
-    if (auto sourceIt = m_sources.findByKey(index))
-        m_sources.update(*sourceIt, [&info](ISource& source) { dynamic_cast<Source&>(source).update(info); });
-    else
-        m_sources.add(index, std::make_shared<Source>(info, *m_context->get()));
+    OnPulseDeviceInfo<Source>(info, m_sources, *m_context->get());
 }
 
 void AudioControlBackend::deleteSource(Sources::IndexT index)
 {
-    if (auto sourceIt = m_sources.findByKey(index))
-    {
-        Logger::debug(std::format("AudioControlBackend::deleteSource: delete source with id: {}", index));
-        m_sources.remove(*sourceIt);
-    }
-    else
-        Logger::error(std::format("AudioControlBackend::deleteSource: no source with id: {}", index));
+    DeletePulseDevice<Source>(m_sources, index);
+}
+
+void AudioControlBackend::onSinkInputInfo(const pa_sink_input_info& info)
+{
+    OnPulseDeviceInfo<SinkInput>(info, m_sinkInputs, *m_context->get());
+}
+
+void AudioControlBackend::deleteSinkInput(SinkInputs::IndexT index)
+{
+    DeletePulseDevice<SinkInput>(m_sinkInputs, index);
+}
+
+void AudioControlBackend::onSourceOutputInfo(const pa_source_output_info& info)
+{
+    OnPulseDeviceInfo<SourceOutput>(info, m_sourceOutputs, *m_context->get());
+}
+
+void AudioControlBackend::deleteSourceOutput(SourceOutputs::IndexT index)
+{
+    DeletePulseDevice<SourceOutput>(m_sourceOutputs, index);
 }
 
 void AudioControlBackend::subscribeCallback(pa_context* context, pa_subscription_event_type_t type, uint32_t index, void* data)
@@ -193,7 +216,11 @@ void AudioControlBackend::subscribeCallback(pa_context* context, pa_subscription
         break;
 
     case pa_subscription_event_type::PA_SUBSCRIPTION_EVENT_SINK_INPUT:
-        ExecutePulseFunc(pa_context_get_sink_info_list, context, sinkInfoCallback, data);
+        if (needRemove)
+            self->deleteSinkInput(index);
+        else
+            ExecutePulseFunc(pa_context_get_sink_input_info, context, index, sinkInputInfoCallback, data);
+
         break;
 
     case pa_subscription_event_type::PA_SUBSCRIPTION_EVENT_SOURCE:
@@ -205,7 +232,11 @@ void AudioControlBackend::subscribeCallback(pa_context* context, pa_subscription
         break;
 
     case pa_subscription_event_type::PA_SUBSCRIPTION_EVENT_SOURCE_OUTPUT:
-        ExecutePulseFunc(pa_context_get_source_info_list, context, sourceInfoCallback, data);
+        if (needRemove)
+            self->deleteSourceOutput(index);
+        else
+            ExecutePulseFunc(pa_context_get_source_output_info, context, index, sourceOutputInfoCallback, data);
+
         break;
 
     case pa_subscription_event_type::PA_SUBSCRIPTION_EVENT_CARD:
@@ -265,6 +296,22 @@ void AudioControlBackend::sourceInfoCallback(pa_context* context, const pa_sourc
     static_cast<AudioControlBackend*>(data)->onSourceInfo(*info);
 }
 
+void AudioControlBackend::sinkInputInfoCallback(pa_context* context, const pa_sink_input_info* info, int eol, void* data)
+{
+    if (!PulseCallbackCheck(context, eol, __FUNCTION__) || info == nullptr)
+        return;
+
+    static_cast<AudioControlBackend*>(data)->onSinkInputInfo(*info);
+}
+
+void AudioControlBackend::sourceOutputInfoCallback(pa_context* context, const pa_source_output_info* info, int eol, void* data)
+{
+    if (!PulseCallbackCheck(context, eol, __FUNCTION__) || info == nullptr)
+        return;
+
+    static_cast<AudioControlBackend*>(data)->onSourceOutputInfo(*info);
+}
+
 void AudioControlBackend::serverInfoCallback(pa_context* context, const pa_server_info* info, void* data)
 {
     if (info == nullptr)
@@ -276,6 +323,8 @@ void AudioControlBackend::serverInfoCallback(pa_context* context, const pa_serve
 
     ExecutePulseFunc(pa_context_get_sink_info_list, context, sinkInfoCallback, data);
     ExecutePulseFunc(pa_context_get_source_info_list, context, sourceInfoCallback, data);
+    ExecutePulseFunc(pa_context_get_sink_input_info_list, context, sinkInputInfoCallback, data);
+    ExecutePulseFunc(pa_context_get_source_output_info_list, context, sourceOutputInfoCallback, data);
     ExecutePulseFunc(pa_context_get_card_info_list, context, cardInfoCallback, data);
 }
 
