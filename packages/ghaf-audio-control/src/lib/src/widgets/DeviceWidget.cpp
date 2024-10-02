@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include "GhafAudioControl/utils/Debug.hpp"
 #include <GhafAudioControl/widgets/DeviceWidget.hpp>
 
 #include <gtkmm/adjustment.h>
@@ -20,6 +21,8 @@ constexpr auto ScaleLowerLimit = 0.0;
 constexpr auto ScaleUpperLimit = 100.0;
 
 constexpr auto DeviceWidgetSpacing = 5;
+
+constexpr auto NameLabelLeftMargin = 20;
 
 auto Bind(const auto& appProp, const auto& widgetProp, bool readonly = false)
 {
@@ -58,9 +61,10 @@ DeviceWidget::DeviceWidget(DeviceModel::Ptr model)
         widget.set_hexpand(false);
         widget.set_vexpand(false);
         widget.set_halign(Gtk::Align::ALIGN_START);
-        widget.set_valign(Gtk::Align::ALIGN_END);
+        widget.set_valign(Gtk::Align::ALIGN_CENTER);
     };
 
+    set_name("DeviceWidget");
     set_homogeneous(true);
     set_spacing(DeviceWidgetSpacing);
 
@@ -72,9 +76,7 @@ DeviceWidget::DeviceWidget(DeviceModel::Ptr model)
     add(*m_switch);
     add(*m_scale);
 
-    m_nameLabel->set_can_focus(false);
-    m_nameLabel->set_selectable(false);
-    m_nameLabel->set_focus_on_click(false);
+    m_nameLabel->set_margin_left(NameLabelLeftMargin);
 
     m_switch->set_halign(Gtk::Align::ALIGN_END);
     m_scale->set_halign(Gtk::Align::ALIGN_END);

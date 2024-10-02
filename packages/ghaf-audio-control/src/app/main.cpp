@@ -5,11 +5,12 @@
 
 #include <GhafAudioControl/AudioControl.hpp>
 #include <GhafAudioControl/Backends/PulseAudio/AudioControlBackend.hpp>
+#include <GhafAudioControl/utils/Debug.hpp>
 #include <GhafAudioControl/utils/Logger.hpp>
 
-#include <gtkmm/applicationwindow.h>
-
+#include <glibmm/main.h>
 #include <glibmm/optioncontext.h>
+#include <gtkmm/applicationwindow.h>
 
 #include <format>
 
@@ -18,13 +19,26 @@ using namespace ghaf::AudioControl;
 namespace
 {
 
-int GtkClient(std::string pulseAudioServerAddress)
+std::vector<std::string> GetAppVmsList(const std::string& appVms)
+{
+    std::vector<std::string> result;
+
+    std::istringstream iss(appVms);
+    std::string buf;
+
+    while (getline(iss, buf, ','))
+        result.push_back(buf);
+
+    return result;
+}
+
+int GtkClient(const std::string& pulseAudioServerAddress, const std::string& appVms)
 {
     auto app = Gtk::Application::create();
-
-    AudioControl audioControl{std::make_unique<Backend::PulseAudio::AudioControlBackend>(std::move(pulseAudioServerAddress))};
-
     Gtk::ApplicationWindow window;
+
+    AudioControl audioControl{std::make_unique<Backend::PulseAudio::AudioControlBackend>(pulseAudioServerAddress), GetAppVmsList(appVms)};
+
     window.add(audioControl);
     window.show_all();
 
@@ -35,14 +49,21 @@ int GtkClient(std::string pulseAudioServerAddress)
 
 int main(int argc, char** argv)
 {
+    pthread_setname_np(pthread_self(), "main");
+
     Glib::ustring pulseServerAddress;
     Glib::OptionEntry pulseServerOption;
-
     pulseServerOption.set_long_name("pulseaudio_server");
     pulseServerOption.set_description("PulseAudio server address");
 
+    Glib::ustring appVms;
+    Glib::OptionEntry appVmsOption;
+    appVmsOption.set_long_name("app_vms");
+    appVmsOption.set_description("AppVMs list");
+
     Glib::OptionGroup options("Main", "Main");
     options.add_entry(pulseServerOption, pulseServerAddress);
+    options.add_entry(appVmsOption, appVms);
 
     Glib::OptionContext context("Application Options");
     context.set_main_group(options);
@@ -60,5 +81,5 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    return GtkClient(pulseServerAddress);
+    return GtkClient(pulseServerAddress, appVms);
 }
