@@ -12,6 +12,8 @@
 namespace ghaf::AudioControl::Backend::PulseAudio
 {
 
+constexpr auto PropertyAppVmName = "application.process.host";
+
 GeneralDeviceImpl::GeneralDeviceImpl(const pa_sink_info& info, pa_context& context)
     : m_index(info.index)
     , m_cardIndex(info.card)
@@ -39,6 +41,7 @@ GeneralDeviceImpl::GeneralDeviceImpl(const pa_source_info& info, pa_context& con
 GeneralDeviceImpl::GeneralDeviceImpl(const pa_sink_input_info& info, pa_context& context)
     : m_index(info.index)
     , m_cardIndex(0)
+    , m_appVmName(pa_proplist_gets(info.proplist, PropertyAppVmName))
     , m_name(info.name)
     , m_context(context)
     , m_channel_map(info.channel_map)
@@ -97,6 +100,12 @@ GeneralDeviceImpl::GeneralDeviceImpl(const pa_source_output_info& info, pa_conte
 {
     const std::lock_guard l{m_mutex};
     return m_volume;
+}
+
+std::optional<std::string> GeneralDeviceImpl::getAppVmName() const noexcept
+{
+    const std::lock_guard l{m_mutex};
+    return m_appVmName;
 }
 
 [[nodiscard]] std::string GeneralDeviceImpl::getName() const

@@ -37,9 +37,8 @@ void OnPulseDeviceInfo(const InfoT& info, IAudioControlBackend::SignalMap<IDevic
     {
         const IDeviceT& device = *deviceIt.value()->second;
 
-        Logger::debug(std::format("Updating... Before: {}", device.toString()));
         map.update(*deviceIt, [&info](IDeviceT& device) { dynamic_cast<DeviceT&>(device).update(info); });
-        Logger::debug(std::format("Updating... After: {}", device.toString()));
+        Logger::debug(std::format("Updating... {}", device.toString()));
     }
     else
     {

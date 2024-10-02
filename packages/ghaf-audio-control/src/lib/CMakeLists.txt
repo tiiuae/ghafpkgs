@@ -30,6 +30,7 @@ PRIVATE
     src/models/DeviceModel.cpp
 
     src/utils/ConnectionContainer.cpp
+    src/utils/Debug.cpp
     src/utils/Logger.cpp
 
     src/widgets/AppVmWidget.cpp
@@ -60,6 +61,7 @@ PUBLIC
         include/GhafAudioControl/models/DeviceModel.hpp
 
         include/GhafAudioControl/utils/ConnectionContainer.hpp
+        include/GhafAudioControl/utils/Debug.hpp
         include/GhafAudioControl/utils/Logger.hpp
         include/GhafAudioControl/utils/RaiiWrap.hpp
         include/GhafAudioControl/utils/ScopeExit.hpp

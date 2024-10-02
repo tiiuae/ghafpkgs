@@ -25,13 +25,19 @@ public:
     void reveal(bool reveal = true);
 
 private:
+    void onDeviceChange(guint position, guint removed, guint added);
+
+private:
     Glib::RefPtr<AppVmModel> m_model;
 
+    Gtk::Box m_revealerBox;
     Gtk::ListBox m_listBox;
+
+    Gtk::Label m_emptyListLabel;
     Gtk::Button m_appNameButton;
     Gtk::Revealer m_revealer;
 
-    sigc::connection m_connection;
+    ConnectionContainer m_connections;
 };
 
 } // namespace ghaf::AudioControl

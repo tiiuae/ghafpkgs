@@ -50,6 +50,8 @@ public:
     [[nodiscard]] pa_volume_t getPulseVolume() const;
     [[nodiscard]] pa_cvolume getPulseChannelVolume() const noexcept;
 
+    [[nodiscard]] std::optional<std::string> getAppVmName() const noexcept;
+
     [[nodiscard]] std::string getName() const;
     [[nodiscard]] std::string getDescription() const;
 
@@ -78,6 +80,9 @@ private:
 
     bool m_isDeleted = false;
     bool m_isEnabled = false;
+
+    std::optional<std::string> m_appVmName;
+
     std::string m_name;
     std::string m_description;
 

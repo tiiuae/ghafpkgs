@@ -21,6 +21,11 @@
 namespace ghaf::AudioControl
 {
 
+constexpr auto CssStyle = "button#AppVmNameButton { background-color: transparent; border: none; font-weight: bold; }"
+                          "box#DeviceWidget { background: #e6e6e6; border-radius: 15px; }"
+                          "label#EmptyListName { background: #e6e6e6; border-radius: 15px; min-height: 40px; }"
+                          "*:selected { background-color: transparent; color: inherit; box-shadow: none; outline: none; }";
+
 template<class IndexT, class DevicePtrT>
 void OnPulseDeviceChanged(IAudioControlBackend::EventType eventType, IndexT index, DevicePtrT device, AppList& appList)
 {
@@ -64,10 +69,13 @@ void OnPulseDeviceChanged(IAudioControlBackend::EventType eventType, IndexT inde
     }
 }
 
-AudioControl::AudioControl(std::unique_ptr<IAudioControlBackend> backend)
+AudioControl::AudioControl(std::unique_ptr<IAudioControlBackend> backend, const std::vector<std::string>& appVmsList)
     : Gtk::Box(Gtk::ORIENTATION_HORIZONTAL)
     , m_audioControl(std::move(backend))
 {
+    for (const auto& appVm : appVmsList)
+        m_appList.addVm(appVm);
+
     init();
 }
 
@@ -91,34 +99,36 @@ void AudioControl::init()
     {
         onPulseError("No audio backend");
     }
+
+    auto cssProvider = Gtk::CssProvider::create();
+    cssProvider->load_from_data(CssStyle);
+
+    auto style_context = Gtk::StyleContext::create();
+    style_context->add_provider_for_screen(Gdk::Screen::get_default(), cssProvider, GTK_STYLE_PROVIDER_PRIORITY_USER);
 }
 
 void AudioControl::onPulseSinksChanged(IAudioControlBackend::EventType eventType, IAudioControlBackend::Sinks::IndexT extIndex,
                                        IAudioControlBackend::Sinks::PtrT sink)
 {
     OnPulseDeviceChanged(eventType, extIndex, std::move(sink), m_appList);
-    show_all_children();
 }
 
 void AudioControl::onPulseSourcesChanged(IAudioControlBackend::EventType eventType, IAudioControlBackend::Sources::IndexT extIndex,
                                          IAudioControlBackend::Sources::PtrT source)
 {
     OnPulseDeviceChanged(eventType, extIndex, std::move(source), m_appList);
-    show_all_children();
 }
 
 void AudioControl::onPulseSinkInputsChanged(IAudioControlBackend::EventType eventType, IAudioControlBackend::SinkInputs::IndexT extIndex,
                                             IAudioControlBackend::SinkInputs::PtrT sinkInput)
 {
     OnPulseDeviceChanged(eventType, extIndex, std::move(sinkInput), m_appList);
-    show_all_children();
 }
 
 void AudioControl::onPulseSourcesOutputsChanged(IAudioControlBackend::EventType eventType, IAudioControlBackend::SourceOutputs::IndexT extIndex,
                                                 IAudioControlBackend::SourceOutputs::PtrT sourceOutput)
 {
     OnPulseDeviceChanged(eventType, extIndex, std::move(sourceOutput), m_appList);
-    show_all_children();
 }
 
 void AudioControl::onPulseError(std::string_view error)

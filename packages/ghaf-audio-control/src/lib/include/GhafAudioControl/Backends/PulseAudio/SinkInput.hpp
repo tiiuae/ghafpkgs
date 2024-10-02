@@ -62,6 +62,11 @@ public:
         return m_device.getDescription();
     }
 
+    std::optional<std::string> getAppVmName() const
+    {
+        return m_device.getAppVmName();
+    }
+
     void update(const pa_sink_input_info& info);
 
     void markDeleted();

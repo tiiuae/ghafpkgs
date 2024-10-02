@@ -13,23 +13,12 @@ namespace ghaf::AudioControl
 class Logger
 {
 public:
-    static void debug(std::string_view message)
-    {
-        log(message);
-    }
-
-    static void error(std::string_view message)
-    {
-        log(message);
-    }
-
-    static void info(std::string_view message)
-    {
-        log(message);
-    }
+    static void debug(std::string_view message);
+    static void error(std::string_view message);
+    static void info(std::string_view message);
 
 private:
-    static void log(std::string_view message);
+    static void log(std::string_view message, std::string_view logLevel);
 
     Logger();
 };

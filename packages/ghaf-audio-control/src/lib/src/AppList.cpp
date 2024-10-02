@@ -4,9 +4,10 @@
  */
 
 #include <GhafAudioControl/AppList.hpp>
-#include <GhafAudioControl/widgets/AppVmWidget.hpp>
-
+#include <GhafAudioControl/Backends/PulseAudio/SinkInput.hpp>
+#include <GhafAudioControl/utils/Debug.hpp>
 #include <GhafAudioControl/utils/Logger.hpp>
+#include <GhafAudioControl/widgets/AppVmWidget.hpp>
 
 #include <gtkmm/adjustment.h>
 #include <gtkmm/button.h>
@@ -36,6 +37,12 @@ std::optional<size_t> GetIndexByAppId(const Glib::RefPtr<Gio::ListStore<AppVmMod
 
 std::string GetAppNameFromSinkInput(const IAudioControlBackend::ISinkInput::Ptr& device)
 {
+    if (auto sinkInput = std::dynamic_pointer_cast<Backend::PulseAudio::SinkInput>(device))
+    {
+        if (const auto appVmName = sinkInput->getAppVmName())
+            return *appVmName;
+    }
+
     return "Other";
 }
 
@@ -61,6 +68,7 @@ Gtk::Widget* CreateWidgetsForApp(const Glib::RefPtr<Glib::Object>& appVmModelPtr
 
 AppList::AppList()
     : Gtk::Box(Gtk::ORIENTATION_HORIZONTAL)
+    , m_cssProvider(Gtk::CssProvider::create())
     , m_appsModel(Gio::ListStore<AppVmModel>::create())
 {
     m_listBox.bind_model(m_appsModel, &CreateWidgetsForApp);
@@ -68,6 +76,14 @@ AppList::AppList()
     m_listBox.set_selection_mode(Gtk::SelectionMode::SELECTION_SINGLE);
 
     pack_start(m_listBox, Gtk::PACK_EXPAND_WIDGET);
+}
+
+void AppList::addVm(std::string appVmName)
+{
+    if (const auto index = GetIndexByAppId(m_appsModel, appVmName))
+        return;
+
+    m_appsModel->append(AppVmModel::create(std::move(appVmName)));
 }
 
 void AppList::addDevice(IAudioControlBackend::ISinkInput::Ptr device)
@@ -81,10 +97,12 @@ void AppList::addDevice(IAudioControlBackend::ISinkInput::Ptr device)
         Logger::error(std::format("AppList::addDevice: add new app with name: {}", appName));
 
         auto appVmModel = AppVmModel::create(appName);
-        appVmModel->addSinkInput(std::move(device));
-
         m_appsModel->append(appVmModel);
+
+        appVmModel->addSinkInput(std::move(device));
     }
+
+    show_all_children(true);
 }
 
 void AppList::removeAllApps()

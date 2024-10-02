@@ -21,7 +21,7 @@ namespace ghaf::AudioControl
 class AudioControl final : public Gtk::Box
 {
 public:
-    explicit AudioControl(std::unique_ptr<IAudioControlBackend> backend);
+    AudioControl(std::unique_ptr<IAudioControlBackend> backend, const std::vector<std::string>& appVmsList);
     ~AudioControl() override = default;
 
     AudioControl(AudioControl&) = delete;
