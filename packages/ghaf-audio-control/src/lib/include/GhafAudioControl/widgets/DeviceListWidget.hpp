@@ -5,30 +5,36 @@
 
 #pragma once
 
-#include <GhafAudioControl/models/AppVmModel.hpp>
-#include <GhafAudioControl/widgets/DeviceWidget.hpp>
+#include <GhafAudioControl/models/DeviceListModel.hpp>
 
 #include <gtkmm/box.h>
 #include <gtkmm/button.h>
+#include <gtkmm/cssprovider.h>
+#include <gtkmm/label.h>
 #include <gtkmm/listbox.h>
 #include <gtkmm/revealer.h>
+#include <gtkmm/separator.h>
 #include <gtkmm/stack.h>
+
+#include <glibmm/binding.h>
 
 namespace ghaf::AudioControl
 {
 
-class AppVmWidget final : public Gtk::Box
+class DeviceListWidget : public Gtk::Box
 {
 public:
-    explicit AppVmWidget(Glib::RefPtr<AppVmModel> model);
+    explicit DeviceListWidget(Glib::RefPtr<DeviceListModel> devicesModel);
 
     void reveal(bool reveal = true);
 
 private:
     void onDeviceChange(guint position, guint removed, guint added);
 
+    std::string getName() const;
+
 private:
-    Glib::RefPtr<AppVmModel> m_model;
+    Glib::RefPtr<DeviceListModel> m_model;
 
     Gtk::Box m_revealerBox;
     Gtk::ListBox m_listBox;

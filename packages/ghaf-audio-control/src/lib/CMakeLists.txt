@@ -14,9 +14,6 @@ add_library(${LIBRARY_NAME})
 
 target_sources(${LIBRARY_NAME}
 PRIVATE
-    src/AppList.cpp
-    src/AudioControl.cpp
-
     src/Backends/PulseAudio/AudioControlBackend.cpp
     src/Backends/PulseAudio/GeneralDevide.cpp
     src/Backends/PulseAudio/Helpers.cpp
@@ -26,14 +23,16 @@ PRIVATE
     src/Backends/PulseAudio/SourceOutput.cpp
     src/Backends/PulseAudio/Volume.cpp
 
-    src/models/AppVmModel.cpp
+    src/models/DeviceListModel.cpp
     src/models/DeviceModel.cpp
 
     src/utils/ConnectionContainer.cpp
     src/utils/Debug.cpp
     src/utils/Logger.cpp
 
-    src/widgets/AppVmWidget.cpp
+    src/widgets/AppList.cpp
+    src/widgets/AudioControl.cpp
+    src/widgets/DeviceListWidget.cpp
     src/widgets/DeviceWidget.cpp
     src/widgets/SinkWidget.cpp
 
@@ -42,9 +41,6 @@ PUBLIC
     TYPE HEADERS
     BASE_DIRS include
     FILES
-        include/GhafAudioControl/AppList.hpp
-        include/GhafAudioControl/AudioControl.hpp
-
         include/GhafAudioControl/Backends/PulseAudio/AudioControlBackend.hpp
         include/GhafAudioControl/Backends/PulseAudio/GeneralDevice.hpp
         include/GhafAudioControl/Backends/PulseAudio/Helpers.hpp
@@ -57,7 +53,7 @@ PUBLIC
         include/GhafAudioControl/IAudioControlBackend.hpp
         include/GhafAudioControl/Volume.hpp
 
-        include/GhafAudioControl/models/AppVmModel.hpp
+        include/GhafAudioControl/models/DeviceListModel.hpp
         include/GhafAudioControl/models/DeviceModel.hpp
 
         include/GhafAudioControl/utils/ConnectionContainer.hpp
@@ -66,7 +62,9 @@ PUBLIC
         include/GhafAudioControl/utils/RaiiWrap.hpp
         include/GhafAudioControl/utils/ScopeExit.hpp
         
-        include/GhafAudioControl/widgets/AppVmWidget.hpp
+        include/GhafAudioControl/widgets/AppList.hpp
+        include/GhafAudioControl/widgets/AudioControl.hpp
+        include/GhafAudioControl/widgets/DeviceListWidget.hpp
         include/GhafAudioControl/widgets/DeviceWidget.hpp
         include/GhafAudioControl/widgets/SinkWidget.hpp
 )

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <GhafAudioControl/models/AppVmModel.hpp>
+#include <GhafAudioControl/models/DeviceListModel.hpp>
 
 #include <GhafAudioControl/utils/Logger.hpp>
 
@@ -28,29 +28,22 @@ std::optional<guint> GetDeviceIndex(const Gio::ListStore<DeviceModel>& list, Ind
 
 } // namespace
 
-AppVmModel::AppVmModel(AppIdType id)
-    : Glib::ObjectBase(typeid(AppVmModel))
+DeviceListModel::DeviceListModel(std::string name, std::string namePrefix)
+    : Glib::ObjectBase(typeid(DeviceListModel))
+    , m_name(*this, "name", std::move(name))
+    , m_namePrefix(std::move(namePrefix))
     , m_devices(Gio::ListStore<DeviceModel>::create())
-    , m_appName(*this, "m_appName", std::move(id))
 {
 }
 
-Glib::RefPtr<AppVmModel> AppVmModel::create(AppIdType id)
+Glib::RefPtr<DeviceListModel> DeviceListModel::create(std::string name, std::string namePrefix)
 {
-    return Glib::RefPtr<AppVmModel>(new AppVmModel(std::move(id)));
+    return Glib::RefPtr<DeviceListModel>(new DeviceListModel(std::move(name), std::move(namePrefix)));
 }
 
-int AppVmModel::compare(const Glib::RefPtr<const AppVmModel>& a, const Glib::RefPtr<const AppVmModel>& b)
+void DeviceListModel::addDevice(IAudioControlBackend::IDevice::Ptr sink)
 {
-    if (!a || !b)
-        return 0;
-
-    return a->m_appName.get_value().compare(b->m_appName.get_value());
-}
-
-void AppVmModel::addSinkInput(IAudioControlBackend::ISinkInput::Ptr sinkInput)
-{
-    const Index deviceIndex = sinkInput->getIndex();
+    const Index deviceIndex = sink->getIndex();
 
     if (GetDeviceIndex(*m_devices.get(), deviceIndex))
     {
@@ -58,22 +51,18 @@ void AppVmModel::addSinkInput(IAudioControlBackend::ISinkInput::Ptr sinkInput)
         return;
     }
 
-    m_devices->append(DeviceModel::create(sinkInput));
+    m_devices->append(DeviceModel::create(sink));
 
-    m_deviceConnections[deviceIndex] = sinkInput->onDelete().connect(
+    m_deviceConnections[deviceIndex] = sink->onDelete().connect(
         [this, deviceIndex]
         {
             if (const auto index = GetDeviceIndex(*m_devices.get(), deviceIndex))
                 m_devices->remove(*index);
             else
-                Logger::error("AppVmModel::addSinkInput couldn't found sinkInput");
+                Logger::error("DevicesModel::addSink couldn't found sink");
 
             m_deviceConnections.erase(deviceIndex);
         });
-}
-
-void AppVmModel::deleteSinkInput(const IAudioControlBackend::IDevice::Ptr& sinkInput)
-{
 }
 
 } // namespace ghaf::AudioControl
