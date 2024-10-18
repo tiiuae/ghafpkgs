@@ -5,8 +5,9 @@
 
 #pragma once
 
-#include <GhafAudioControl/AppList.hpp>
 #include <GhafAudioControl/IAudioControlBackend.hpp>
+#include <GhafAudioControl/widgets/AppList.hpp>
+#include <GhafAudioControl/widgets/DeviceListWidget.hpp>
 
 #include <gtkmm/menubutton.h>
 #include <gtkmm/popover.h>
@@ -46,8 +47,15 @@ private:
     void onPulseError(std::string_view error);
 
 private:
-    AppList m_appList;
     std::unique_ptr<IAudioControlBackend> m_audioControl;
+
+    AppList m_appList;
+
+    Glib::RefPtr<DeviceListModel> m_sinksModel;
+    DeviceListWidget m_sinks;
+
+    Glib::RefPtr<DeviceListModel> m_sourcesModel;
+    DeviceListWidget m_sources;
 
     ConnectionContainer m_connections;
 };

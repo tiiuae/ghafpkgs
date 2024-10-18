@@ -72,6 +72,7 @@ uint32_t Source::getCardIndex() const
 void Source::update(const pa_source_info& info)
 {
     m_device.update(info);
+    m_onUpdate();
 }
 
 void Source::update(const pa_card_info& info)

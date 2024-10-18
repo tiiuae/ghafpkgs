@@ -3,8 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "GhafAudioControl/utils/Debug.hpp"
 #include <GhafAudioControl/widgets/DeviceWidget.hpp>
+
+#include <GhafAudioControl/utils/Debug.hpp>
 
 #include <gtkmm/adjustment.h>
 
@@ -72,16 +73,18 @@ DeviceWidget::DeviceWidget(DeviceModel::Ptr model)
     setup(*m_switch);
     setup(*m_scale);
 
-    add(*m_nameLabel);
-    add(*m_switch);
-    add(*m_scale);
+    pack_start(*m_nameLabel);
+    pack_start(*m_switch);
+    pack_start(*m_scale);
 
     m_nameLabel->set_margin_left(NameLabelLeftMargin);
+    m_nameLabel->set_max_width_chars(50);
+    m_nameLabel->set_ellipsize(Pango::ELLIPSIZE_END);
 
     m_switch->set_halign(Gtk::Align::ALIGN_END);
     m_scale->set_halign(Gtk::Align::ALIGN_END);
 
-    set_valign(Gtk::ALIGN_START);
+    set_valign(Gtk::ALIGN_CENTER);
     show_all_children();
 }
 

@@ -3,10 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <GhafAudioControl/AudioControl.hpp>
 #include <GhafAudioControl/Backends/PulseAudio/AudioControlBackend.hpp>
 #include <GhafAudioControl/utils/Debug.hpp>
 #include <GhafAudioControl/utils/Logger.hpp>
+#include <GhafAudioControl/widgets/AudioControl.hpp>
 
 #include <glibmm/main.h>
 #include <glibmm/optioncontext.h>
@@ -36,6 +36,7 @@ int GtkClient(const std::string& pulseAudioServerAddress, const std::string& app
 {
     auto app = Gtk::Application::create();
     Gtk::ApplicationWindow window;
+    window.set_title("Ghaf Audio Control");
 
     AudioControl audioControl{std::make_unique<Backend::PulseAudio::AudioControlBackend>(pulseAudioServerAddress), GetAppVmsList(appVms)};
 
@@ -81,5 +82,13 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    return GtkClient(pulseServerAddress, appVms);
+    try
+    {
+        return GtkClient(pulseServerAddress, appVms);
+    }
+    catch (const std::exception& e)
+    {
+        Logger::error(std::format("Exception: {}", e.what()));
+        return 1;
+    }
 }

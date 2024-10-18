@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <GhafAudioControl/AudioControl.hpp>
+#include <GhafAudioControl/widgets/AudioControl.hpp>
 
 #include <GhafAudioControl/Backends/PulseAudio/AudioControlBackend.hpp>
 #include <GhafAudioControl/utils/Logger.hpp>
@@ -70,9 +70,16 @@ void OnPulseDeviceChanged(IAudioControlBackend::EventType eventType, IndexT inde
 }
 
 AudioControl::AudioControl(std::unique_ptr<IAudioControlBackend> backend, const std::vector<std::string>& appVmsList)
-    : Gtk::Box(Gtk::ORIENTATION_HORIZONTAL)
+    : Gtk::Box(Gtk::ORIENTATION_VERTICAL)
     , m_audioControl(std::move(backend))
+    , m_sinksModel(DeviceListModel::create("Speakers"))
+    , m_sinks(m_sinksModel)
+    , m_sourcesModel(DeviceListModel::create("Microphones"))
+    , m_sources(m_sourcesModel)
 {
+    set_halign(Gtk::Align::ALIGN_START);
+    set_valign(Gtk::Align::ALIGN_START);
+
     for (const auto& appVm : appVmsList)
         m_appList.addVm(appVm);
 
@@ -83,10 +90,12 @@ void AudioControl::init()
 {
     if (m_audioControl)
     {
+        pack_start(m_sinks);
+        pack_start(m_sources);
         pack_start(m_appList);
 
-        // m_connections.add(m_audioControl->onSinksChanged().connect(sigc::mem_fun(*this, &AudioControl::onPulseSinksChanged)));
-        // m_connections.add(m_audioControl->onSourcesChanged().connect(sigc::mem_fun(*this, &AudioControl::onPulseSourcesChanged)));
+        m_connections.add(m_audioControl->onSinksChanged().connect(sigc::mem_fun(*this, &AudioControl::onPulseSinksChanged)));
+        m_connections.add(m_audioControl->onSourcesChanged().connect(sigc::mem_fun(*this, &AudioControl::onPulseSourcesChanged)));
         m_connections.add(m_audioControl->onSinkInputsChanged().connect(sigc::mem_fun(*this, &AudioControl::onPulseSinkInputsChanged)));
         // m_connections.add(m_audioControl->onSourceOutputsChanged().connect(sigc::mem_fun(*this, &AudioControl::onPulseSourcesOutputsChanged)));
         m_connections.add(m_audioControl->onError().connect(sigc::mem_fun(*this, &AudioControl::onPulseError)));
@@ -110,13 +119,15 @@ void AudioControl::init()
 void AudioControl::onPulseSinksChanged(IAudioControlBackend::EventType eventType, IAudioControlBackend::Sinks::IndexT extIndex,
                                        IAudioControlBackend::Sinks::PtrT sink)
 {
-    OnPulseDeviceChanged(eventType, extIndex, std::move(sink), m_appList);
+    if (eventType == IAudioControlBackend::EventType::Add)
+        m_sinksModel->addDevice(std::move(sink));
 }
 
 void AudioControl::onPulseSourcesChanged(IAudioControlBackend::EventType eventType, IAudioControlBackend::Sources::IndexT extIndex,
                                          IAudioControlBackend::Sources::PtrT source)
 {
-    OnPulseDeviceChanged(eventType, extIndex, std::move(source), m_appList);
+    if (eventType == IAudioControlBackend::EventType::Add)
+        m_sourcesModel->addDevice(std::move(source));
 }
 
 void AudioControl::onPulseSinkInputsChanged(IAudioControlBackend::EventType eventType, IAudioControlBackend::SinkInputs::IndexT extIndex,

@@ -65,6 +65,7 @@ public:
     void update(const pa_sink_info& info)
     {
         m_device.update(info);
+        m_onUpdate();
     }
 
     void update(const pa_card_info& info)

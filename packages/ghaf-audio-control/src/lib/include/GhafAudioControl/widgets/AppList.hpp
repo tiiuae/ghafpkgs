@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include <GhafAudioControl/models/AppVmModel.hpp>
+#include <GhafAudioControl/models/DeviceListModel.hpp>
 
 #include <gtkmm/box.h>
 #include <gtkmm/cssprovider.h>
@@ -30,10 +30,7 @@ public:
 
 private:
     Gtk::ListBox m_listBox;
-
-    Glib::RefPtr<Gtk::CssProvider> m_cssProvider;
-    Glib::RefPtr<Gio::ListStore<AppVmModel>> m_appsModel;
-    std::map<AppVmModel::AppIdType, std::vector<Glib::RefPtr<Glib::Binding>>> m_appsBindings;
+    Glib::RefPtr<Gio::ListStore<DeviceListModel>> m_appsModel;
 };
 
 } // namespace ghaf::AudioControl

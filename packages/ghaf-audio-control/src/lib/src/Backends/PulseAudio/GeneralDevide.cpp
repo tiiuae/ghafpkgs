@@ -17,8 +17,8 @@ constexpr auto PropertyAppVmName = "application.process.host";
 GeneralDeviceImpl::GeneralDeviceImpl(const pa_sink_info& info, pa_context& context)
     : m_index(info.index)
     , m_cardIndex(info.card)
-    , m_name(info.name)
-    , m_description(info.description)
+    , m_name(info.description)
+    , m_description(info.name)
     , m_context(context)
     , m_channel_map(info.channel_map)
     , m_volume(info.volume)
@@ -29,8 +29,8 @@ GeneralDeviceImpl::GeneralDeviceImpl(const pa_sink_info& info, pa_context& conte
 GeneralDeviceImpl::GeneralDeviceImpl(const pa_source_info& info, pa_context& context)
     : m_index(info.index)
     , m_cardIndex(info.card)
-    , m_name(info.name)
-    , m_description(info.description)
+    , m_name(info.description)
+    , m_description(info.name)
     , m_context(context)
     , m_channel_map(info.channel_map)
     , m_volume(info.volume)
@@ -125,8 +125,8 @@ void GeneralDeviceImpl::update(const pa_sink_info& info)
     const std::lock_guard l{m_mutex};
 
     m_cardIndex = info.card;
-    m_name = info.name;
-    m_description = info.description;
+    m_name = info.description;
+    m_description = info.name;
     m_channel_map = info.channel_map;
     m_volume = info.volume;
     m_isMuted = static_cast<bool>(info.mute);
@@ -137,8 +137,8 @@ void GeneralDeviceImpl::update(const pa_source_info& info)
     const std::lock_guard l{m_mutex};
 
     m_cardIndex = info.card;
-    m_name = info.name;
-    m_description = info.description;
+    m_name = info.description;
+    m_description = info.name;
     m_channel_map = info.channel_map;
     m_volume = info.volume;
     m_isMuted = static_cast<bool>(info.mute);
