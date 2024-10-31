@@ -335,7 +335,7 @@ void AudioControlBackend::cardInfoCallback(pa_context* context, const pa_card_in
     if (info == nullptr)
         return;
 
-    Logger::debug("\n###############################################");
+    Logger::debug("###############################################");
     Logger::debug(std::format("Card. index: {}, name: {}", info->index, info->name));
 
     for (size_t i = 0; i < info->n_ports; ++i)
@@ -345,25 +345,21 @@ void AudioControlBackend::cardInfoCallback(pa_context* context, const pa_card_in
 
     auto* self = static_cast<AudioControlBackend*>(data);
 
-    auto sinkPredicate = [&info](const ISink& sink) -> bool
+    const auto sinkPredicate = [&info](const ISink& sink)
     {
         return dynamic_cast<const Sink&>(sink).getCardIndex() == info->index;
     };
 
     for (auto it : self->m_sinks.findByPredicate(sinkPredicate))
-    {
         self->m_sinks.update(it, [&info](ISink& sink) { dynamic_cast<Sink&>(sink).update(*info); });
-    }
 
-    auto sourcePredicate = [&info](const ISource& source)
+    const auto sourcePredicate = [&info](const ISource& source)
     {
         return dynamic_cast<const Source&>(source).getCardIndex() == info->index;
     };
 
     for (auto it : self->m_sources.findByPredicate(sourcePredicate))
-    {
         self->m_sources.update(it, [&info](ISource& source) { dynamic_cast<Source&>(source).update(*info); });
-    }
 }
 
 } // namespace ghaf::AudioControl::Backend::PulseAudio

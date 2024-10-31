@@ -5,6 +5,7 @@
   stdenv,
   cmake,
   gtkmm3,
+  libayatana-appindicator,
   libpulseaudio,
   ninja,
   pkg-config,
@@ -19,12 +20,14 @@ stdenv.mkDerivation rec {
 
   nativeBuildInputs = [
     cmake
+    gtkmm3
+    libayatana-appindicator
     ninja
     pkg-config
-    gtkmm3
   ];
   buildInputs = [
     gtkmm3
+    libayatana-appindicator
     libpulseaudio
   ];
 
