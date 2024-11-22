@@ -12,29 +12,28 @@
 namespace ghaf::AudioControl
 {
 
-void Logger::debug(std::string_view message)
+std::string Logger::logLevelToString(LogLevel logLevel)
 {
-    log(message, "debug");
+    if (logLevel == Logger::LogLevel::DEBUG)
+        return "debug";
+
+    if (logLevel == Logger::LogLevel::ERROR)
+        return "error";
+
+    if (logLevel == Logger::LogLevel::INFO)
+        return "info";
+
+    return "unknown";
 }
 
-void Logger::error(std::string_view message)
-{
-    log(message, "error");
-}
-
-void Logger::info(std::string_view message)
-{
-    log(message, "info");
-}
-
-void Logger::log(std::string_view message, std::string_view logLevel)
+void Logger::log(std::string_view message, LogLevel logLevel)
 {
     const std::chrono::time_point timeNow = std::chrono::system_clock::now();
 
-    if (logLevel == "error")
+    if (logLevel == Logger::LogLevel::ERROR)
         std::cerr << "\033[31m";
 
-    std::cerr << std::format("[{}] [{:5}] {}", timeNow, logLevel, message) << "\033[0m" << '\n';
+    std::cerr << std::format("[{}] [{:5}] {}", timeNow, logLevelToString(logLevel), message) << "\033[0m" << '\n';
 }
 
 } // namespace ghaf::AudioControl

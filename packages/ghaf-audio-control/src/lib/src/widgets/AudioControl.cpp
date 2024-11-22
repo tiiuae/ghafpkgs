@@ -55,16 +55,16 @@ void OnPulseDeviceChanged(IAudioControlBackend::EventType eventType, IndexT inde
     switch (eventType)
     {
     case IAudioControlBackend::EventType::Add:
-        Logger::debug(std::format("OnPulseDeviceChanged: ADD {}: {}", deviceType, device->toString()));
+        Logger::debug("OnPulseDeviceChanged: ADD {}: {}", deviceType, device->toString());
         appList.addDevice(std::move(device));
         break;
 
     case IAudioControlBackend::EventType::Update:
-        Logger::debug(std::format("OnPulseDeviceChanged: UPDATE {}: {}", deviceType, device->toString()));
+        Logger::debug("OnPulseDeviceChanged: UPDATE {}: {}", deviceType, device->toString());
         break;
 
     case IAudioControlBackend::EventType::Delete:
-        Logger::debug(std::format("OnPulseDeviceChanged: DELETE {} with index: {}", deviceType, index));
+        Logger::debug("OnPulseDeviceChanged: DELETE {} with index: {}", deviceType, index);
         break;
     }
 }
@@ -94,11 +94,11 @@ void AudioControl::init()
         pack_start(m_sources);
         pack_start(m_appList);
 
-        m_connections.add(m_audioControl->onSinksChanged().connect(sigc::mem_fun(*this, &AudioControl::onPulseSinksChanged)));
-        m_connections.add(m_audioControl->onSourcesChanged().connect(sigc::mem_fun(*this, &AudioControl::onPulseSourcesChanged)));
-        m_connections.add(m_audioControl->onSinkInputsChanged().connect(sigc::mem_fun(*this, &AudioControl::onPulseSinkInputsChanged)));
-        // m_connections.add(m_audioControl->onSourceOutputsChanged().connect(sigc::mem_fun(*this, &AudioControl::onPulseSourcesOutputsChanged)));
-        m_connections.add(m_audioControl->onError().connect(sigc::mem_fun(*this, &AudioControl::onPulseError)));
+        m_connections += m_audioControl->onSinksChanged().connect(sigc::mem_fun(*this, &AudioControl::onPulseSinksChanged));
+        m_connections += m_audioControl->onSourcesChanged().connect(sigc::mem_fun(*this, &AudioControl::onPulseSourcesChanged));
+        m_connections += m_audioControl->onSinkInputsChanged().connect(sigc::mem_fun(*this, &AudioControl::onPulseSinkInputsChanged));
+        // m_connections += m_audioControl->onSourceOutputsChanged().connect(sigc::mem_fun(*this, &AudioControl::onPulseSourcesOutputsChanged));
+        m_connections += m_audioControl->onError().connect(sigc::mem_fun(*this, &AudioControl::onPulseError));
 
         show_all_children();
 
@@ -116,14 +116,14 @@ void AudioControl::init()
     style_context->add_provider_for_screen(Gdk::Screen::get_default(), cssProvider, GTK_STYLE_PROVIDER_PRIORITY_USER);
 }
 
-void AudioControl::onPulseSinksChanged(IAudioControlBackend::EventType eventType, IAudioControlBackend::Sinks::IndexT extIndex,
+void AudioControl::onPulseSinksChanged(IAudioControlBackend::EventType eventType, [[maybe_unused]] IAudioControlBackend::Sinks::IndexT extIndex,
                                        IAudioControlBackend::Sinks::PtrT sink)
 {
     if (eventType == IAudioControlBackend::EventType::Add)
         m_sinksModel->addDevice(std::move(sink));
 }
 
-void AudioControl::onPulseSourcesChanged(IAudioControlBackend::EventType eventType, IAudioControlBackend::Sources::IndexT extIndex,
+void AudioControl::onPulseSourcesChanged(IAudioControlBackend::EventType eventType, [[maybe_unused]] IAudioControlBackend::Sources::IndexT extIndex,
                                          IAudioControlBackend::Sources::PtrT source)
 {
     if (eventType == IAudioControlBackend::EventType::Add)

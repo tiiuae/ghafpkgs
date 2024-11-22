@@ -9,7 +9,7 @@
 #include <giomm/dbusintrospection.h>
 #include <giomm/dbusmethodinvocation.h>
 
-class DBusService
+class DBusService final
 {
 public:
     using OpenSignalSignature = sigc::signal<void()>;

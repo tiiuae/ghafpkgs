@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <format>
 #include <string_view>
 
 namespace ghaf::AudioControl
@@ -12,13 +13,36 @@ namespace ghaf::AudioControl
 
 class Logger
 {
+private:
+    enum class LogLevel
+    {
+        DEBUG,
+        ERROR,
+        INFO
+    };
+
 public:
-    static void debug(std::string_view message);
-    static void error(std::string_view message);
-    static void info(std::string_view message);
+    template<class... ArgsT>
+    static void debug(std::string_view message, ArgsT... args)
+    {
+        log(std::vformat(message, std::make_format_args(args...)), LogLevel::DEBUG);
+    }
+
+    template<class... ArgsT>
+    static void error(std::string_view message, ArgsT... args)
+    {
+        log(std::vformat(message, std::make_format_args(args...)), LogLevel::ERROR);
+    }
+
+    template<class... ArgsT>
+    static void info(std::string_view message, ArgsT... args)
+    {
+        log(std::vformat(message, std::make_format_args(args...)), LogLevel::INFO);
+    }
 
 private:
-    static void log(std::string_view message, std::string_view logLevel);
+    static std::string logLevelToString(LogLevel logLevel);
+    static void log(std::string_view message, LogLevel logLevel);
 
     Logger();
 };

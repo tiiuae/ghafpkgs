@@ -16,16 +16,16 @@ int main(int argc, char** argv)
     try
     {
         App app(argc, argv);
-        return app.start(argc, argv);
+        return app.start();
     }
     catch (const Glib::Error& ex)
     {
-        Logger::error(std::format("Error: {}", ex.what().c_str()));
+        Logger::error("Error: {}", ex.what().c_str());
         return 1;
     }
     catch (const std::exception& e)
     {
-        Logger::error(std::format("Exception: {}", e.what()));
+        Logger::error("Exception: {}", e.what());
         return 1;
     }
 }

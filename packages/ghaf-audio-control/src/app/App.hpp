@@ -23,7 +23,7 @@ private:
     class AppMenu : public Gtk::Menu
     {
     public:
-        AppMenu(App& app);
+        explicit AppMenu(App& app);
         ~AppMenu() override = default;
 
     private:
@@ -38,7 +38,7 @@ private:
 public:
     App(int argc, char** argv);
 
-    int start(int argc, char** argv);
+    int start();
 
     [[nodiscard]] ghaf::AudioControl::RaiiWrap<AppIndicator*> createAppIndicator();
 
