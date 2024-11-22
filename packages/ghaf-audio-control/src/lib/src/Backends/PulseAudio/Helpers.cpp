@@ -16,7 +16,7 @@ bool PulseCallbackCheck(const pa_context* context, int eol, std::string_view cal
 {
     if (context == nullptr)
     {
-        Logger::error(std::format("pulseCallbackCheck: callback: {} context == nullptr", callbackName));
+        Logger::error("pulseCallbackCheck: callback: {} context == nullptr", callbackName);
         return false;
     }
 
@@ -28,7 +28,7 @@ bool PulseCallbackCheck(const pa_context* context, int eol, std::string_view cal
     if (error == pa_error_code::PA_ERR_NOENTITY || error == pa_error_code::PA_OK)
         return true;
 
-    Logger::error(std::format("pulseCallbackCheck: callback: {} failed with error: {}", callbackName, pa_strerror(error)));
+    Logger::error("pulseCallbackCheck: callback: {} failed with error: {}", callbackName, pa_strerror(error));
 
     return false;
 }

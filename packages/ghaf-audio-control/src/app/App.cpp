@@ -5,9 +5,11 @@
 
 #include "App.hpp"
 
+#include <gtkmm/icontheme.h>
+
 #include <glibmm/optioncontext.h>
 
-#include <format>
+#include <filesystem>
 
 using namespace ghaf::AudioControl;
 
@@ -15,12 +17,15 @@ namespace
 {
 
 constexpr auto AppId = "Ghaf Audio Control";
+constexpr auto IconName = "audio-volume-high-panel";
+constexpr auto IconSize = 64;
 
 struct AppArgs
 {
     Glib::ustring pulseServerAddress;
     Glib::ustring indicatorIconPath;
     Glib::ustring appVms;
+    bool isDeamonMode = false;
 };
 
 std::vector<std::string> GetAppVmsList(const std::string& appVms)
@@ -34,6 +39,18 @@ std::vector<std::string> GetAppVmsList(const std::string& appVms)
         result.push_back(buf);
 
     return result;
+}
+
+std::optional<std::filesystem::path> GetThemeIcon()
+{
+    auto icon_theme = Gtk::IconTheme::get_default();
+
+    if (auto iconInfo = icon_theme->lookup_icon(IconName, IconSize, Gtk::ICON_LOOKUP_USE_BUILTIN))
+        return iconInfo.get_filename().c_str();
+
+    Logger::error("App::getThemeIcon: couldn't found an icon");
+
+    return std::nullopt;
 }
 
 } // namespace
@@ -51,7 +68,8 @@ App::AppMenu::AppMenu(App& app)
 }
 
 App::App(int argc, char** argv)
-    : m_menu(*this)
+    : Gtk::Application("org.example.MyApp", Gio::APPLICATION_HANDLES_COMMAND_LINE)
+    , m_menu(*this)
     , m_indicator(createAppIndicator())
     , m_connections{m_dbusService.openSignal().connect(sigc::mem_fun(*this, &App::openWindow))}
 {
@@ -69,10 +87,15 @@ App::App(int argc, char** argv)
     appVmsOption.set_long_name("app_vms");
     appVmsOption.set_description("AppVMs list");
 
+    Glib::OptionEntry deamonModeOption;
+    deamonModeOption.set_long_name("deamon_mode");
+    deamonModeOption.set_description("Deamon mode");
+
     Glib::OptionGroup options("Main", "Main");
     options.add_entry(pulseServerOption, appArgs.pulseServerAddress);
     options.add_entry(indicatorIconPathOption, appArgs.indicatorIconPath);
     options.add_entry(appVmsOption, appArgs.appVms);
+    options.add_entry(deamonModeOption, appArgs.isDeamonMode);
 
     Glib::OptionContext context("Application Options");
     context.set_main_group(options);
@@ -83,16 +106,28 @@ App::App(int argc, char** argv)
         throw std::runtime_error{"Couldn't parse the command line arguments"};
     }
 
-    app_indicator_set_icon(m_indicator.get(), appArgs.indicatorIconPath.c_str());
+    m_connections += signal_command_line().connect(
+        [this]([[maybe_unused]] const Glib::RefPtr<Gio::ApplicationCommandLine>& args)
+        {
+            hold();
+            return 0;
+        },
+        false);
+
+    if (const auto iconPath = GetThemeIcon())
+    {
+        Logger::info("Got icon path for the indicator: {}", iconPath->c_str());
+        app_indicator_set_icon(m_indicator.get(), iconPath->filename().c_str());
+    }
 
     m_audioControl = std::make_unique<AudioControl>(std::make_unique<Backend::PulseAudio::AudioControlBackend>(appArgs.pulseServerAddress),
                                                     GetAppVmsList(appArgs.appVms));
 }
 
-int App::start(int argc, char** argv)
+int App::start()
 {
     Logger::debug(__PRETTY_FUNCTION__);
-    return run(argc, argv);
+    return run();
 }
 
 bool App::onWindowDelete([[maybe_unused]] GdkEventAny* event)
@@ -105,15 +140,25 @@ bool App::onWindowDelete([[maybe_unused]] GdkEventAny* event)
 
 void App::openWindow()
 {
-    m_window->show_all();
+    m_window->show();
     m_window->present();
 }
 
 void App::toggleWindow()
 {
+    Logger::debug(__PRETTY_FUNCTION__);
+
+    if (m_window == nullptr)
+    {
+        on_activate();
+        openWindow();
+
+        return;
+    }
+
     auto& window = *m_window;
 
-    ghaf::AudioControl::Logger::debug(std::format("Indicator has been activated. window.is_visible: {}", window.is_visible()));
+    Logger::debug("Indicator has been activated. window.is_visible: {}", window.is_visible());
 
     if (window.is_visible())
         window.hide();
@@ -140,7 +185,8 @@ void App::on_activate()
     hold();
     add_window(*m_window);
 
-    m_window->show_all();
+    m_window->show();
+    m_audioControl->show();
 }
 
 RaiiWrap<AppIndicator*> App::createAppIndicator()

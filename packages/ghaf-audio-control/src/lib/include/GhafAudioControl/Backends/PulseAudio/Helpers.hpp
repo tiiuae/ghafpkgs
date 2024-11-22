@@ -34,10 +34,10 @@ void ExecutePulseFuncPrivate(Fx fx, ArgsT... args)
 }
 
 #if defined(DEBUG)
-    #define ExecutePulseFunc(FX, ARGS...)                            \
-        {                                                            \
-            Logger::debug(std::format("ExecutePulseFunc: {}", #FX)); \
-            ExecutePulseFuncPrivate(FX, ARGS);                       \
+    #define ExecutePulseFunc(FX, ARGS...)               \
+        {                                               \
+            Logger::debug("ExecutePulseFunc: {}", #FX); \
+            ExecutePulseFuncPrivate(FX, ARGS);          \
         }
 #else
 template<class Fx, class... ArgsT>

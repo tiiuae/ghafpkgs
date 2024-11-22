@@ -30,6 +30,12 @@ public:
         std::ignore = m_connections.emplace_back(std::move(connection));
     }
 
+    ConnectionContainer& operator+=(sigc::connection&& connection)
+    {
+        add(std::move(connection));
+        return *this;
+    }
+
     ScopeExit blockGuarded();
 
     ConnectionContainer& operator=(ConnectionContainer&) = delete;

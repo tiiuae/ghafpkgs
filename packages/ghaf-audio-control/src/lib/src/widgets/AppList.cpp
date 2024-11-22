@@ -95,7 +95,7 @@ void AppList::addDevice(IAudioControlBackend::ISinkInput::Ptr device)
         m_appsModel->get_item(*index)->addDevice(std::move(device));
     else
     {
-        Logger::info(std::format("AppList::addDevice: add new app with name: {}", appName));
+        Logger::info("AppList::addDevice: add new app with name: {}", appName);
 
         auto appVmModel = DeviceListModel::create(appName, AppVmPrefix);
         m_appsModel->append(appVmModel);

@@ -38,7 +38,7 @@ void OnPulseDeviceInfo(const InfoT& info, IAudioControlBackend::SignalMap<IDevic
         const IDeviceT& device = *deviceIt.value()->second;
 
         map.update(*deviceIt, [&info](IDeviceT& device) { dynamic_cast<DeviceT&>(device).update(info); });
-        Logger::debug(std::format("Updating... {}", device.toString()));
+        Logger::debug("Updating... {}", device.toString());
     }
     else
     {
@@ -51,11 +51,11 @@ void DeletePulseDevice(IAudioControlBackend::SignalMap<IDeviceT>& map, IndexT in
 {
     if (auto deviceIt = map.findByKey(index))
     {
-        Logger::debug(std::format("AudioControlBackend::DeletePulseDevice: delete device with id: {}", index));
+        Logger::debug("AudioControlBackend::DeletePulseDevice: delete device with id: {}", index);
         map.remove(*deviceIt, [](IDeviceT& device) { dynamic_cast<DeviceT&>(device).markDeleted(); });
     }
     else
-        Logger::error(std::format("AudioControlBackend::DeletePulseDevice: no device with id: {}", index));
+        Logger::error("AudioControlBackend::DeletePulseDevice: no device with id: {}", index);
 }
 
 std::string ToString(const pa_card_port_info& port)
@@ -145,7 +145,7 @@ AudioControlBackend::AudioControlBackend(std::string pulseAudioServerAddress)
 
 void AudioControlBackend::start()
 {
-    Logger::info(std::format("PulseAudio::AudioControlBackend: starting with server: {}", m_serverAddress));
+    Logger::info("PulseAudio::AudioControlBackend: starting with server: {}", m_serverAddress);
     m_context = InitContext(*m_mainloopApi, contextStateCallback, *this);
 }
 
@@ -243,7 +243,7 @@ void AudioControlBackend::subscribeCallback(pa_context* context, pa_subscription
         break;
 
     default:
-        Logger::error(std::format("subscribeCallback: unknown eventType: {0}", static_cast<int>(eventType)));
+        Logger::error("subscribeCallback: unknown eventType: {0}", static_cast<int>(eventType));
         break;
     };
 }
@@ -274,7 +274,7 @@ void AudioControlBackend::contextStateCallback(pa_context* context, void* data)
         break;
 
     default:
-        Logger::error(std::format("contextStateCb: unknown state: {0}", static_cast<int>(state)));
+        Logger::error("contextStateCb: unknown state: {0}", static_cast<int>(state));
         break;
     }
 }
@@ -336,7 +336,7 @@ void AudioControlBackend::cardInfoCallback(pa_context* context, const pa_card_in
         return;
 
     Logger::debug("###############################################");
-    Logger::debug(std::format("Card. index: {}, name: {}", info->index, info->name));
+    Logger::debug("Card. index: {}, name: {}", info->index, info->name);
 
     for (size_t i = 0; i < info->n_ports; ++i)
         Logger::info(ToString(*info->ports[i]));

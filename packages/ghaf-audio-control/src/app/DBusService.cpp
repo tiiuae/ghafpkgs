@@ -9,9 +9,6 @@
 
 #include <giomm/dbusownname.h>
 
-#include <format>
-#include <iostream>
-
 using namespace ghaf::AudioControl;
 
 namespace
@@ -54,11 +51,12 @@ void DBusService::onNameLost(const Glib::RefPtr<Gio::DBus::Connection>&, const G
     Logger::error("Couldn't register service for org.ghaf.Audio");
 }
 
-void DBusService::onMethodCall(const Glib::RefPtr<Gio::DBus::Connection>& connection, const Glib::ustring& sender, const Glib::ustring& objectPath,
-                               const Glib::ustring& interfaceName, const Glib::ustring& methodName, const Glib::VariantContainerBase& parameters,
+void DBusService::onMethodCall([[maybe_unused]] const Glib::RefPtr<Gio::DBus::Connection>& connection, [[maybe_unused]] const Glib::ustring& sender,
+                               [[maybe_unused]] const Glib::ustring& objectPath, [[maybe_unused]] const Glib::ustring& interfaceName,
+                               const Glib::ustring& methodName, const Glib::VariantContainerBase& parameters,
                                const Glib::RefPtr<Gio::DBus::MethodInvocation>& invocation)
 {
-    Logger::debug(std::format("Invokated method: {}", methodName.c_str()));
+    Logger::debug("Invokated method: {}", methodName.c_str());
 
     if (methodName == "Open")
     {

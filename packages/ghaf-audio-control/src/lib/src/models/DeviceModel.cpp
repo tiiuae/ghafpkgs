@@ -77,13 +77,13 @@ void DeviceModel::onSoundEnabledChange()
 {
     const auto isEnabled = m_isSoundEnabled.get_value();
 
-    Logger::debug(std::format("SoundEnabled has changed to: {0}", isEnabled));
+    Logger::debug("SoundEnabled has changed to: {0}", isEnabled);
     m_device->setMuted(!isEnabled);
 }
 
 void DeviceModel::onSoundVolumeChange()
 {
-    Logger::debug(std::format("SoundVolume has changed to: {0}", m_soundVolume.get_value()));
+    Logger::debug("SoundVolume has changed to: {0}", m_soundVolume.get_value());
     m_device->setVolume(Volume::fromPercents(m_soundVolume.get_value()));
 }
 
