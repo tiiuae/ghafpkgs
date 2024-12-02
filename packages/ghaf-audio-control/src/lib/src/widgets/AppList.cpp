@@ -18,8 +18,6 @@
 #include <gtkmm/scale.h>
 #include <gtkmm/switch.h>
 
-#include <format>
-
 namespace ghaf::AudioControl
 {
 

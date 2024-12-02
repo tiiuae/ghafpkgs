@@ -16,14 +16,12 @@
 
 #include <glibmm/binding.h>
 
-#include <format>
-
 namespace ghaf::AudioControl
 {
 
 constexpr auto CssStyle = "button#AppVmNameButton { background-color: transparent; border: none; font-weight: bold; }"
-                          "box#DeviceWidget { background: #e6e6e6; border-radius: 15px; }"
-                          "label#EmptyListName { background: #e6e6e6; border-radius: 15px; min-height: 40px; }"
+                          "box#DeviceWidget { border-radius: 15px; }"
+                          "label#EmptyListName { border-radius: 15px; min-height: 40px; }"
                           "*:selected { background-color: transparent; color: inherit; box-shadow: none; outline: none; }";
 
 template<class IndexT, class DevicePtrT>

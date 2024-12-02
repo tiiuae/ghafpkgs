@@ -9,23 +9,19 @@
 
 #include <glibmm/optioncontext.h>
 
-#include <filesystem>
-
 using namespace ghaf::AudioControl;
 
 namespace
 {
 
 constexpr auto AppId = "Ghaf Audio Control";
-constexpr auto IconName = "audio-volume-high-panel";
-constexpr auto IconSize = 64;
 
 struct AppArgs
 {
     Glib::ustring pulseServerAddress;
-    Glib::ustring indicatorIconPath;
+    Glib::ustring indicatorIconName;
     Glib::ustring appVms;
-    bool isDeamonMode = false;
+    Glib::ustring isDeamonMode;
 };
 
 std::vector<std::string> GetAppVmsList(const std::string& appVms)
@@ -39,18 +35,6 @@ std::vector<std::string> GetAppVmsList(const std::string& appVms)
         result.push_back(buf);
 
     return result;
-}
-
-std::optional<std::filesystem::path> GetThemeIcon()
-{
-    auto icon_theme = Gtk::IconTheme::get_default();
-
-    if (auto iconInfo = icon_theme->lookup_icon(IconName, IconSize, Gtk::ICON_LOOKUP_USE_BUILTIN))
-        return iconInfo.get_filename().c_str();
-
-    Logger::error("App::getThemeIcon: couldn't found an icon");
-
-    return std::nullopt;
 }
 
 } // namespace
@@ -79,9 +63,9 @@ App::App(int argc, char** argv)
     pulseServerOption.set_long_name("pulseaudio_server");
     pulseServerOption.set_description("PulseAudio server address");
 
-    Glib::OptionEntry indicatorIconPathOption;
-    indicatorIconPathOption.set_long_name("indicator_icon_path");
-    indicatorIconPathOption.set_description("Tray's icon indicator path");
+    Glib::OptionEntry indicatorIconNameOption;
+    indicatorIconNameOption.set_long_name("indicator_icon_name");
+    indicatorIconNameOption.set_description("Tray's icon indicator name");
 
     Glib::OptionEntry appVmsOption;
     appVmsOption.set_long_name("app_vms");
@@ -93,7 +77,7 @@ App::App(int argc, char** argv)
 
     Glib::OptionGroup options("Main", "Main");
     options.add_entry(pulseServerOption, appArgs.pulseServerAddress);
-    options.add_entry(indicatorIconPathOption, appArgs.indicatorIconPath);
+    options.add_entry(indicatorIconNameOption, appArgs.indicatorIconName);
     options.add_entry(appVmsOption, appArgs.appVms);
     options.add_entry(deamonModeOption, appArgs.isDeamonMode);
 
@@ -106,6 +90,11 @@ App::App(int argc, char** argv)
         throw std::runtime_error{"Couldn't parse the command line arguments"};
     }
 
+    Logger::info("Parsed the option: '{}' = '{}'", pulseServerOption.get_long_name().c_str(), appArgs.pulseServerAddress.c_str());
+    Logger::info("Parsed the option: '{}' = '{}'", indicatorIconNameOption.get_long_name().c_str(), appArgs.indicatorIconName.c_str());
+    Logger::info("Parsed the option: '{}' = '{}'", appVmsOption.get_long_name().c_str(), appArgs.appVms.c_str());
+    Logger::info("Parsed the option: '{}' = '{}'", deamonModeOption.get_long_name().c_str(), appArgs.isDeamonMode.c_str());
+
     m_connections += signal_command_line().connect(
         [this]([[maybe_unused]] const Glib::RefPtr<Gio::ApplicationCommandLine>& args)
         {
@@ -114,11 +103,7 @@ App::App(int argc, char** argv)
         },
         false);
 
-    if (const auto iconPath = GetThemeIcon())
-    {
-        Logger::info("Got icon path for the indicator: {}", iconPath->c_str());
-        app_indicator_set_icon(m_indicator.get(), iconPath->filename().c_str());
-    }
+    app_indicator_set_icon(m_indicator.get(), appArgs.indicatorIconName.c_str());
 
     m_audioControl = std::make_unique<AudioControl>(std::make_unique<Backend::PulseAudio::AudioControlBackend>(appArgs.pulseServerAddress),
                                                     GetAppVmsList(appArgs.appVms));
