@@ -5,8 +5,6 @@
 
 #include "App.hpp"
 
-#include <format>
-
 using namespace ghaf::AudioControl;
 
 int main(int argc, char** argv)
