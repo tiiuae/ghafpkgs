@@ -31,6 +31,11 @@ public:
         return m_device.getName();
     }
 
+    Type getType() const override
+    {
+        return Type::Source;
+    }
+
     bool isEnabled() const override
     {
         return m_device.isEnabled();

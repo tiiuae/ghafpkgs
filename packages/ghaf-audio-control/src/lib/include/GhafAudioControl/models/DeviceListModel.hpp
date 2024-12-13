@@ -26,7 +26,7 @@ public:
 
     static int compare(const Glib::RefPtr<const DeviceListModel>& a, const Glib::RefPtr<const DeviceListModel>& b);
 
-    void addDevice(IAudioControlBackend::ISink::Ptr sink);
+    void addDevice(IAudioControlBackend::ISink::Ptr device);
 
     [[nodiscard]] Glib::RefPtr<Gio::ListStore<DeviceModel>> getDeviceModels() noexcept
     {

@@ -74,6 +74,16 @@ public:
             return iterators;
         }
 
+        [[nodiscard]] std::vector<PtrT> getAllValues() const
+        {
+            std::vector<PtrT> iterators;
+
+            for (auto it = m_map.cbegin(); it != m_map.cend(); ++it)
+                iterators.push_back(it->second);
+
+            return iterators;
+        }
+
         void update(Iter iter, const std::function<void(T&)>& updateFunction)
         {
             PtrT ptr = iter->second;
@@ -109,6 +119,14 @@ public:
         using Ptr = std::shared_ptr<IDevice>;
         using IntexT = Index;
 
+        enum class Type
+        {
+            Sink,
+            Source,
+            SinkInput,
+            SourceOutput
+        };
+
         using OnUpdateSignal = sigc::signal<void()>;
         using OnDeleteSignal = sigc::signal<void()>;
 
@@ -119,6 +137,7 @@ public:
         [[nodiscard]] virtual Index getIndex() const = 0;
 
         [[nodiscard]] virtual std::string getName() const = 0;
+        [[nodiscard]] virtual Type getType() const = 0;
 
         [[nodiscard]] virtual bool isEnabled() const = 0;
 
@@ -161,6 +180,11 @@ public:
 
     virtual void start() = 0;
     virtual void stop() = 0;
+
+    virtual void setDeviceVolume(IDevice::IntexT index, IDevice::Type type, Volume volume) = 0;
+    virtual void setDeviceMute(IDevice::IntexT index, IDevice::Type type, bool mute) = 0;
+
+    virtual std::vector<IDevice::Ptr> getAllDevices() const = 0;
 
     [[nodiscard]] virtual Sinks::OnChangeSignal onSinksChanged() const = 0;
     [[nodiscard]] virtual Sources::OnChangeSignal onSourcesChanged() const = 0;

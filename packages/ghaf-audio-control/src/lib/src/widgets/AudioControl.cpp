@@ -67,7 +67,7 @@ void OnPulseDeviceChanged(IAudioControlBackend::EventType eventType, IndexT inde
     }
 }
 
-AudioControl::AudioControl(std::unique_ptr<IAudioControlBackend> backend, const std::vector<std::string>& appVmsList)
+AudioControl::AudioControl(std::shared_ptr<IAudioControlBackend> backend, const std::vector<std::string>& appVmsList)
     : Gtk::Box(Gtk::ORIENTATION_VERTICAL)
     , m_audioControl(std::move(backend))
     , m_sinksModel(DeviceListModel::create("Speakers"))

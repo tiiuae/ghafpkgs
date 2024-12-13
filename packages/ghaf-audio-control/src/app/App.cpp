@@ -52,10 +52,10 @@ App::AppMenu::AppMenu(App& app)
 }
 
 App::App(int argc, char** argv)
-    : Gtk::Application("org.example.MyApp", Gio::APPLICATION_HANDLES_COMMAND_LINE)
+    : Gtk::Application("org.ghaf.AudioControl", Gio::APPLICATION_HANDLES_COMMAND_LINE)
     , m_menu(*this)
-    , m_indicator(createAppIndicator())
-    , m_connections{m_dbusService.openSignal().connect(sigc::mem_fun(*this, &App::openWindow))}
+    , m_connections{m_dbusService.openSignal().connect(sigc::mem_fun(*this, &App::openWindow)),
+                    m_dbusService.toggleSignal().connect(sigc::mem_fun(*this, &App::toggleWindow))}
 {
     AppArgs appArgs;
 
@@ -103,10 +103,48 @@ App::App(int argc, char** argv)
         },
         false);
 
-    app_indicator_set_icon(m_indicator.get(), appArgs.indicatorIconName.c_str());
+    if (!appArgs.indicatorIconName.empty())
+    {
+        m_indicator = createAppIndicator();
+        app_indicator_set_icon(m_indicator->get(), appArgs.indicatorIconName.c_str());
+    }
 
-    m_audioControl = std::make_unique<AudioControl>(std::make_unique<Backend::PulseAudio::AudioControlBackend>(appArgs.pulseServerAddress),
-                                                    GetAppVmsList(appArgs.appVms));
+    const auto onDevice =
+        [this](IAudioControlBackend::EventType eventType, IAudioControlBackend::IDevice::IntexT index, const IAudioControlBackend::IDevice::Ptr& device)
+    {
+        if (device)
+            m_dbusService.sendDeviceInfo(index, device->getType(), device->getName(), device->getVolume(), device->isMuted(), eventType);
+        else
+            m_dbusService.sendDeviceInfo(index, IAudioControlBackend::IDevice::Type::Sink, "Deleted", Volume::fromPercents(0U), false, eventType);
+    };
+
+    auto backend = std::make_shared<Backend::PulseAudio::AudioControlBackend>(appArgs.pulseServerAddress);
+    const std::weak_ptr weakBackend(backend);
+
+    m_connections += m_dbusService.setDeviceVolumeSignal().connect(
+        [weakBackend](auto id, auto type, auto volume)
+        {
+            if (auto backend = weakBackend.lock())
+                backend->setDeviceVolume(id, type, volume);
+            else
+                Logger::error("m_dbusService.setDeviceVolumeSignal().connect: backend doesn't exist anymore");
+        });
+
+    m_connections += m_dbusService.setDeviceMuteSignal().connect(
+        [weakBackend](auto id, auto type, auto volume)
+        {
+            if (auto backend = weakBackend.lock())
+                backend->setDeviceMute(id, type, volume);
+            else
+                Logger::error("m_dbusService.setDeviceMuteSignal().connect: backend doesn't exist anymore");
+        });
+
+    m_connections += backend->onSinksChanged().connect(onDevice);
+    m_connections += backend->onSourcesChanged().connect(onDevice);
+    m_connections += backend->onSinkInputsChanged().connect(onDevice);
+    m_connections += backend->onSourceOutputsChanged().connect(onDevice);
+
+    m_audioControl = std::make_unique<AudioControl>(std::move(backend), GetAppVmsList(appArgs.appVms));
 }
 
 int App::start()
@@ -125,6 +163,11 @@ bool App::onWindowDelete([[maybe_unused]] GdkEventAny* event)
 
 void App::openWindow()
 {
+    Logger::debug(__PRETTY_FUNCTION__);
+
+    if (m_window == nullptr)
+        on_activate();
+
     m_window->show();
     m_window->present();
 }

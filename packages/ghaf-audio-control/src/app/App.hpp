@@ -58,7 +58,7 @@ private:
     std::unique_ptr<Gtk::ApplicationWindow> m_window;
 
     AppMenu m_menu;
-    ghaf::AudioControl::RaiiWrap<AppIndicator*> m_indicator;
+    std::optional<ghaf::AudioControl::RaiiWrap<AppIndicator*>> m_indicator;
 
     ghaf::AudioControl::ConnectionContainer m_connections;
 };
