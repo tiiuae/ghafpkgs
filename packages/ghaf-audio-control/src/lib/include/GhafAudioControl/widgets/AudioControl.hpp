@@ -22,7 +22,7 @@ namespace ghaf::AudioControl
 class AudioControl final : public Gtk::Box
 {
 public:
-    AudioControl(std::unique_ptr<IAudioControlBackend> backend, const std::vector<std::string>& appVmsList);
+    AudioControl(std::shared_ptr<IAudioControlBackend> backend, const std::vector<std::string>& appVmsList);
     ~AudioControl() override = default;
 
     AudioControl(AudioControl&) = delete;
@@ -47,7 +47,7 @@ private:
     void onPulseError(std::string_view error);
 
 private:
-    std::unique_ptr<IAudioControlBackend> m_audioControl;
+    std::shared_ptr<IAudioControlBackend> m_audioControl;
 
     AppList m_appList;
 

@@ -13,7 +13,7 @@ namespace ghaf::AudioControl
 namespace
 {
 
-std::optional<guint> GetDeviceIndex(const Gio::ListStore<DeviceModel>& list, Index index)
+[[nodiscard]] std::optional<guint> GetDeviceIndex(const Gio::ListStore<DeviceModel>& list, Index index)
 {
     const guint size = list.get_n_items();
 
@@ -41,9 +41,9 @@ Glib::RefPtr<DeviceListModel> DeviceListModel::create(std::string name, std::str
     return Glib::RefPtr<DeviceListModel>(new DeviceListModel(std::move(name), std::move(namePrefix)));
 }
 
-void DeviceListModel::addDevice(IAudioControlBackend::IDevice::Ptr sink)
+void DeviceListModel::addDevice(IAudioControlBackend::IDevice::Ptr device)
 {
-    const Index deviceIndex = sink->getIndex();
+    const Index deviceIndex = device->getIndex();
 
     if (GetDeviceIndex(*m_devices.get(), deviceIndex))
     {
@@ -51,15 +51,15 @@ void DeviceListModel::addDevice(IAudioControlBackend::IDevice::Ptr sink)
         return;
     }
 
-    m_devices->append(DeviceModel::create(sink));
+    m_devices->append(DeviceModel::create(device));
 
-    m_deviceConnections[deviceIndex] = sink->onDelete().connect(
+    m_deviceConnections[deviceIndex] = device->onDelete().connect(
         [this, deviceIndex]
         {
             if (const auto index = GetDeviceIndex(*m_devices.get(), deviceIndex))
                 m_devices->remove(*index);
             else
-                Logger::error("DevicesModel::addSink couldn't found sink");
+                Logger::error("DevicesModel::addDevice couldn't found such a device");
 
             m_deviceConnections.erase(deviceIndex);
         });

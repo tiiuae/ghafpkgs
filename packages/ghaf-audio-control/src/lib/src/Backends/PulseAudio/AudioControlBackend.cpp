@@ -154,6 +154,83 @@ void AudioControlBackend::stop()
     m_context.reset();
 }
 
+void AudioControlBackend::setDeviceVolume(IDevice::IntexT index, IDevice::Type type, Volume volume)
+{
+    const auto update = [index, volume](auto& map)
+    {
+        if (auto iterator = map.findByKey(index))
+            map.update(*iterator, [volume](auto& device) { device.setVolume(volume); });
+        else
+            Logger::error("AudioControlBackend::setDeviceVolume: no such a device with id: {}", index);
+    };
+
+    switch (type)
+    {
+    case IAudioControlBackend::IDevice::Type::Sink:
+        update(m_sinks);
+        break;
+
+    case IAudioControlBackend::IDevice::Type::Source:
+        update(m_sources);
+        break;
+
+    case IAudioControlBackend::IDevice::Type::SinkInput:
+        update(m_sinkInputs);
+        break;
+
+    case IAudioControlBackend::IDevice::Type::SourceOutput:
+        update(m_sourceOutputs);
+        break;
+    }
+}
+
+void AudioControlBackend::setDeviceMute(IDevice::IntexT index, IDevice::Type type, bool mute)
+{
+    const auto update = [index, mute](auto& map)
+    {
+        if (auto iterator = map.findByKey(index))
+            map.update(*iterator, [mute](auto& device) { device.setMuted(mute); });
+        else
+            Logger::error("AudioControlBackend::setDeviceMute: no such a device with id: {}", index);
+    };
+
+    switch (type)
+    {
+    case IAudioControlBackend::IDevice::Type::Sink:
+        update(m_sinks);
+        break;
+
+    case IAudioControlBackend::IDevice::Type::Source:
+        update(m_sources);
+        break;
+
+    case IAudioControlBackend::IDevice::Type::SinkInput:
+        update(m_sinkInputs);
+        break;
+
+    case IAudioControlBackend::IDevice::Type::SourceOutput:
+        update(m_sourceOutputs);
+        break;
+    }
+}
+
+std::vector<IAudioControlBackend::IDevice::Ptr> AudioControlBackend::getAllDevices() const
+{
+    std::vector<IAudioControlBackend::IDevice::Ptr> result;
+
+    const auto copyToResult = [&result](const auto& vec)
+    {
+        result.insert(result.begin(), vec.begin(), vec.end());
+    };
+
+    copyToResult(m_sinks.getAllValues());
+    copyToResult(m_sources.getAllValues());
+    copyToResult(m_sinkInputs.getAllValues());
+    copyToResult(m_sourceOutputs.getAllValues());
+
+    return result;
+}
+
 void AudioControlBackend::onSinkInfo(const pa_sink_info& info)
 {
     OnPulseDeviceInfo<Sink>(info, m_sinks, *m_context->get());

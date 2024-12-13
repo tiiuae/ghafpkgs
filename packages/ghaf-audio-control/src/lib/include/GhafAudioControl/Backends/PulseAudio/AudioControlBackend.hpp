@@ -29,6 +29,11 @@ public:
     void start() override;
     void stop() override;
 
+    void setDeviceVolume(IDevice::IntexT index, IDevice::Type type, Volume volume) override;
+    void setDeviceMute(IDevice::IntexT index, IDevice::Type type, bool mute) override;
+
+    std::vector<IAudioControlBackend::IDevice::Ptr> getAllDevices() const override;
+
     Sinks::OnChangeSignal onSinksChanged() const override
     {
         return m_sinks.onChange();
