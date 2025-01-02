@@ -61,6 +61,7 @@ public:
     }
 
     void sendDeviceInfo(DeviceIndex index, DeviceType type, const std::string& name, DeviceVolume volume, bool isMuted, DeviceEventType eventType);
+    void registerSystemTrayIcon(const Glib::ustring& iconName);
 
 private:
     void onBusAcquired(const Glib::RefPtr<Gio::DBus::Connection>& connection, const Glib::ustring& name);
@@ -70,6 +71,12 @@ private:
     void onMethodCall(const Glib::RefPtr<Gio::DBus::Connection>& connection, const Glib::ustring& sender, const Glib::ustring& objectPath,
                       const Glib::ustring& interfaceName, const Glib::ustring& methodName, const Glib::VariantContainerBase& parameters,
                       const Glib::RefPtr<Gio::DBus::MethodInvocation>& invocation);
+
+    void onPropertyGet(Glib::VariantBase& property, const Glib::RefPtr<Gio::DBus::Connection>& connection, const Glib::ustring& sender,
+                       const Glib::ustring& objectPath, const Glib::ustring& interface_name, const Glib::ustring& property_name);
+
+    bool onPropertySet(const Glib::RefPtr<Gio::DBus::Connection>& connection, const Glib::ustring& sender, const Glib::ustring& objectPath,
+                       const Glib::ustring& interfaceName, const Glib::ustring& propertyName, const Glib::VariantBase& value);
 
     MethodResult onOpenMethod(const MethodParameters& parameters);
     MethodResult onToggleMethod(const MethodParameters& parameters);
@@ -92,6 +99,10 @@ private:
     Glib::RefPtr<Gio::DBus::NodeInfo> m_introspectionData;
 
     std::map<std::string, MethodCallHandler> m_methodHandlers;
+
+    std::optional<Glib::ustring> m_iconName;
+
+    Glib::RefPtr<Gio::DBus::Connection> m_connection;
 
     guint m_connectionId;
 };
