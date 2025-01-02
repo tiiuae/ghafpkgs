@@ -7,6 +7,7 @@
 
 #include <gtkmm/icontheme.h>
 
+#include <glibmm/main.h>
 #include <glibmm/optioncontext.h>
 
 using namespace ghaf::AudioControl;
@@ -105,8 +106,18 @@ App::App(int argc, char** argv)
 
     if (!appArgs.indicatorIconName.empty())
     {
-        m_indicator = createAppIndicator();
-        app_indicator_set_icon(m_indicator->get(), appArgs.indicatorIconName.c_str());
+        Glib::signal_idle().connect(
+            [this, iconName = appArgs.indicatorIconName]() -> bool
+            {
+                Logger::info("Setting up an indicator icon: {}", iconName.c_str());
+                m_dbusService.registerSystemTrayIcon(iconName);
+
+                return false;
+            });
+    }
+    else
+    {
+        Logger::info("No indicator icon was specified");
     }
 
     const auto onDevice =
@@ -115,7 +126,12 @@ App::App(int argc, char** argv)
         if (device)
             m_dbusService.sendDeviceInfo(index, device->getType(), device->getName(), device->getVolume(), device->isMuted(), eventType);
         else
-            m_dbusService.sendDeviceInfo(index, IAudioControlBackend::IDevice::Type::Sink, "Deleted", Volume::fromPercents(0U), false, eventType);
+            m_dbusService.sendDeviceInfo(index,
+                                         IAudioControlBackend::IDevice::Type::Sink,
+                                         "Deleted",
+                                         Volume::fromPercents(0U),
+                                         false,
+                                         IAudioControlBackend::EventType::Delete);
     };
 
     auto backend = std::make_shared<Backend::PulseAudio::AudioControlBackend>(appArgs.pulseServerAddress);
