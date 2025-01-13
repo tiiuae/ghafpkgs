@@ -5,6 +5,8 @@
 
 #include "App.hpp"
 
+#include <GhafAudioControl/utils/Check.hpp>
+
 using namespace ghaf::AudioControl;
 
 int main(int argc, char** argv)

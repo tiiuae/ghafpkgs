@@ -17,21 +17,21 @@ namespace ghaf::AudioControl::Backend::PulseAudio
 class Sink final : public IAudioControlBackend::ISink
 {
 public:
-    Sink(const pa_sink_info& info, pa_context& context);
+    Sink(const pa_sink_info& info, bool isDefault, pa_context& context);
 
     bool operator==(const IDevice& other) const override;
 
-    Index getIndex() const override
+    [[nodiscard]] Index getIndex() const override
     {
         return m_device.getIndex();
     }
 
-    std::string getName() const override
+    [[nodiscard]] std::string getName() const override
     {
         return m_device.getName();
     }
 
-    Type getType() const override
+    [[nodiscard]] Type getType() const override
     {
         return Type::Sink;
     }
@@ -48,48 +48,48 @@ public:
 
     void setMuted(bool mute) override;
 
-    Volume getVolume() const override
+    [[nodiscard]] Volume getVolume() const override
     {
         return m_device.getVolume();
     }
 
     void setVolume(Volume volume) override;
 
-    uint32_t getCardIndex() const noexcept
+    [[nodiscard]] uint32_t getCardIndex() const noexcept
     {
         return m_device.getCardIndex();
     }
 
-    std::string toString() const override;
+    [[nodiscard]] std::string toString() const override;
 
-    std::string getDescription() const
+    [[nodiscard]] std::string getDescription() const override
     {
         return m_device.getDescription();
     }
 
-    void update(const pa_sink_info& info)
-    {
-        m_device.update(info);
-        m_onUpdate();
-    }
-
-    void update(const pa_card_info& info)
-    {
-        m_device.update(info);
-        m_onUpdate();
-    }
+    void update(const pa_sink_info& info);
+    void update(const pa_card_info& info);
 
     void markDeleted();
 
-    OnUpdateSignal onUpdate() const override
+    [[nodiscard]] OnUpdateSignal onUpdate() const override
     {
         return m_onUpdate;
     }
 
-    OnDeleteSignal onDelete() const override
+    [[nodiscard]] OnDeleteSignal onDelete() const override
     {
         return m_onDelete;
     }
+
+    void setDefault(bool value) override;
+
+    [[nodiscard]] bool isDefault() const override
+    {
+        return m_device.isDefault();
+    }
+
+    void updateDefault(bool value) override;
 
 private:
     void deleteCheck();

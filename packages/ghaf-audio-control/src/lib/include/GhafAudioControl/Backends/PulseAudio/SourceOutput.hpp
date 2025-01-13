@@ -31,6 +31,11 @@ public:
         return m_device.getName();
     }
 
+    [[nodiscard]] std::string getDescription() const override
+    {
+        return m_device.getDescription();
+    }
+
     Type getType() const override
     {
         return Type::SourceOutput;
@@ -56,11 +61,6 @@ public:
     void setVolume(Volume volume) override;
 
     std::string toString() const override;
-
-    std::string getDescription() const
-    {
-        return m_device.getDescription();
-    }
 
     uint32_t getCardIndex() const noexcept
     {

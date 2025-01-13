@@ -11,6 +11,7 @@
 #include <GhafAudioControl/utils/ScopeExit.hpp>
 
 #include <gtkmm/box.h>
+#include <gtkmm/checkbutton.h>
 #include <gtkmm/label.h>
 #include <gtkmm/scale.h>
 #include <gtkmm/switch.h>
@@ -30,6 +31,7 @@ public:
 private:
     DeviceModel::Ptr m_model;
 
+    Gtk::CheckButton* m_defaultButton;
     Gtk::Label* m_nameLabel;
     Gtk::Switch* m_switch;
     Gtk::Scale* m_scale;

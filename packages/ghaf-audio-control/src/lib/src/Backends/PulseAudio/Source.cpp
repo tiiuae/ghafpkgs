@@ -13,8 +13,8 @@
 namespace ghaf::AudioControl::Backend::PulseAudio
 {
 
-Source::Source(const pa_source_info& info, pa_context& context)
-    : m_device(info, context)
+Source::Source(const pa_source_info& info, bool isDefault, pa_context& context)
+    : m_device(info, isDefault, context)
 {
 }
 
@@ -47,15 +47,23 @@ std::string Source::toString() const
     return std::format("PulseSource: [ {} ]", m_device.toString());
 }
 
-std::string Source::getDescription() const
-{
-    return m_device.getDescription();
-}
-
 void Source::markDeleted()
 {
     m_device.markDeleted();
     m_onDelete();
+}
+
+void Source::setDefault(bool value)
+{
+    if (m_device.isDefault() == value)
+        return;
+
+    ExecutePulseFunc(pa_context_set_default_source, &m_device.getContext(), m_device.getName().c_str(), nullptr, nullptr);
+}
+
+bool Source::isDefault() const
+{
+    return m_device.isDefault();
 }
 
 void Source::deleteCheck()
@@ -67,6 +75,15 @@ void Source::deleteCheck()
 uint32_t Source::getCardIndex() const
 {
     return m_device.getCardIndex();
+}
+
+void Source::updateDefault(bool value)
+{
+    if (m_device.isDefault() == value)
+        return;
+
+    m_device.setDefault(value);
+    m_onUpdate();
 }
 
 void Source::update(const pa_source_info& info)

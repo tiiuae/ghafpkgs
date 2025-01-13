@@ -31,6 +31,11 @@ public:
         return m_device.getName();
     }
 
+    [[nodiscard]] std::string getDescription() const override
+    {
+        return m_device.getDescription();
+    }
+
     Type getType() const override
     {
         return Type::SinkInput;
@@ -61,11 +66,6 @@ public:
     }
 
     std::string toString() const override;
-
-    std::string getDescription() const
-    {
-        return m_device.getDescription();
-    }
 
     std::optional<std::string> getAppVmName() const
     {

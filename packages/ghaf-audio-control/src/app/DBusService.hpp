@@ -26,6 +26,8 @@ public:
     using SetDeviceVolumeSignalSignature = sigc::signal<void(DeviceIndex id, DeviceType type, DeviceVolume)>;
     using SetDeviceMuteSignalSignature = sigc::signal<void(DeviceIndex id, DeviceType type, bool mute)>;
 
+    using MakeDeviceDefaultSignalSignature = sigc::signal<void(DeviceIndex id, DeviceType type)>;
+
     using MethodResult = Glib::VariantContainerBase;
     using MethodParameters = Glib::VariantContainerBase;
     using MethodCallHandler = std::function<MethodResult(const MethodParameters& parameters)>;
@@ -60,7 +62,13 @@ public:
         return m_setDeviceMuteSignal;
     }
 
-    void sendDeviceInfo(DeviceIndex index, DeviceType type, const std::string& name, DeviceVolume volume, bool isMuted, DeviceEventType eventType);
+    MakeDeviceDefaultSignalSignature makeDeviceDefaultSignal() const noexcept
+    {
+        return m_makeDeviceDefaultSignal;
+    }
+
+    void sendDeviceInfo(DeviceIndex index, DeviceType type, const std::string& name, DeviceVolume volume, bool isMuted, bool isDefault,
+                        DeviceEventType eventType);
     void registerSystemTrayIcon(const Glib::ustring& iconName);
 
 private:
@@ -87,6 +95,10 @@ private:
     MethodResult onSetDeviceVolumeMethod(const MethodParameters& parameters);
     MethodResult onSetDeviceMuteMethod(const MethodParameters& parameters);
 
+    MethodResult onMakeDeviceDefaultMethod(const MethodParameters& parameters);
+
+    MethodResult onActivateMethod(const MethodParameters& parameters);
+
 private:
     OpenSignalSignature m_openSignal;
     ToggleSignalSignature m_toggleSignal;
@@ -95,10 +107,13 @@ private:
     SetDeviceVolumeSignalSignature m_setDeviceVolumeSignal;
     SetDeviceMuteSignalSignature m_setDeviceMuteSignal;
 
+    MakeDeviceDefaultSignalSignature m_makeDeviceDefaultSignal;
+
     Gio::DBus::InterfaceVTable m_interfaceVtable;
     Glib::RefPtr<Gio::DBus::NodeInfo> m_introspectionData;
 
-    std::map<std::string, MethodCallHandler> m_methodHandlers;
+    std::map<std::string, MethodCallHandler> m_audioControlServiceMethodHandlers;
+    std::map<std::string, MethodCallHandler> m_statusNotifierItemMethodHandlers;
 
     std::optional<Glib::ustring> m_iconName;
 

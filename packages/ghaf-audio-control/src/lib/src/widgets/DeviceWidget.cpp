@@ -6,6 +6,7 @@
 #include <GhafAudioControl/widgets/DeviceWidget.hpp>
 
 #include <GhafAudioControl/utils/Debug.hpp>
+#include <GhafAudioControl/utils/Logger.hpp>
 
 #include <gtkmm/adjustment.h>
 
@@ -50,10 +51,12 @@ Gtk::Scale* MakeScaleWidget()
 DeviceWidget::DeviceWidget(DeviceModel::Ptr model)
     : Gtk::Box(Gtk::ORIENTATION_HORIZONTAL)
     , m_model(std::move(model))
+    , m_defaultButton(Gtk::make_managed<Gtk::CheckButton>())
     , m_nameLabel(Gtk::make_managed<Gtk::Label>())
     , m_switch(Gtk::make_managed<Gtk::Switch>())
     , m_scale(MakeScaleWidget())
-    , m_bindings({Bind(m_model->getNameProperty(), m_nameLabel->property_label(), true),
+    , m_bindings({Bind(m_model->getIsDefaultProperty(), m_defaultButton->property_active()),
+                  Bind(m_model->getNameProperty(), m_nameLabel->property_label(), true),
                   Bind(m_model->getSoundVolumeProperty(), m_scale->get_adjustment()->property_value()),
                   Bind(m_model->getSoundEnabledProperty(), m_switch->property_state())})
 {
@@ -69,10 +72,12 @@ DeviceWidget::DeviceWidget(DeviceModel::Ptr model)
     set_homogeneous(true);
     set_spacing(DeviceWidgetSpacing);
 
+    // setup(*m_defaultButton);
     setup(*m_nameLabel);
     setup(*m_switch);
     setup(*m_scale);
 
+    // pack_start(*m_defaultButton);
     pack_start(*m_nameLabel);
     pack_start(*m_switch);
     pack_start(*m_scale);

@@ -4,6 +4,7 @@
  */
 
 #include <GhafAudioControl/Backends/PulseAudio/SinkInput.hpp>
+#include <GhafAudioControl/utils/Check.hpp>
 #include <GhafAudioControl/utils/Debug.hpp>
 #include <GhafAudioControl/utils/Logger.hpp>
 #include <GhafAudioControl/widgets/AppList.hpp>
@@ -87,6 +88,8 @@ void AppList::addVm(std::string appVmName)
 
 void AppList::addDevice(IAudioControlBackend::ISinkInput::Ptr device)
 {
+    Check(device != nullptr, "device is nullptr");
+
     const std::string appName = GetAppNameFromSinkInput(device);
 
     if (const auto index = GetIndexByAppId(m_appsModel, appName))

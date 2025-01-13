@@ -56,6 +56,7 @@ PUBLIC
         include/GhafAudioControl/models/DeviceListModel.hpp
         include/GhafAudioControl/models/DeviceModel.hpp
 
+        include/GhafAudioControl/utils/Check.hpp
         include/GhafAudioControl/utils/ConnectionContainer.hpp
         include/GhafAudioControl/utils/Debug.hpp
         include/GhafAudioControl/utils/Logger.hpp

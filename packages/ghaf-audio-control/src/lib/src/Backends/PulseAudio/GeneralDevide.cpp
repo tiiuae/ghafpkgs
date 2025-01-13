@@ -14,11 +14,12 @@ namespace ghaf::AudioControl::Backend::PulseAudio
 
 constexpr auto PropertyAppVmName = "application.process.host";
 
-GeneralDeviceImpl::GeneralDeviceImpl(const pa_sink_info& info, pa_context& context)
+GeneralDeviceImpl::GeneralDeviceImpl(const pa_sink_info& info, bool isDefault, pa_context& context)
     : m_index(info.index)
     , m_cardIndex(info.card)
-    , m_name(info.description)
-    , m_description(info.name)
+    , m_isDefault(isDefault)
+    , m_name(info.name)
+    , m_description(info.description)
     , m_context(context)
     , m_channel_map(info.channel_map)
     , m_volume(info.volume)
@@ -26,11 +27,12 @@ GeneralDeviceImpl::GeneralDeviceImpl(const pa_sink_info& info, pa_context& conte
 {
 }
 
-GeneralDeviceImpl::GeneralDeviceImpl(const pa_source_info& info, pa_context& context)
+GeneralDeviceImpl::GeneralDeviceImpl(const pa_source_info& info, bool isDefault, pa_context& context)
     : m_index(info.index)
     , m_cardIndex(info.card)
-    , m_name(info.description)
-    , m_description(info.name)
+    , m_isDefault(isDefault)
+    , m_name(info.name)
+    , m_description(info.description)
     , m_context(context)
     , m_channel_map(info.channel_map)
     , m_volume(info.volume)
@@ -65,6 +67,18 @@ GeneralDeviceImpl::GeneralDeviceImpl(const pa_source_output_info& info, pa_conte
 {
     const std::lock_guard l{m_mutex};
     return m_cardIndex;
+}
+
+void GeneralDeviceImpl::setDefault(bool value)
+{
+    const std::lock_guard l{m_mutex};
+    m_isDefault = value;
+}
+
+bool GeneralDeviceImpl::isDefault() const noexcept
+{
+    const std::lock_guard l{m_mutex};
+    return m_isDefault;
 }
 
 [[nodiscard]] bool GeneralDeviceImpl::isDeleted() const noexcept
@@ -125,8 +139,8 @@ void GeneralDeviceImpl::update(const pa_sink_info& info)
     const std::lock_guard l{m_mutex};
 
     m_cardIndex = info.card;
-    m_name = info.description;
-    m_description = info.name;
+    m_name = info.name;
+    m_description = info.description;
     m_channel_map = info.channel_map;
     m_volume = info.volume;
     m_isMuted = static_cast<bool>(info.mute);
@@ -137,8 +151,8 @@ void GeneralDeviceImpl::update(const pa_source_info& info)
     const std::lock_guard l{m_mutex};
 
     m_cardIndex = info.card;
-    m_name = info.description;
-    m_description = info.name;
+    m_name = info.name;
+    m_description = info.description;
     m_channel_map = info.channel_map;
     m_volume = info.volume;
     m_isMuted = static_cast<bool>(info.mute);
@@ -175,7 +189,7 @@ void GeneralDeviceImpl::update(const pa_card_info& info)
 
     for (size_t i = 0; i < info.n_ports; ++i)
     {
-        pa_card_port_info const& port = *info.ports[i];
+        const pa_card_port_info& port = *info.ports[i];
 
         if (m_description.ends_with(port.description))
         {
