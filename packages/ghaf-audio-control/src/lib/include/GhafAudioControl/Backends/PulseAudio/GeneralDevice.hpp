@@ -24,8 +24,8 @@ namespace ghaf::AudioControl::Backend::PulseAudio
 class GeneralDeviceImpl final
 {
 public:
-    GeneralDeviceImpl(const pa_sink_info& info, pa_context& context);
-    GeneralDeviceImpl(const pa_source_info& info, pa_context& context);
+    GeneralDeviceImpl(const pa_sink_info& info, bool isDefault, pa_context& context);
+    GeneralDeviceImpl(const pa_source_info& info, bool isDefault, pa_context& context);
     GeneralDeviceImpl(const pa_sink_input_info& info, pa_context& context);
     GeneralDeviceImpl(const pa_source_output_info& info, pa_context& context);
 
@@ -40,6 +40,9 @@ public:
     }
 
     [[nodiscard]] uint32_t getCardIndex() const noexcept;
+
+    virtual void setDefault(bool value);
+    [[nodiscard]] bool isDefault() const noexcept;
 
     [[nodiscard]] bool isDeleted() const noexcept;
     [[nodiscard]] bool isEnabled() const noexcept;
@@ -78,6 +81,7 @@ private:
     const uint32_t m_index;
     uint32_t m_cardIndex;
 
+    bool m_isDefault = false;
     bool m_isDeleted = false;
     bool m_isEnabled = false;
 

@@ -114,30 +114,26 @@ void AudioControl::init()
     style_context->add_provider_for_screen(Gdk::Screen::get_default(), cssProvider, GTK_STYLE_PROVIDER_PRIORITY_USER);
 }
 
-void AudioControl::onPulseSinksChanged(IAudioControlBackend::EventType eventType, [[maybe_unused]] IAudioControlBackend::Sinks::IndexT extIndex,
-                                       IAudioControlBackend::Sinks::PtrT sink)
+void AudioControl::onPulseSinksChanged(IAudioControlBackend::OnSignalMapChangeSignalInfo info)
 {
-    if (eventType == IAudioControlBackend::EventType::Add)
-        m_sinksModel->addDevice(std::move(sink));
+    if (info.eventType == IAudioControlBackend::EventType::Add)
+        m_sinksModel->addDevice(std::move(info.ptr));
 }
 
-void AudioControl::onPulseSourcesChanged(IAudioControlBackend::EventType eventType, [[maybe_unused]] IAudioControlBackend::Sources::IndexT extIndex,
-                                         IAudioControlBackend::Sources::PtrT source)
+void AudioControl::onPulseSourcesChanged(IAudioControlBackend::OnSignalMapChangeSignalInfo info)
 {
-    if (eventType == IAudioControlBackend::EventType::Add)
-        m_sourcesModel->addDevice(std::move(source));
+    if (info.eventType == IAudioControlBackend::EventType::Add)
+        m_sourcesModel->addDevice(std::move(info.ptr));
 }
 
-void AudioControl::onPulseSinkInputsChanged(IAudioControlBackend::EventType eventType, IAudioControlBackend::SinkInputs::IndexT extIndex,
-                                            IAudioControlBackend::SinkInputs::PtrT sinkInput)
+void AudioControl::onPulseSinkInputsChanged(IAudioControlBackend::OnSignalMapChangeSignalInfo info)
 {
-    OnPulseDeviceChanged(eventType, extIndex, std::move(sinkInput), m_appList);
+    OnPulseDeviceChanged(info.eventType, info.index, std::move(info.ptr), m_appList);
 }
 
-void AudioControl::onPulseSourcesOutputsChanged(IAudioControlBackend::EventType eventType, IAudioControlBackend::SourceOutputs::IndexT extIndex,
-                                                IAudioControlBackend::SourceOutputs::PtrT sourceOutput)
+void AudioControl::onPulseSourcesOutputsChanged(IAudioControlBackend::OnSignalMapChangeSignalInfo info)
 {
-    OnPulseDeviceChanged(eventType, extIndex, std::move(sourceOutput), m_appList);
+    OnPulseDeviceChanged(info.eventType, info.index, std::move(info.ptr), m_appList);
 }
 
 void AudioControl::onPulseError(std::string_view error)

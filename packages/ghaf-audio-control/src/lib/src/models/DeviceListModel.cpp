@@ -5,6 +5,7 @@
 
 #include <GhafAudioControl/models/DeviceListModel.hpp>
 
+#include <GhafAudioControl/utils/Check.hpp>
 #include <GhafAudioControl/utils/Logger.hpp>
 
 namespace ghaf::AudioControl
@@ -43,7 +44,15 @@ Glib::RefPtr<DeviceListModel> DeviceListModel::create(std::string name, std::str
 
 void DeviceListModel::addDevice(IAudioControlBackend::IDevice::Ptr device)
 {
+    Check(device != nullptr, "device is nullptr");
+
     const Index deviceIndex = device->getIndex();
+
+    if (device->getDescription().starts_with("Monitor "))
+    {
+        Logger::info("Skip a monitor...");
+        return;
+    }
 
     if (GetDeviceIndex(*m_devices.get(), deviceIndex))
     {
