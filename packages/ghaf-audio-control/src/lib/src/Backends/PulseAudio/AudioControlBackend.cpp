@@ -29,7 +29,7 @@ namespace
 {
 
 template<class DeviceT, class InfoT, class IDeviceT>
-void OnPulseDeviceInfo(const InfoT& info, IAudioControlBackend::SignalMap<IDeviceT>& map, pa_context& context)
+void OnPulseDeviceInfo(const InfoT& info, bool isDefault, IAudioControlBackend::SignalMap<IDeviceT>& map, pa_context& context)
 {
     const Index index = info.index;
 
@@ -37,12 +37,25 @@ void OnPulseDeviceInfo(const InfoT& info, IAudioControlBackend::SignalMap<IDevic
     {
         const IDeviceT& device = *deviceIt.value()->second;
 
-        map.update(*deviceIt, [&info](IDeviceT& device) { dynamic_cast<DeviceT&>(device).update(info); });
+        map.update(*deviceIt,
+                   [&info, isDefault](IDeviceT& device)
+                   {
+                       dynamic_cast<DeviceT&>(device).update(info);
+
+                       if (auto* defaultable = dynamic_cast<IAudioControlBackend::IDefaultable*>(&device))
+                           defaultable->updateDefault(isDefault);
+
+                       return true;
+                   });
+
         Logger::debug("Updating... {}", device.toString());
     }
     else
     {
-        map.add(index, std::make_shared<DeviceT>(info, context));
+        if constexpr (std::is_base_of_v<IAudioControlBackend::IDefaultable, IDeviceT>)
+            map.add(index, std::make_shared<DeviceT>(info, isDefault, context));
+        else
+            map.add(index, std::make_shared<DeviceT>(info, context));
     }
 }
 
@@ -52,7 +65,12 @@ void DeletePulseDevice(IAudioControlBackend::SignalMap<IDeviceT>& map, IndexT in
     if (auto deviceIt = map.findByKey(index))
     {
         Logger::debug("AudioControlBackend::DeletePulseDevice: delete device with id: {}", index);
-        map.remove(*deviceIt, [](IDeviceT& device) { dynamic_cast<DeviceT&>(device).markDeleted(); });
+        map.remove(*deviceIt,
+                   [](IDeviceT& device)
+                   {
+                       dynamic_cast<DeviceT&>(device).markDeleted();
+                       return true;
+                   });
     }
     else
         Logger::error("AudioControlBackend::DeletePulseDevice: no device with id: {}", index);
@@ -159,7 +177,12 @@ void AudioControlBackend::setDeviceVolume(IDevice::IntexT index, IDevice::Type t
     const auto update = [index, volume](auto& map)
     {
         if (auto iterator = map.findByKey(index))
-            map.update(*iterator, [volume](auto& device) { device.setVolume(volume); });
+            map.update(*iterator,
+                       [volume](auto& device)
+                       {
+                           device.setVolume(volume);
+                           return true;
+                       });
         else
             Logger::error("AudioControlBackend::setDeviceVolume: no such a device with id: {}", index);
     };
@@ -189,7 +212,12 @@ void AudioControlBackend::setDeviceMute(IDevice::IntexT index, IDevice::Type typ
     const auto update = [index, mute](auto& map)
     {
         if (auto iterator = map.findByKey(index))
-            map.update(*iterator, [mute](auto& device) { device.setMuted(mute); });
+            map.update(*iterator,
+                       [mute](auto& device)
+                       {
+                           device.setMuted(mute);
+                           return true;
+                       });
         else
             Logger::error("AudioControlBackend::setDeviceMute: no such a device with id: {}", index);
     };
@@ -214,6 +242,36 @@ void AudioControlBackend::setDeviceMute(IDevice::IntexT index, IDevice::Type typ
     }
 }
 
+void AudioControlBackend::makeDeviceDefault(IDevice::IntexT index, IDevice::Type type)
+{
+    const auto update = [index](auto& map)
+    {
+        if (auto iterator = map.findByKey(index))
+            map.update(*iterator,
+                       [](auto& device)
+                       {
+                           device.setDefault(true);
+                           return true;
+                       });
+        else
+            Logger::error("AudioControlBackend::makeDeviceDefault: no such a device with id: {}", index);
+    };
+
+    switch (type)
+    {
+    case IAudioControlBackend::IDevice::Type::Sink:
+        update(m_sinks);
+        break;
+
+    case IAudioControlBackend::IDevice::Type::Source:
+        update(m_sources);
+        break;
+
+    default:
+        break;
+    }
+}
+
 std::vector<IAudioControlBackend::IDevice::Ptr> AudioControlBackend::getAllDevices() const
 {
     std::vector<IAudioControlBackend::IDevice::Ptr> result;
@@ -233,7 +291,7 @@ std::vector<IAudioControlBackend::IDevice::Ptr> AudioControlBackend::getAllDevic
 
 void AudioControlBackend::onSinkInfo(const pa_sink_info& info)
 {
-    OnPulseDeviceInfo<Sink>(info, m_sinks, *m_context->get());
+    OnPulseDeviceInfo<Sink>(info, m_defaultSinkName == info.name, m_sinks, *m_context->get());
 }
 
 void AudioControlBackend::deleteSink(Sinks::IndexT index)
@@ -243,7 +301,7 @@ void AudioControlBackend::deleteSink(Sinks::IndexT index)
 
 void AudioControlBackend::onSourceInfo(const pa_source_info& info)
 {
-    OnPulseDeviceInfo<Source>(info, m_sources, *m_context->get());
+    OnPulseDeviceInfo<Source>(info, m_defaultSourceName == info.name, m_sources, *m_context->get());
 }
 
 void AudioControlBackend::deleteSource(Sources::IndexT index)
@@ -253,7 +311,7 @@ void AudioControlBackend::deleteSource(Sources::IndexT index)
 
 void AudioControlBackend::onSinkInputInfo(const pa_sink_input_info& info)
 {
-    OnPulseDeviceInfo<SinkInput>(info, m_sinkInputs, *m_context->get());
+    OnPulseDeviceInfo<SinkInput>(info, false, m_sinkInputs, *m_context->get());
 }
 
 void AudioControlBackend::deleteSinkInput(SinkInputs::IndexT index)
@@ -263,12 +321,55 @@ void AudioControlBackend::deleteSinkInput(SinkInputs::IndexT index)
 
 void AudioControlBackend::onSourceOutputInfo(const pa_source_output_info& info)
 {
-    OnPulseDeviceInfo<SourceOutput>(info, m_sourceOutputs, *m_context->get());
+    OnPulseDeviceInfo<SourceOutput>(info, false, m_sourceOutputs, *m_context->get());
 }
 
 void AudioControlBackend::deleteSourceOutput(SourceOutputs::IndexT index)
 {
     DeletePulseDevice<SourceOutput>(m_sourceOutputs, index);
+}
+
+void AudioControlBackend::onServerInfo(const pa_server_info& info)
+{
+    const auto updateSinkFunction = [defaultName = m_defaultSinkName](ISink& sink)
+    {
+        const bool shouldBeDefault = sink.getName() == defaultName;
+
+        if (sink.isDefault() == shouldBeDefault)
+            return false;
+
+        dynamic_cast<Sink&>(sink).updateDefault(shouldBeDefault);
+
+        return true;
+    };
+
+    const auto updateSourceFunction = [defaultName = m_defaultSourceName](ISource& source)
+    {
+        const bool shouldBeDefault = source.getName() == defaultName;
+
+        if (source.isDefault() == shouldBeDefault)
+            return false;
+
+        dynamic_cast<Source&>(source).updateDefault(shouldBeDefault);
+
+        return true;
+    };
+
+    if (m_defaultSinkName != info.default_sink_name)
+    {
+        Logger::info("AudioControlBackend::onServerInfo: default sink set to: {}", info.default_sink_name);
+
+        m_defaultSinkName = info.default_sink_name;
+        // m_sinks.forEach(updateSinkFunction);
+    }
+
+    if (m_defaultSourceName != info.default_source_name)
+    {
+        Logger::info("AudioControlBackend::onServerInfo: default source set to: {}", info.default_source_name);
+
+        m_defaultSourceName = info.default_source_name;
+        // m_sources.forEach(updateSourceFunction);
+    }
 }
 
 void AudioControlBackend::subscribeCallback(pa_context* context, pa_subscription_event_type_t type, uint32_t index, void* data)
@@ -393,9 +494,7 @@ void AudioControlBackend::serverInfoCallback(pa_context* context, const pa_serve
     if (info == nullptr)
         return;
 
-    auto* self = static_cast<AudioControlBackend*>(data);
-    self->m_defaultSinkName = info->default_sink_name;
-    self->m_defaultSourceName = info->default_source_name;
+    static_cast<AudioControlBackend*>(data)->onServerInfo(*info);
 
     ExecutePulseFunc(pa_context_get_sink_info_list, context, sinkInfoCallback, data);
     ExecutePulseFunc(pa_context_get_source_info_list, context, sourceInfoCallback, data);
@@ -428,7 +527,12 @@ void AudioControlBackend::cardInfoCallback(pa_context* context, const pa_card_in
     };
 
     for (auto it : self->m_sinks.findByPredicate(sinkPredicate))
-        self->m_sinks.update(it, [&info](ISink& sink) { dynamic_cast<Sink&>(sink).update(*info); });
+        self->m_sinks.update(it,
+                             [&info](ISink& sink)
+                             {
+                                 dynamic_cast<Sink&>(sink).update(*info);
+                                 return true;
+                             });
 
     const auto sourcePredicate = [&info](const ISource& source)
     {
@@ -436,7 +540,12 @@ void AudioControlBackend::cardInfoCallback(pa_context* context, const pa_card_in
     };
 
     for (auto it : self->m_sources.findByPredicate(sourcePredicate))
-        self->m_sources.update(it, [&info](ISource& source) { dynamic_cast<Source&>(source).update(*info); });
+        self->m_sources.update(it,
+                               [&info](ISource& source)
+                               {
+                                   dynamic_cast<Source&>(source).update(*info);
+                                   return true;
+                               });
 }
 
 } // namespace ghaf::AudioControl::Backend::PulseAudio

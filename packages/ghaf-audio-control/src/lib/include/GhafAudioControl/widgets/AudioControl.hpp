@@ -34,16 +34,11 @@ public:
 private:
     void init();
 
-    void onPulseSinksChanged(IAudioControlBackend::EventType eventType, IAudioControlBackend::Sinks::IndexT extIndex, IAudioControlBackend::Sinks::PtrT sink);
+    void onPulseSinksChanged(IAudioControlBackend::OnSignalMapChangeSignalInfo info);
+    void onPulseSourcesChanged(IAudioControlBackend::OnSignalMapChangeSignalInfo info);
+    void onPulseSinkInputsChanged(IAudioControlBackend::OnSignalMapChangeSignalInfo info);
+    void onPulseSourcesOutputsChanged(IAudioControlBackend::OnSignalMapChangeSignalInfo info);
 
-    void onPulseSourcesChanged(IAudioControlBackend::EventType eventType, IAudioControlBackend::Sources::IndexT extIndex,
-                               IAudioControlBackend::Sources::PtrT source);
-
-    void onPulseSinkInputsChanged(IAudioControlBackend::EventType eventType, IAudioControlBackend::SinkInputs::IndexT extIndex,
-                                  IAudioControlBackend::SinkInputs::PtrT sinkInput);
-
-    void onPulseSourcesOutputsChanged(IAudioControlBackend::EventType eventType, IAudioControlBackend::SourceOutputs::IndexT extIndex,
-                                      IAudioControlBackend::SourceOutputs::PtrT sourceOutput);
     void onPulseError(std::string_view error);
 
 private:

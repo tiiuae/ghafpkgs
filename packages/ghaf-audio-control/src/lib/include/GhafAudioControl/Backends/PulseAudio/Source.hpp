@@ -17,7 +17,7 @@ namespace ghaf::AudioControl::Backend::PulseAudio
 class Source final : public IAudioControlBackend::ISource
 {
 public:
-    Source(const pa_source_info& info, pa_context& context);
+    Source(const pa_source_info& info, bool isDefault, pa_context& context);
 
     bool operator==(const IDevice& other) const override;
 
@@ -29,6 +29,11 @@ public:
     std::string getName() const override
     {
         return m_device.getName();
+    }
+
+    [[nodiscard]] std::string getDescription() const override
+    {
+        return m_device.getDescription();
     }
 
     Type getType() const override
@@ -57,8 +62,6 @@ public:
 
     std::string toString() const override;
 
-    std::string getDescription() const;
-
     uint32_t getCardIndex() const;
 
     void update(const pa_source_info& info);
@@ -75,6 +78,12 @@ public:
     {
         return m_onDelete;
     }
+
+    void setDefault(bool value) override;
+
+    [[nodiscard]] bool isDefault() const override;
+
+    void updateDefault(bool value) override;
 
 private:
     void deleteCheck();

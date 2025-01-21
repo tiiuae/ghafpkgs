@@ -21,7 +21,7 @@ public:
     using Ptr = Glib::RefPtr<DeviceModel>;
 
 public:
-    DeviceModel(IAudioControlBackend::IDevice::Ptr device);
+    explicit DeviceModel(IAudioControlBackend::IDevice::Ptr device);
 
     static Glib::RefPtr<DeviceModel> create(IAudioControlBackend::IDevice::Ptr device);
 
@@ -37,6 +37,11 @@ public:
     [[nodiscard]] virtual Glib::PropertyProxy_ReadOnly<bool> getIsEnabledProperty() const
     {
         return m_isEnabled.get_proxy();
+    }
+
+    [[nodiscard]] virtual Glib::PropertyProxy<bool> getIsDefaultProperty()
+    {
+        return m_isDefault.get_proxy();
     }
 
     [[nodiscard]] virtual Glib::PropertyProxy_ReadOnly<bool> getHasDeviceProperty() const
@@ -65,6 +70,7 @@ public:
     }
 
 private:
+    void onDefaultChange();
     void onSoundEnabledChange();
     void onSoundVolumeChange();
 
@@ -72,6 +78,7 @@ private:
     IAudioControlBackend::IDevice::Ptr m_device;
 
     Glib::Property<bool> m_isEnabled;
+    Glib::Property<bool> m_isDefault{*this, "m_isDefault", false};
     Glib::Property<bool> m_hasDevice{*this, "m_hasDevice", false};
 
     Glib::Property<Glib::ustring> m_name{*this, "m_name", "Undefined"};

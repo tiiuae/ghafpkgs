@@ -18,7 +18,7 @@ namespace ghaf::AudioControl::Backend::PulseAudio
 class AudioControlBackend final : public IAudioControlBackend
 {
 public:
-    AudioControlBackend(std::string pulseAudioServerAddress);
+    explicit AudioControlBackend(std::string pulseAudioServerAddress);
     ~AudioControlBackend() override = default;
 
     const std::string& getServerAddress() const noexcept
@@ -31,6 +31,8 @@ public:
 
     void setDeviceVolume(IDevice::IntexT index, IDevice::Type type, Volume volume) override;
     void setDeviceMute(IDevice::IntexT index, IDevice::Type type, bool mute) override;
+
+    void makeDeviceDefault(IDevice::IntexT index, IDevice::Type type) override;
 
     std::vector<IAudioControlBackend::IDevice::Ptr> getAllDevices() const override;
 
@@ -80,6 +82,8 @@ private:
 
     void onSourceOutputInfo(const pa_source_output_info& info);
     void deleteSourceOutput(SourceOutputs::IndexT index);
+
+    void onServerInfo(const pa_server_info& info);
 
 private:
     Sinks m_sinks;

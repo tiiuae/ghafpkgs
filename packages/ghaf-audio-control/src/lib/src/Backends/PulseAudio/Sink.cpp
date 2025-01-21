@@ -13,8 +13,8 @@
 namespace ghaf::AudioControl::Backend::PulseAudio
 {
 
-Sink::Sink(const pa_sink_info& info, pa_context& context)
-    : m_device(info, context)
+Sink::Sink(const pa_sink_info& info, bool isDefault, pa_context& context)
+    : m_device(info, isDefault, context)
 {
 }
 
@@ -53,10 +53,40 @@ void Sink::markDeleted()
     m_onDelete();
 }
 
+void Sink::setDefault(bool value)
+{
+    deleteCheck();
+
+    if (m_device.isDefault() == value)
+        return;
+
+    ExecutePulseFunc(pa_context_set_default_sink, &m_device.getContext(), m_device.getName().c_str(), nullptr, nullptr);
+}
+
 void Sink::deleteCheck()
 {
     if (m_device.isDeleted())
         throw std::logic_error{std::format("Using deleted device: {}", toString())};
 }
 
+void Sink::updateDefault(bool value)
+{
+    if (m_device.isDefault() == value)
+        return;
+
+    m_device.setDefault(value);
+    m_onUpdate();
+}
+
+void Sink::update(const pa_sink_info& info)
+{
+    m_device.update(info);
+    m_onUpdate();
+}
+
+void Sink::update(const pa_card_info& info)
+{
+    m_device.update(info);
+    m_onUpdate();
+}
 } // namespace ghaf::AudioControl::Backend::PulseAudio

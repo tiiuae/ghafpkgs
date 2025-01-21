@@ -7,6 +7,7 @@
 
 #include <gtkmm/icontheme.h>
 
+#include <glibmm/main.h>
 #include <glibmm/optioncontext.h>
 
 using namespace ghaf::AudioControl;
@@ -103,19 +104,45 @@ App::App(int argc, char** argv)
         },
         false);
 
-    if (!appArgs.indicatorIconName.empty())
-    {
-        m_indicator = createAppIndicator();
-        app_indicator_set_icon(m_indicator->get(), appArgs.indicatorIconName.c_str());
-    }
+    m_indicator = createAppIndicator();
+    app_indicator_set_icon(m_indicator->get(), appArgs.indicatorIconName.c_str());
 
-    const auto onDevice =
-        [this](IAudioControlBackend::EventType eventType, IAudioControlBackend::IDevice::IntexT index, const IAudioControlBackend::IDevice::Ptr& device)
+    m_audioControl = std::make_unique<AudioControl>(std::make_unique<Backend::PulseAudio::AudioControlBackend>(appArgs.pulseServerAddress),
+                                                    GetAppVmsList(appArgs.appVms));
+
+    // if (!appArgs.indicatorIconName.empty())
+    // {
+    //     Glib::signal_idle().connect(
+    //         [this, iconName = appArgs.indicatorIconName]() -> bool
+    //         {
+    //             Logger::info("Setting up an indicator icon: {}", iconName.c_str());
+    //             m_dbusService.registerSystemTrayIcon(iconName);
+
+    //             return false;
+    //         });
+    // }
+    // else
+    // {
+    //     Logger::info("No indicator icon was specified");
+    // }
+
+    const auto onDevice = [this](IAudioControlBackend::OnSignalMapChangeSignalInfo info)
     {
-        if (device)
-            m_dbusService.sendDeviceInfo(index, device->getType(), device->getName(), device->getVolume(), device->isMuted(), eventType);
+        if (info.ptr)
+        {
+            if (auto* defaultable = dynamic_cast<IAudioControlBackend::IDefaultable*>(info.ptr.get()))
+                m_dbusService.sendDeviceInfo(info.index,
+                                             info.type,
+                                             info.ptr->getDescription(),
+                                             info.ptr->getVolume(),
+                                             info.ptr->isMuted(),
+                                             defaultable->isDefault(),
+                                             info.eventType);
+            else
+                m_dbusService.sendDeviceInfo(info.index, info.type, info.ptr->getName(), info.ptr->getVolume(), info.ptr->isMuted(), false, info.eventType);
+        }
         else
-            m_dbusService.sendDeviceInfo(index, IAudioControlBackend::IDevice::Type::Sink, "Deleted", Volume::fromPercents(0U), false, eventType);
+            m_dbusService.sendDeviceInfo(info.index, info.type, "Deleted", Volume::fromPercents(0U), false, false, IAudioControlBackend::EventType::Delete);
     };
 
     auto backend = std::make_shared<Backend::PulseAudio::AudioControlBackend>(appArgs.pulseServerAddress);
@@ -135,6 +162,15 @@ App::App(int argc, char** argv)
         {
             if (auto backend = weakBackend.lock())
                 backend->setDeviceMute(id, type, volume);
+            else
+                Logger::error("m_dbusService.setDeviceMuteSignal().connect: backend doesn't exist anymore");
+        });
+
+    m_connections += m_dbusService.makeDeviceDefaultSignal().connect(
+        [weakBackend](auto id, auto type)
+        {
+            if (auto backend = weakBackend.lock())
+                backend->makeDeviceDefault(id, type);
             else
                 Logger::error("m_dbusService.setDeviceMuteSignal().connect: backend doesn't exist anymore");
         });
