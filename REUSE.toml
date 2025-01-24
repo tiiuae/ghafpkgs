@@ -13,6 +13,7 @@ SPDX-FileCopyrightText = "2022-2025 TII (SSRC) and the Ghaf contributors"
 precedence = "closest"
 path = [
   "flake.lock",
+  "packages/ghaf-mem-manager/Cargo.lock",
   "packages/ghaf-artwork/**/*.png",
   "packages/ghaf-artwork/**/*.jpg",
   "packages/ghaf-artwork/**/*.svg",
