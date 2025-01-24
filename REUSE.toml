@@ -9,7 +9,7 @@ SPDX-PackageDownloadLocation = "https://github.com/tiiuae/ghaf"
 
 [[annotations]]
 SPDX-License-Identifier = "Apache-2.0"
-SPDX-FileCopyrightText = "2022-2024 TII (SSRC) and the Ghaf contributors"
+SPDX-FileCopyrightText = "2022-2025 TII (SSRC) and the Ghaf contributors"
 precedence = "closest"
 path = [
   "flake.lock",
@@ -17,6 +17,7 @@ path = [
   "packages/ghaf-artwork/**/*.jpg",
   "packages/ghaf-artwork/**/*.svg",
   "packages/ghaf-theme/**/*.svg",
+  "packages/ghaf-nw-packet-forwarder/Cargo.lock",
 ]
 
 [[annotations]]
