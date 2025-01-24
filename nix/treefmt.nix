@@ -35,6 +35,9 @@
 
           # C++
           clang-format.enable = true;
+
+          # Rust
+          rustfmt.enable = true;
         };
 
         settings.global.excludes = [
