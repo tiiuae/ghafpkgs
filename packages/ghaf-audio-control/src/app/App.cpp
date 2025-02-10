@@ -10,6 +10,8 @@
 #include <glibmm/main.h>
 #include <glibmm/optioncontext.h>
 
+#include <ranges>
+
 using namespace ghaf::AudioControl;
 
 namespace
@@ -23,17 +25,15 @@ struct AppArgs
     Glib::ustring indicatorIconName;
     Glib::ustring appVms;
     Glib::ustring isDeamonMode;
+    Glib::ustring allowMultipleStreamsPerVm;
 };
 
 std::vector<std::string> GetAppVmsList(const std::string& appVms)
 {
     std::vector<std::string> result;
 
-    std::istringstream iss(appVms);
-    std::string buf;
-
-    while (getline(iss, buf, ','))
-        result.push_back(buf);
+    for (auto part : appVms | std::views::split(','))
+        result.emplace_back(part.begin(), part.end());
 
     return result;
 }
@@ -76,11 +76,16 @@ App::App(int argc, char** argv)
     deamonModeOption.set_long_name("deamon_mode");
     deamonModeOption.set_description("Deamon mode");
 
+    Glib::OptionEntry allowMultipleStreamsPerVmOption;
+    allowMultipleStreamsPerVmOption.set_long_name("allow_multiple_streams_per_vm");
+    allowMultipleStreamsPerVmOption.set_description("Allow Multiple Streams Per Vm");
+
     Glib::OptionGroup options("Main", "Main");
     options.add_entry(pulseServerOption, appArgs.pulseServerAddress);
     options.add_entry(indicatorIconNameOption, appArgs.indicatorIconName);
     options.add_entry(appVmsOption, appArgs.appVms);
     options.add_entry(deamonModeOption, appArgs.isDeamonMode);
+    options.add_entry(allowMultipleStreamsPerVmOption, appArgs.allowMultipleStreamsPerVm);
 
     Glib::OptionContext context("Application Options");
     context.set_main_group(options);
@@ -95,6 +100,7 @@ App::App(int argc, char** argv)
     Logger::info("Parsed the option: '{}' = '{}'", indicatorIconNameOption.get_long_name().c_str(), appArgs.indicatorIconName.c_str());
     Logger::info("Parsed the option: '{}' = '{}'", appVmsOption.get_long_name().c_str(), appArgs.appVms.c_str());
     Logger::info("Parsed the option: '{}' = '{}'", deamonModeOption.get_long_name().c_str(), appArgs.isDeamonMode.c_str());
+    Logger::info("Parsed the option: '{}' = '{}'", allowMultipleStreamsPerVmOption.get_long_name().c_str(), appArgs.allowMultipleStreamsPerVm.c_str());
 
     m_connections += signal_command_line().connect(
         [this]([[maybe_unused]] const Glib::RefPtr<Gio::ApplicationCommandLine>& args)
@@ -104,11 +110,10 @@ App::App(int argc, char** argv)
         },
         false);
 
+    m_audioControlBackend = std::make_shared<Backend::PulseAudio::AudioControlBackend>(appArgs.pulseServerAddress);
+
     m_indicator = createAppIndicator();
     app_indicator_set_icon(m_indicator->get(), appArgs.indicatorIconName.c_str());
-
-    m_audioControl = std::make_unique<AudioControl>(std::make_unique<Backend::PulseAudio::AudioControlBackend>(appArgs.pulseServerAddress),
-                                                    GetAppVmsList(appArgs.appVms));
 
     // if (!appArgs.indicatorIconName.empty())
     // {
@@ -126,42 +131,36 @@ App::App(int argc, char** argv)
     //     Logger::info("No indicator icon was specified");
     // }
 
-    const auto onDevice = [this](IAudioControlBackend::OnSignalMapChangeSignalInfo info)
-    {
-        if (info.ptr)
-        {
-            if (auto* defaultable = dynamic_cast<IAudioControlBackend::IDefaultable*>(info.ptr.get()))
-                m_dbusService.sendDeviceInfo(info.index,
-                                             info.type,
-                                             info.ptr->getDescription(),
-                                             info.ptr->getVolume(),
-                                             info.ptr->isMuted(),
-                                             defaultable->isDefault(),
-                                             info.eventType);
-            else
-                m_dbusService.sendDeviceInfo(info.index, info.type, info.ptr->getName(), info.ptr->getVolume(), info.ptr->isMuted(), false, info.eventType);
-        }
-        else
-            m_dbusService.sendDeviceInfo(info.index, info.type, "Deleted", Volume::fromPercents(0U), false, false, IAudioControlBackend::EventType::Delete);
-    };
+    const std::weak_ptr weakBackend = m_audioControlBackend;
 
-    auto backend = std::make_shared<Backend::PulseAudio::AudioControlBackend>(appArgs.pulseServerAddress);
-    const std::weak_ptr weakBackend(backend);
+    m_connections += m_dbusService.subscribeToDeviceUpdatedSignal().connect(
+        [this, weakBackend]()
+        {
+            if (auto strong = weakBackend.lock())
+            {
+                for (const auto& device : strong->getAllDevices())
+                    sendDeviceUpdateToDbus({.eventType = DBusService::DeviceEventType::Add, .index = device->getIndex(), .type = device->getType(), .ptr = device});
+            }
+        });
 
     m_connections += m_dbusService.setDeviceVolumeSignal().connect(
-        [weakBackend](auto id, auto type, auto volume)
+        [this, weakBackend](auto id, auto type, auto volume)
         {
-            if (auto backend = weakBackend.lock())
+            if (type == IAudioControlBackend::IDevice::Type::Meta)
+                m_metaDeviceManager.setDeviceVolume(id, volume);
+            else if (auto backend = weakBackend.lock())
                 backend->setDeviceVolume(id, type, volume);
             else
                 Logger::error("m_dbusService.setDeviceVolumeSignal().connect: backend doesn't exist anymore");
         });
 
     m_connections += m_dbusService.setDeviceMuteSignal().connect(
-        [weakBackend](auto id, auto type, auto volume)
+        [this, weakBackend](auto id, auto type, auto mute)
         {
+            if (type == IAudioControlBackend::IDevice::Type::Meta)
+                m_metaDeviceManager.setDeviceMute(id, mute);
             if (auto backend = weakBackend.lock())
-                backend->setDeviceMute(id, type, volume);
+                backend->setDeviceMute(id, type, mute);
             else
                 Logger::error("m_dbusService.setDeviceMuteSignal().connect: backend doesn't exist anymore");
         });
@@ -175,12 +174,30 @@ App::App(int argc, char** argv)
                 Logger::error("m_dbusService.setDeviceMuteSignal().connect: backend doesn't exist anymore");
         });
 
-    m_connections += backend->onSinksChanged().connect(onDevice);
-    m_connections += backend->onSourcesChanged().connect(onDevice);
-    m_connections += backend->onSinkInputsChanged().connect(onDevice);
-    m_connections += backend->onSourceOutputsChanged().connect(onDevice);
+    m_audioControl = std::make_unique<AudioControl>(GetAppVmsList(appArgs.appVms), appArgs.allowMultipleStreamsPerVm == "true");
 
-    m_audioControl = std::make_unique<AudioControl>(std::move(backend), GetAppVmsList(appArgs.appVms));
+    const auto onDevice = [this](const IAudioControlBackend::OnSignalMapChangeSignalInfo& info)
+    {
+        if (info.type == IAudioControlBackend::IDevice::Type::SinkInput)
+            m_metaDeviceManager.sendDeviceInfoUpdate(info);
+
+        m_audioControl->sendDeviceInfoUpdate(info);
+        sendDeviceUpdateToDbus(info);
+    };
+
+    const auto onError = [this](std::string_view error)
+    {
+        m_audioControl->sendError(error);
+    };
+
+    m_connections += m_audioControlBackend->onSinksChanged().connect(onDevice);
+    m_connections += m_audioControlBackend->onSourcesChanged().connect(onDevice);
+    m_connections += m_audioControlBackend->onSinkInputsChanged().connect(onDevice);
+    // m_connections += m_audioControlBackend->onSourceOutputsChanged().connect(onDevice); // We don't it now
+    m_connections += m_audioControlBackend->onError().connect(onError);
+    m_connections += m_metaDeviceManager.onDeviceUpdateSignal().connect(onDevice);
+
+    m_audioControlBackend->start();
 }
 
 int App::start()
@@ -251,6 +268,25 @@ void App::on_activate()
 
     m_window->show();
     m_audioControl->show();
+}
+
+void App::sendDeviceUpdateToDbus(const ghaf::AudioControl::IAudioControlBackend::OnSignalMapChangeSignalInfo& info)
+{
+    if (info.ptr)
+    {
+        if (auto* defaultable = dynamic_cast<IAudioControlBackend::IDefaultable*>(info.ptr.get()))
+            m_dbusService.sendDeviceInfo(info.index,
+                                         info.type,
+                                         info.ptr->getDescription(),
+                                         info.ptr->getVolume(),
+                                         info.ptr->isMuted(),
+                                         defaultable->isDefault(),
+                                         info.eventType);
+        else
+            m_dbusService.sendDeviceInfo(info.index, info.type, info.ptr->getName(), info.ptr->getVolume(), info.ptr->isMuted(), false, info.eventType);
+    }
+    else
+        m_dbusService.sendDeviceInfo(info.index, info.type, "Deleted", Volume::fromPercents(0U), false, false, IAudioControlBackend::EventType::Delete);
 }
 
 RaiiWrap<AppIndicator*> App::createAppIndicator()

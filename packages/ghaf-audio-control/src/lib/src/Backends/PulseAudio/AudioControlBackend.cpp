@@ -147,6 +147,7 @@ constexpr pa_subscription_mask SubscriptionMask = GetSubscriptionMask(pa_subscri
     const auto destructor = [](pa_context*& context)
     {
         pa_context_disconnect(context);
+        pa_context_unref(context);
     };
 
     return {constructor, destructor};
@@ -154,8 +155,8 @@ constexpr pa_subscription_mask SubscriptionMask = GetSubscriptionMask(pa_subscri
 
 } // namespace
 
-AudioControlBackend::AudioControlBackend(std::string pulseAudioServerAddress)
-    : m_serverAddress(std::move(pulseAudioServerAddress))
+AudioControlBackend::AudioControlBackend(std::string serverAddress)
+    : m_serverAddress(std::move(serverAddress))
     , m_mainloop(InitMainloop())
     , m_mainloopApi(InitApi(*m_mainloop))
 {
@@ -204,6 +205,9 @@ void AudioControlBackend::setDeviceVolume(IDevice::IntexT index, IDevice::Type t
     case IAudioControlBackend::IDevice::Type::SourceOutput:
         update(m_sourceOutputs);
         break;
+
+    case IAudioControlBackend::IDevice::Type::Meta:
+        break;
     }
 }
 
@@ -238,6 +242,9 @@ void AudioControlBackend::setDeviceMute(IDevice::IntexT index, IDevice::Type typ
 
     case IAudioControlBackend::IDevice::Type::SourceOutput:
         update(m_sourceOutputs);
+        break;
+
+    case IAudioControlBackend::IDevice::Type::Meta:
         break;
     }
 }

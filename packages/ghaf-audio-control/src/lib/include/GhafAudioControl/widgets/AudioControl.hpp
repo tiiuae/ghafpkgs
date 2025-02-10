@@ -6,6 +6,7 @@
 #pragma once
 
 #include <GhafAudioControl/IAudioControlBackend.hpp>
+#include <GhafAudioControl/MetaDevice.hpp>
 #include <GhafAudioControl/widgets/AppList.hpp>
 #include <GhafAudioControl/widgets/DeviceListWidget.hpp>
 
@@ -22,7 +23,7 @@ namespace ghaf::AudioControl
 class AudioControl final : public Gtk::Box
 {
 public:
-    AudioControl(std::shared_ptr<IAudioControlBackend> backend, const std::vector<std::string>& appVmsList);
+    AudioControl(const std::vector<std::string>& appVmsList, bool allowMultipleStreamsPerVm);
     ~AudioControl() override = default;
 
     AudioControl(AudioControl&) = delete;
@@ -31,26 +32,26 @@ public:
     AudioControl& opeartor(AudioControl&) = delete;
     AudioControl& opeartor(AudioControl&&) = delete;
 
+    void sendDeviceInfoUpdate(const IAudioControlBackend::OnSignalMapChangeSignalInfo& info);
+    void sendError(std::string_view error);
+
 private:
     void init();
-
-    void onPulseSinksChanged(IAudioControlBackend::OnSignalMapChangeSignalInfo info);
-    void onPulseSourcesChanged(IAudioControlBackend::OnSignalMapChangeSignalInfo info);
-    void onPulseSinkInputsChanged(IAudioControlBackend::OnSignalMapChangeSignalInfo info);
-    void onPulseSourcesOutputsChanged(IAudioControlBackend::OnSignalMapChangeSignalInfo info);
 
     void onPulseError(std::string_view error);
 
 private:
-    std::shared_ptr<IAudioControlBackend> m_audioControl;
-
     AppList m_appList;
+    const bool m_allowMultipleStreamsPerVm;
 
     Glib::RefPtr<DeviceListModel> m_sinksModel;
     DeviceListWidget m_sinks;
 
     Glib::RefPtr<DeviceListModel> m_sourcesModel;
     DeviceListWidget m_sources;
+
+    Glib::RefPtr<DeviceListModel> m_metaSinkInputModel;
+    DeviceListWidget m_metaSinkInputs;
 
     ConnectionContainer m_connections;
 };

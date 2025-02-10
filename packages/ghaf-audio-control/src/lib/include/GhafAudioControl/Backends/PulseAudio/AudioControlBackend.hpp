@@ -18,7 +18,7 @@ namespace ghaf::AudioControl::Backend::PulseAudio
 class AudioControlBackend final : public IAudioControlBackend
 {
 public:
-    explicit AudioControlBackend(std::string pulseAudioServerAddress);
+    explicit AudioControlBackend(std::string serverAddress);
     ~AudioControlBackend() override = default;
 
     const std::string& getServerAddress() const noexcept

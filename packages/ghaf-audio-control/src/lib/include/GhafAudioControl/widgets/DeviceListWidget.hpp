@@ -25,6 +25,7 @@ class DeviceListWidget : public Gtk::Box
 {
 public:
     explicit DeviceListWidget(Glib::RefPtr<DeviceListModel> devicesModel);
+    ~DeviceListWidget() override = default;
 
     void reveal(bool reveal = true);
 

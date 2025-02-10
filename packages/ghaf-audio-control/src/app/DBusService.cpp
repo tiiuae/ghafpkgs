@@ -97,7 +97,7 @@ constexpr auto IntrospectionXml = R"xml(
                     - 2: Delete
             -->
 
-            <method name='UnsubscribeFromDeviceUpdatedSignal' />
+            <method name='SubscribeToDeviceUpdatedSignal' />
             <method name='UnsubscribeFromDeviceUpdatedSignal' />
 
             <method name='SetDeviceVolume'>
@@ -163,6 +163,8 @@ DBusService::DeviceType IntToDeviceType(int value)
         return DBusService::DeviceType::SinkInput;
     case 3:
         return DBusService::DeviceType::SourceOutput;
+    case 4:
+        return DBusService::DeviceType::Meta;
 
     default:
         throw std::runtime_error{std::format("'type' field has an unsupported value: {}", value)};
@@ -242,6 +244,7 @@ void DBusService::registerSystemTrayIcon(const Glib::ustring& iconName)
     try
     {
         auto connection = Gio::DBus::Connection::get_sync(Gio::DBus::BUS_TYPE_SESSION);
+        connection->register_object(StatusNotifierItem::ObjectPath, m_introspectionData->lookup_interface(StatusNotifierItem::InterfaceName), m_interfaceVtable);
 
         auto args = Glib::VariantContainerBase::create_tuple(
             std::vector<Glib::VariantBase>{Glib::Variant<Glib::ustring>::create(StatusNotifierItem::ObjectPath)});
@@ -274,7 +277,6 @@ void DBusService::onBusAcquired([[maybe_unused]] const Glib::RefPtr<Gio::DBus::C
     Logger::debug("The bus for a name: {} is acquired, registering...", name.c_str());
 
     connection->register_object(AudioControlService::ObjectPath, m_introspectionData->lookup_interface(AudioControlService::InterfaceName), m_interfaceVtable);
-    connection->register_object(StatusNotifierItem::ObjectPath, m_introspectionData->lookup_interface(StatusNotifierItem::InterfaceName), m_interfaceVtable);
 }
 
 void DBusService::onNameAcquired([[maybe_unused]] const Glib::RefPtr<Gio::DBus::Connection>& connection, const Glib::ustring& name)

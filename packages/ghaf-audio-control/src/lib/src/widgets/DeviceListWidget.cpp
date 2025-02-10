@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include <GhafAudioControl/utils/Check.hpp>
 #include <GhafAudioControl/widgets/DeviceListWidget.hpp>
 
 #include <GhafAudioControl/Backends/PulseAudio/SinkInput.hpp>
@@ -57,7 +58,7 @@ Gtk::Widget* CreateDeviceWidget(const Glib::RefPtr<Glib::Object>& deviceModelPtr
 
 DeviceListWidget::DeviceListWidget(Glib::RefPtr<DeviceListModel> model)
     : Gtk::Box(Gtk::Orientation::ORIENTATION_VERTICAL)
-    , m_model(std::move(model))
+    , m_model(std::move(CheckNullPtr(model)))
     , m_revealerBox(Gtk::Orientation::ORIENTATION_VERTICAL)
     , m_emptyListLabel("No streams from the AppVM")
     , m_appNameButton(m_model->getAppNameProperty())
@@ -90,7 +91,8 @@ DeviceListWidget::DeviceListWidget(Glib::RefPtr<DeviceListModel> model)
 
 void DeviceListWidget::onDeviceChange([[maybe_unused]] guint position, [[maybe_unused]] guint removed, [[maybe_unused]] guint added)
 {
-    Glib::signal_idle().connect_once([this]() { m_emptyListLabel.set_visible(m_model->getDeviceModels()->get_n_items() == 0); }, Glib::PRIORITY_DEFAULT);
+    Glib::signal_idle().connect_once([this]() { m_emptyListLabel.set_visible(CheckNullPtr(m_model)->getDeviceModels()->get_n_items() == 0); },
+                                     Glib::PRIORITY_DEFAULT);
 }
 
 std::string DeviceListWidget::getName() const

@@ -36,6 +36,9 @@ PRIVATE
     src/widgets/DeviceWidget.cpp
     src/widgets/SinkWidget.cpp
 
+    src/AppVmMetaGroup.cpp
+    src/MetaDevice.cpp
+
 PUBLIC
     FILE_SET public_headers
     TYPE HEADERS
@@ -49,9 +52,6 @@ PUBLIC
         include/GhafAudioControl/Backends/PulseAudio/Source.hpp
         include/GhafAudioControl/Backends/PulseAudio/SourceOutput.hpp
         include/GhafAudioControl/Backends/PulseAudio/Volume.hpp
-
-        include/GhafAudioControl/IAudioControlBackend.hpp
-        include/GhafAudioControl/Volume.hpp
 
         include/GhafAudioControl/models/DeviceListModel.hpp
         include/GhafAudioControl/models/DeviceModel.hpp
@@ -68,6 +68,11 @@ PUBLIC
         include/GhafAudioControl/widgets/DeviceListWidget.hpp
         include/GhafAudioControl/widgets/DeviceWidget.hpp
         include/GhafAudioControl/widgets/SinkWidget.hpp
+
+        include/GhafAudioControl/AppVmMetaGroup.hpp
+        include/GhafAudioControl/IAudioControlBackend.hpp
+        include/GhafAudioControl/MetaDevice.hpp
+        include/GhafAudioControl/Volume.hpp
 )
 
 target_link_libraries(
