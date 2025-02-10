@@ -6,3 +6,7 @@
 pub mod chromecast;
 
 pub use chromecast::Chromecast;
+
+pub mod security;
+
+pub use security::Security;

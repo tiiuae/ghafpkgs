@@ -9,6 +9,9 @@ use pnet::ipnetwork::IpNetwork;
 use pnet::util::MacAddr;
 use std::error::Error;
 use std::str;
+use std::time::Duration;
+
+use crate::filter::security::RateLimiter;
 
 lazy_static! {
     static ref CLI_ARGS: Args = {
@@ -50,6 +53,22 @@ struct Args {
     /// IP address of the internal network interface
     #[arg(long)]
     internal_ip: Option<IpNetwork>,
+
+    /// Enable Rate limiting functionality
+    #[arg(long, default_value_t = 1)]
+    rate_limiting: u8,
+
+    /// Rate limiting max request per window
+    #[arg(long, default_value_t = 5)]
+    rate_limiting_req_per_window: usize,
+
+    /// Rate limiting max request per window in ms
+    #[arg(long, default_value_t = 1000)]
+    rate_limiting_window_period: u64,
+
+    /// Rate limiting max routes
+    #[arg(long, default_value_t = 50)]
+    rate_limiting_max_routes: usize,
 
     /// Enable Chromecast packet forwarding functionality
     #[arg(long, default_value_t = 0)]
@@ -119,4 +138,14 @@ pub fn get_log_level() -> &'static log::Level {
 
 pub fn get_log_output() -> &'static LogOutput {
     &CLI_ARGS.log_output
+}
+
+pub fn get_ratelimiting_ops() -> RateLimiter {
+    RateLimiter::new(
+        CLI_ARGS.rate_limiting == 1,
+        CLI_ARGS.rate_limiting_req_per_window,
+        Duration::from_millis(CLI_ARGS.rate_limiting_window_period),
+        Duration::from_millis(10000),
+        CLI_ARGS.rate_limiting_max_routes,
+    )
 }

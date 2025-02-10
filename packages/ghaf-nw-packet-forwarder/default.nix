@@ -21,7 +21,6 @@ let
     // {
       outputs = [ "out" ];
       cargoArtifacts = craneLib.buildDepsOnly commonArgs;
-
     }
   );
 in

@@ -220,7 +220,7 @@ impl ExternalOps {
                         return Some((mac, ip));
                     } else if mdns_enabled && dest_port == MDNS_PORT && dest_ip == MDNS_IP {
                         let is_mdns_response = self.is_mdns_response(udp_packet.payload());
-                        info!(
+                        debug!(
                             "Ext to Int - mdns packet detected,src ip: {}, response: {}",
                             src_ip, is_mdns_response
                         );
@@ -325,7 +325,7 @@ impl InternalOps {
                         && dest_ip == MDNS_IP
                     {
                         let is_mdns_query = self.is_mdns_query(udp_packet.payload());
-                        info!(
+                        debug!(
                             "Int to Ext - mdns packet detected, src ip: {}, query:{}",
                             src_ip, is_mdns_query
                         );
