@@ -33,7 +33,8 @@ public:
             Sink,
             Source,
             SinkInput,
-            SourceOutput
+            SourceOutput,
+            Meta
         };
 
         using OnUpdateSignal = sigc::signal<void()>;
@@ -103,6 +104,8 @@ public:
 
     struct OnSignalMapChangeSignalInfo
     {
+        using Signal = sigc::signal<void(OnSignalMapChangeSignalInfo)>;
+
         EventType eventType;
         Index index;
         IDevice::Type type;
@@ -124,7 +127,7 @@ public:
 
     public:
         using Iter = MapType::iterator;
-        using OnChangeSignal = sigc::signal<void(OnSignalMapChangeSignalInfo)>;
+        using OnChangeSignal = OnSignalMapChangeSignalInfo::Signal;
 
         SignalMap() = default;
 

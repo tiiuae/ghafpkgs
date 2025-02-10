@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include <GhafAudioControl/utils/Check.hpp>
 #include <GhafAudioControl/widgets/DeviceWidget.hpp>
 
 #include <GhafAudioControl/utils/Debug.hpp>
@@ -50,7 +51,7 @@ Gtk::Scale* MakeScaleWidget()
 
 DeviceWidget::DeviceWidget(DeviceModel::Ptr model)
     : Gtk::Box(Gtk::ORIENTATION_HORIZONTAL)
-    , m_model(std::move(model))
+    , m_model(std::move(CheckNullPtr(model)))
     , m_defaultButton(Gtk::make_managed<Gtk::CheckButton>())
     , m_nameLabel(Gtk::make_managed<Gtk::Label>())
     , m_switch(Gtk::make_managed<Gtk::Switch>())

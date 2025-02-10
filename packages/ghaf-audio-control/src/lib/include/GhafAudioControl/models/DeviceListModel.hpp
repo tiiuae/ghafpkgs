@@ -7,6 +7,7 @@
 
 #include <GhafAudioControl/IAudioControlBackend.hpp>
 #include <GhafAudioControl/models/DeviceModel.hpp>
+#include <GhafAudioControl/utils/Check.hpp>
 
 #include <glibmm/object.h>
 #include <glibmm/property.h>
@@ -20,6 +21,7 @@ class DeviceListModel final : public Glib::Object
 {
 private:
     explicit DeviceListModel(std::string name, std::string namePrefix = "");
+    ~DeviceListModel() noexcept override = default;
 
 public:
     static Glib::RefPtr<DeviceListModel> create(std::string name, std::string namePrefix = "");
@@ -28,10 +30,7 @@ public:
 
     void addDevice(IAudioControlBackend::ISink::Ptr device);
 
-    [[nodiscard]] Glib::RefPtr<Gio::ListStore<DeviceModel>> getDeviceModels() noexcept
-    {
-        return m_devices;
-    }
+    [[nodiscard]] Glib::RefPtr<Gio::ListStore<DeviceModel>> getDeviceModels();
 
     [[nodiscard]] auto getAppNameProperty() const
     {

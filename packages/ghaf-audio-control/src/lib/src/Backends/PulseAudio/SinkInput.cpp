@@ -28,13 +28,22 @@ bool SinkInput::operator==(const IDevice& other) const
 
 void SinkInput::setMuted(bool mute)
 {
-    deleteCheck();
+    if (m_device.isDeleted())
+    {
+        Logger::error("SinkInput::setMuted: already deleted!");
+        return;
+    }
+
     ExecutePulseFunc(pa_context_set_sink_input_mute, &m_device.getContext(), m_device.getIndex(), mute, nullptr, nullptr);
 }
 
 void SinkInput::setVolume(Volume volume)
 {
-    deleteCheck();
+    if (m_device.isDeleted())
+    {
+        Logger::error("SinkInput::setVolume: already deleted!");
+        return;
+    }
 
     pa_cvolume paChannelVolume;
     std::ignore = pa_cvolume_set(&paChannelVolume, m_device.getPulseChannelVolume().channels, ToPulseAudioVolume(volume));
@@ -62,7 +71,10 @@ void SinkInput::markDeleted()
 void SinkInput::deleteCheck()
 {
     if (m_device.isDeleted())
+    {
+        Logger::error("SinkInput::deleteCheck: already deleted!");
         throw std::logic_error{std::format("Using deleted device: {}", toString())};
+    }
 }
 
 } // namespace ghaf::AudioControl::Backend::PulseAudio

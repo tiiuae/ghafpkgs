@@ -10,6 +10,8 @@
 #include <GhafAudioControl/utils/Logger.hpp>
 #include <GhafAudioControl/widgets/AudioControl.hpp>
 
+#include <GhafAudioControl/AppVmMetaGroup.hpp>
+
 #include "DBusService.hpp"
 
 #include <gtkmm/application.h>
@@ -51,7 +53,13 @@ private:
 
     void on_activate() override;
 
+    void sendDeviceUpdateToDbus(const ghaf::AudioControl::IAudioControlBackend::OnSignalMapChangeSignalInfo& info);
+
 private:
+    std::shared_ptr<ghaf::AudioControl::Backend::PulseAudio::AudioControlBackend> m_audioControlBackend;
+
+    ghaf::AudioControl::MetaDeviceManager m_metaDeviceManager;
+
     DBusService m_dbusService;
 
     std::unique_ptr<ghaf::AudioControl::AudioControl> m_audioControl;

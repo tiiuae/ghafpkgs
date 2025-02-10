@@ -29,7 +29,8 @@ void ExecutePulseFuncPrivate(Fx fx, ArgsT... args)
                                  },
                                  [](pa_operation*& op)
                                  {
-                                     pa_operation_unref(op);
+                                     if (op)
+                                         pa_operation_unref(op);
                                  }};
 }
 

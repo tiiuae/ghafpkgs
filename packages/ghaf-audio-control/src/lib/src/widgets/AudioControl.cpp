@@ -67,13 +67,15 @@ void OnPulseDeviceChanged(IAudioControlBackend::EventType eventType, IndexT inde
     }
 }
 
-AudioControl::AudioControl(std::shared_ptr<IAudioControlBackend> backend, const std::vector<std::string>& appVmsList)
+AudioControl::AudioControl(const std::vector<std::string>& appVmsList, bool allowMultipleStreamsPerVm)
     : Gtk::Box(Gtk::ORIENTATION_VERTICAL)
-    , m_audioControl(std::move(backend))
+    , m_allowMultipleStreamsPerVm(allowMultipleStreamsPerVm)
     , m_sinksModel(DeviceListModel::create("Speakers"))
     , m_sinks(m_sinksModel)
     , m_sourcesModel(DeviceListModel::create("Microphones"))
     , m_sources(m_sourcesModel)
+    , m_metaSinkInputModel(DeviceListModel::create("Meta"))
+    , m_metaSinkInputs(m_metaSinkInputModel)
 {
     set_halign(Gtk::Align::ALIGN_START);
     set_valign(Gtk::Align::ALIGN_START);
@@ -84,28 +86,74 @@ AudioControl::AudioControl(std::shared_ptr<IAudioControlBackend> backend, const 
     init();
 }
 
+void AudioControl::sendDeviceInfoUpdate(const IAudioControlBackend::OnSignalMapChangeSignalInfo& info)
+{
+    switch (info.eventType)
+    {
+    case IAudioControlBackend::EventType::Add:
+    {
+        switch (info.type)
+        {
+        case IAudioControlBackend::IDevice::Type::Sink:
+        {
+            m_sinksModel->addDevice(info.ptr);
+            break;
+        }
+
+        case IAudioControlBackend::IDevice::Type::Source:
+        {
+            m_sourcesModel->addDevice(info.ptr);
+            break;
+        }
+
+        case IAudioControlBackend::IDevice::Type::SinkInput:
+        {
+            if (m_allowMultipleStreamsPerVm)
+                m_appList.addDevice(info.ptr);
+
+            break;
+        }
+
+        case IAudioControlBackend::IDevice::Type::SourceOutput:
+
+        case IAudioControlBackend::IDevice::Type::Meta:
+            if (m_allowMultipleStreamsPerVm)
+                m_metaSinkInputModel->addDevice(info.ptr);
+            else
+                m_appList.addDevice(info.ptr);
+
+            break;
+        }
+
+        Logger::debug("OnPulseDeviceChanged: ADD {}", info.ptr->toString());
+        break;
+    }
+
+    case IAudioControlBackend::EventType::Update:
+        Logger::debug("OnPulseDeviceChanged: UPDATE {}", info.ptr->toString());
+        break;
+
+    case IAudioControlBackend::EventType::Delete:
+        Logger::debug("OnPulseDeviceChanged: DELETE index: {}", info.index);
+        break;
+    }
+}
+
+void AudioControl::sendError(std::string_view error)
+{
+    onPulseError(error);
+}
+
 void AudioControl::init()
 {
-    if (m_audioControl)
-    {
-        pack_start(m_sinks);
-        pack_start(m_sources);
-        pack_start(m_appList);
+    pack_start(m_sinks);
+    pack_start(m_sources);
+    pack_start(m_appList);
 
-        m_connections += m_audioControl->onSinksChanged().connect(sigc::mem_fun(*this, &AudioControl::onPulseSinksChanged));
-        m_connections += m_audioControl->onSourcesChanged().connect(sigc::mem_fun(*this, &AudioControl::onPulseSourcesChanged));
-        m_connections += m_audioControl->onSinkInputsChanged().connect(sigc::mem_fun(*this, &AudioControl::onPulseSinkInputsChanged));
-        // m_connections += m_audioControl->onSourceOutputsChanged().connect(sigc::mem_fun(*this, &AudioControl::onPulseSourcesOutputsChanged));
-        m_connections += m_audioControl->onError().connect(sigc::mem_fun(*this, &AudioControl::onPulseError));
+    if (m_allowMultipleStreamsPerVm)
+        pack_start(m_metaSinkInputs);
 
-        show_all_children();
-
-        m_audioControl->start();
-    }
-    else
-    {
-        onPulseError("No audio backend");
-    }
+    show_all_children();
 
     auto cssProvider = Gtk::CssProvider::create();
     cssProvider->load_from_data(CssStyle);
@@ -114,33 +162,8 @@ void AudioControl::init()
     style_context->add_provider_for_screen(Gdk::Screen::get_default(), cssProvider, GTK_STYLE_PROVIDER_PRIORITY_USER);
 }
 
-void AudioControl::onPulseSinksChanged(IAudioControlBackend::OnSignalMapChangeSignalInfo info)
-{
-    if (info.eventType == IAudioControlBackend::EventType::Add)
-        m_sinksModel->addDevice(std::move(info.ptr));
-}
-
-void AudioControl::onPulseSourcesChanged(IAudioControlBackend::OnSignalMapChangeSignalInfo info)
-{
-    if (info.eventType == IAudioControlBackend::EventType::Add)
-        m_sourcesModel->addDevice(std::move(info.ptr));
-}
-
-void AudioControl::onPulseSinkInputsChanged(IAudioControlBackend::OnSignalMapChangeSignalInfo info)
-{
-    OnPulseDeviceChanged(info.eventType, info.index, std::move(info.ptr), m_appList);
-}
-
-void AudioControl::onPulseSourcesOutputsChanged(IAudioControlBackend::OnSignalMapChangeSignalInfo info)
-{
-    OnPulseDeviceChanged(info.eventType, info.index, std::move(info.ptr), m_appList);
-}
-
 void AudioControl::onPulseError(std::string_view error)
 {
-    m_connections.clear();
-    m_audioControl->stop();
-
     Logger::error(error);
 
     m_appList.removeAllApps();

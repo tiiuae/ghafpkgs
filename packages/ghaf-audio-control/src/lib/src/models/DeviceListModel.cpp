@@ -44,7 +44,7 @@ Glib::RefPtr<DeviceListModel> DeviceListModel::create(std::string name, std::str
 
 void DeviceListModel::addDevice(IAudioControlBackend::IDevice::Ptr device)
 {
-    Check(device != nullptr, "device is nullptr");
+    CheckNullPtr(device);
 
     const Index deviceIndex = device->getIndex();
 
@@ -72,6 +72,11 @@ void DeviceListModel::addDevice(IAudioControlBackend::IDevice::Ptr device)
 
             m_deviceConnections.erase(deviceIndex);
         });
+}
+
+Glib::RefPtr<Gio::ListStore<DeviceModel>> DeviceListModel::getDeviceModels()
+{
+    return m_devices;
 }
 
 } // namespace ghaf::AudioControl

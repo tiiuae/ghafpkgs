@@ -25,7 +25,7 @@ namespace ghaf::AudioControl
 namespace
 {
 
-constexpr auto AppVmPrefix = "AppVM";
+constexpr auto AppVmPrefix = "AppVMs";
 
 std::optional<size_t> GetIndexByAppId(const Glib::RefPtr<Gio::ListStore<DeviceListModel>>& model, const std::string& id) noexcept
 {
@@ -44,7 +44,7 @@ std::string GetAppNameFromSinkInput(const IAudioControlBackend::ISinkInput::Ptr&
             return *appVmName;
     }
 
-    return "Other";
+    return AppVmPrefix;
 }
 
 Gtk::Widget* CreateWidgetsForApp(const Glib::RefPtr<Glib::Object>& appVmModelPtr)
@@ -88,7 +88,7 @@ void AppList::addVm(std::string appVmName)
 
 void AppList::addDevice(IAudioControlBackend::ISinkInput::Ptr device)
 {
-    Check(device != nullptr, "device is nullptr");
+    CheckNullPtr(device);
 
     const std::string appName = GetAppNameFromSinkInput(device);
 
@@ -98,7 +98,7 @@ void AppList::addDevice(IAudioControlBackend::ISinkInput::Ptr device)
     {
         Logger::info("AppList::addDevice: add new app with name: {}", appName);
 
-        auto appVmModel = DeviceListModel::create(appName, AppVmPrefix);
+        auto appVmModel = DeviceListModel::create(appName);
         m_appsModel->append(appVmModel);
 
         appVmModel->addDevice(std::move(device));

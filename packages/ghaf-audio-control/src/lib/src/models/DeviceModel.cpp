@@ -4,6 +4,7 @@
  */
 
 #include <GhafAudioControl/models/DeviceModel.hpp>
+#include <GhafAudioControl/utils/Check.hpp>
 
 #include <GhafAudioControl/utils/Logger.hpp>
 
@@ -57,7 +58,7 @@ auto GetDeviceName(const IAudioControlBackend::IDevice& device)
 
 DeviceModel::DeviceModel(IAudioControlBackend::IDevice::Ptr device)
     : Glib::ObjectBase(typeid(DeviceModel))
-    , m_device(std::move(device))
+    , m_device(std::move(CheckNullPtr(device)))
     , m_isEnabled{*this, "m_isEnabled", false}
     , m_connections{m_isDefault.get_proxy().signal_changed().connect(sigc::mem_fun(*this, &DeviceModel::onDefaultChange)),
                     m_isSoundEnabled.get_proxy().signal_changed().connect(sigc::mem_fun(*this, &DeviceModel::onSoundEnabledChange)),
@@ -69,6 +70,7 @@ DeviceModel::DeviceModel(IAudioControlBackend::IDevice::Ptr device)
 
 Glib::RefPtr<DeviceModel> DeviceModel::create(IAudioControlBackend::IDevice::Ptr device)
 {
+    CheckNullPtr(device);
     return Glib::RefPtr<DeviceModel>(new DeviceModel(std::move(device)));
 }
 
@@ -100,6 +102,8 @@ void DeviceModel::updateDevice()
 
 void DeviceModel::onDefaultChange()
 {
+    const auto scopeExit = m_connections.blockGuarded();
+
     const auto isDefault = m_isDefault.get_value();
 
     Logger::debug("Default has changed to: {}", isDefault);
@@ -110,6 +114,8 @@ void DeviceModel::onDefaultChange()
 
 void DeviceModel::onSoundEnabledChange()
 {
+    const auto scopeExit = m_connections.blockGuarded();
+
     const auto isEnabled = m_isSoundEnabled.get_value();
 
     Logger::debug("SoundEnabled has changed to: {}", isEnabled);
@@ -118,6 +124,8 @@ void DeviceModel::onSoundEnabledChange()
 
 void DeviceModel::onSoundVolumeChange()
 {
+    const auto scopeExit = m_connections.blockGuarded();
+
     Logger::debug("SoundVolume has changed to: {}", m_soundVolume.get_value());
     m_device->setVolume(Volume::fromPercents(m_soundVolume.get_value()));
 }
