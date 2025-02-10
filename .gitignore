@@ -6,3 +6,5 @@
 .direnv/
 result
 target/
+.vscode/
+.nixos-test-history

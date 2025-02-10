@@ -4,9 +4,10 @@
 */
 
 // forward.rs
-
+use crate::filter::Security;
 use lazy_static::lazy_static;
 use log::{debug, error, info, trace};
+use pnet::datalink;
 use pnet::datalink::NetworkInterface;
 use pnet::ipnetwork::IpNetwork;
 use pnet::packet::arp::ArpPacket;
@@ -29,7 +30,18 @@ use std::net::IpAddr;
 use std::sync::Arc;
 use std::sync::RwLock;
 use tokio::sync::Mutex;
+use tokio_util::sync::CancellationToken;
 pub mod forward {
+
+    const MAX_PACKET_SIZE: usize = 1522;
+    const MIN_PACKET_SIZE: usize = 64;
+
+    use std::net::Ipv4Addr;
+
+    use log::warn;
+
+    use crate::filter::security::RateLimiter;
+
     use super::*;
     /// Holds the network interface details, including external and internal IPs and MAC addresses.
     #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,6 +58,8 @@ pub mod forward {
             int_ip: IpNetwork::V4("0.0.0.0/0".parse().unwrap()),
             int_mac: MacAddr::zero(),
         });
+        static ref RATELIMITER: RateLimiter = RateLimiter::default();
+        static ref SECURITY: Arc<Security> = Security::new(&RATELIMITER);
     }
     /// Assigns the external and internal network interfaces and their respective IPs and MAC addresses.
     ///
@@ -102,6 +116,7 @@ pub mod forward {
             })
             .ok_or_else(|| format!("No IPv4 address found for interface {}", iface.name))
     }
+
     /// Retrieves the current network interface details (external and internal IP and MAC).
     ///
     /// # Returns
@@ -113,6 +128,39 @@ pub mod forward {
             .expect("Failed to acquire read lock on IFACES");
         ifaces.clone()
     }
+
+    pub fn is_iface_running_up(iface_name: &str) -> bool {
+        // Get the network interfaces
+        let interfaces = datalink::interfaces();
+        if let Some((mac, ip)) = interfaces
+            .iter()
+            .filter(|iface| iface.name == iface_name && iface.is_up() && iface.is_running())
+            .filter_map(|iface| iface.mac.map(|mac| (iface, mac)))
+            .find_map(|(iface, mac)| {
+                iface
+                    .ips
+                    .iter()
+                    .find_map(|ip| ip.is_ipv4().then_some((mac, ip)))
+            })
+        {
+            let current_ifaces = get_ifaces();
+            if current_ifaces.ext_mac == mac && current_ifaces.ext_ip.ip() != ip.ip() {
+                let mut ifaces = IFACES.write().unwrap();
+                ifaces.ext_ip = *ip;
+                info!("external interface has new ip:{}", ifaces.ext_ip);
+            }
+            true
+        } else {
+            false
+        }
+    }
+
+    pub async fn set_sec_params(rate_limiter: &RateLimiter, cancel_token: CancellationToken) {
+        let security = Arc::clone(&SECURITY);
+        security.set_rate_limiter(rate_limiter).await;
+        security.set_cancel_token(cancel_token).await;
+    }
+
     /// Processes a packet coming from the external interface and forwards it to the internal network.
     ///
     /// # Arguments
@@ -138,7 +186,10 @@ pub mod forward {
         3) calculate crc and checksums again
         */
         let is_ipv6: bool = eth_packet.get_ethertype() == EtherTypes::Ipv6;
-        if is_ipv6 || is_it_own_packet(eth_packet, src_ips) || !is_packet_safe(eth_packet) {
+        if is_ipv6
+            || is_it_own_packet(eth_packet, src_ips)
+            || !ext_to_int_is_packet_safe(eth_packet).await
+        {
             debug!("Ext to Int - packet dropped {}", parse_packet(eth_packet));
         } else if modify_ext_to_int_packet(eth_packet, src_mac, dest_mac, dest_ip) {
             // println!(
@@ -442,7 +493,7 @@ pub mod forward {
         */
         if is_ipv6
             || !is_it_external_packet(eth_packet, &internal_ip)
-            || !is_packet_safe(eth_packet)
+            || !int_to_ext_is_packet_safe(eth_packet)
         {
             debug!("Int to Ext - packet dropped {}", parse_packet(eth_packet));
         } else if modify_int_to_ext_packet(eth_packet, &ext_mac, &ext_ip) {
@@ -593,20 +644,145 @@ pub mod forward {
     /// Checks if the packet is safe to forward.
     ///
     /// Currently, the safety checks are not implemented but should include checks like:
-    /// - Loopback prevention
     /// - Rate limiting checks
-    ///
+    /// - checksum check
+    /// - packet size check
     /// # Arguments
     ///
     /// * `eth_packet` - The Ethernet packet to be checked.
     ///
     /// # Returns
     ///
-    fn is_packet_safe(_eth_packet: &MutableEthernetPacket<'_>) -> bool {
+    async fn ext_to_int_is_packet_safe(eth_packet: &mut MutableEthernetPacket<'_>) -> bool {
+        let total_packet_len = eth_packet.packet().len();
+
+        if !(MIN_PACKET_SIZE..=MAX_PACKET_SIZE).contains(&total_packet_len) {
+            warn!("ext to int - packet length is not in range:{total_packet_len}");
+            return false;
+        }
+
+        if eth_packet.get_ethertype() == EtherTypes::Ipv4 {
+            // Parse the IPv4 packet
+            if let Some(mut ipv4_packet) =
+                MutableIpv4Packet::new(&mut eth_packet.packet_mut()[14..])
+            {
+                // Extract source and destination IPs before modifying the packet
+                let src_ip = ipv4_packet.get_source();
+                let dest_ip = ipv4_packet.get_destination();
+
+                if !ipv4_packet.is_checksum_correct(&src_ip, &dest_ip) || 0 == ipv4_packet.get_ttl()
+                {
+                    debug!(
+                        "ext to int - ipv4 checksum is not correct:{:?}",
+                        ipv4_packet
+                    );
+                    return false;
+                }
+
+                let proto = ipv4_packet.get_next_level_protocol();
+                let mut dest_port = 0;
+                let mut src_port = 0;
+
+                match proto {
+                    IpNextHeaderProtocols::Udp => {
+                        if let Some(mut udp_packet) =
+                            MutableUdpPacket::new(ipv4_packet.payload_mut())
+                        {
+                            if !udp_packet.is_checksum_correct(&src_ip, &dest_ip) {
+                                debug!(
+                                    "ext to int - udp checksum is not correct:{:?}",
+                                    ipv4_packet
+                                );
+                                return false;
+                            }
+
+                            dest_port = udp_packet.get_destination();
+                            src_port = udp_packet.get_source();
+                        }
+                    }
+
+                    _ => {
+                        debug!("ext to int- unimplemented protocol handling");
+                        return false;
+                    }
+                }
+                let security = Arc::clone(&SECURITY);
+
+                if !security
+                    .is_packet_secure(src_ip, proto, src_port, dest_port)
+                    .await
+                {
+                    warn!("packet is not safe");
+                    return false;
+                }
+            }
+        } else {
+            return false;
+        }
+
+        true
+    }
+
+    fn int_to_ext_is_packet_safe(_eth_packet: &mut MutableEthernetPacket<'_>) -> bool {
         //loopback check should be here
         //rate limiting should be here
 
         true
+    }
+
+    /// Define a trait that abstracts the checksum functionality.
+    trait ChecksummablePacket {
+        /// Return the checksum that is currently stored in the packet.
+        fn is_checksum_correct(&mut self, src_ip: &Ipv4Addr, dest_ip: &Ipv4Addr) -> bool;
+    }
+    // Implement the trait for UDP packets.
+    impl ChecksummablePacket for MutableUdpPacket<'_> {
+        fn is_checksum_correct(&mut self, src_ip: &Ipv4Addr, dest_ip: &Ipv4Addr) -> bool {
+            let current_checksum = self.get_checksum();
+            // Recalculate UDP checksum
+            self.set_checksum(0);
+
+            let expected_checksum = udp::ipv4_checksum(&self.to_immutable(), src_ip, dest_ip);
+
+            if current_checksum != expected_checksum {
+                warn!(
+                    "Wrong udp checksum, current:{}, expected:{}",
+                    current_checksum, expected_checksum
+                );
+                return false;
+            }
+
+            self.set_checksum(expected_checksum);
+
+            true
+        }
+    }
+
+    // Implement the trait for TCP packets.
+    impl ChecksummablePacket for MutableIpv4Packet<'_> {
+        fn is_checksum_correct(&mut self, _src_ip: &Ipv4Addr, _dest_ip: &Ipv4Addr) -> bool {
+            let current_ipv4_packet_checksum = self.get_checksum();
+            // Recalculate IPv4 checksum
+            self.set_checksum(0); // Clear existing checksum
+
+            match calculate_ipv4_checksum(self.packet()) {
+                Ok(checksum) => {
+                    if current_ipv4_packet_checksum != checksum {
+                        warn!(
+                            "Wrong ipv4 checksum, current:{}, expected:{}",
+                            current_ipv4_packet_checksum, checksum
+                        );
+                        return false;
+                    }
+                    self.set_checksum(checksum);
+                }
+                Err(e) => {
+                    error!("{}", e);
+                    return false;
+                }
+            }
+            true
+        }
     }
 
     // A helper function that is only available in the test module
@@ -616,6 +792,24 @@ pub mod forward {
         iface_ip: Option<IpNetwork>,
     ) -> Result<IpNetwork, String> {
         select_ip(iface, iface_ip)
+    }
+
+    #[cfg(test)]
+    pub fn is_checksum_correct_udp_test(
+        udp_packet: &mut MutableUdpPacket<'_>,
+        src_ip: &Ipv4Addr,
+        dest_ip: &Ipv4Addr,
+    ) -> bool {
+        udp_packet.is_checksum_correct(src_ip, &dest_ip)
+    }
+
+    #[cfg(test)]
+    pub fn is_checksum_correct_ipv4_test(
+        ipv4_packet: &mut MutableIpv4Packet<'_>,
+        src_ip: &Ipv4Addr,
+        dest_ip: &Ipv4Addr,
+    ) -> bool {
+        ipv4_packet.is_checksum_correct(src_ip, &dest_ip)
     }
 }
 
@@ -752,5 +946,126 @@ mod tests {
             result.unwrap_err(),
             "Provided IP 192.168.1.3/24 does not match any IPs in interface eth0"
         );
+    }
+
+    #[test]
+    fn test_checksum_check_wrong_checksums() {
+        // Create a buffer for the Ethernet frame
+        let mut ethernet_buffer = [0u8; 64];
+        let mut ethernet_packet = MutableEthernetPacket::new(&mut ethernet_buffer).unwrap();
+
+        // Set Ethernet frame fields
+        ethernet_packet.set_destination([0xff, 0xff, 0xff, 0xff, 0xff, 0xff].into()); // Broadcast
+        ethernet_packet.set_source([0x00, 0x11, 0x22, 0x33, 0x44, 0x55].into()); // Fake MAC
+        ethernet_packet.set_ethertype(EtherTypes::Ipv4);
+
+        // Create a buffer for the IPv4 packet
+        let mut ipv4_buffer = [0u8; 20];
+        let mut ipv4_packet = MutableIpv4Packet::new(&mut ipv4_buffer).unwrap();
+
+        // Set IPv4 header fields
+        ipv4_packet.set_version(4);
+        ipv4_packet.set_header_length(5);
+        ipv4_packet.set_total_length(28);
+        ipv4_packet.set_ttl(64);
+        ipv4_packet.set_next_level_protocol(pnet::packet::ip::IpNextHeaderProtocols::Udp);
+        ipv4_packet.set_source(Ipv4Addr::new(192, 168, 1, 100));
+        ipv4_packet.set_destination(Ipv4Addr::new(192, 168, 1, 1));
+        ipv4_packet.set_checksum(0x1234); // Incorrect checksum
+
+        // Create a buffer for the UDP packet
+        let mut udp_buffer = [0u8; 8 + 6]; // 8-byte UDP header + 6-byte payload
+        let mut udp_packet = MutableUdpPacket::new(&mut udp_buffer).unwrap();
+
+        // Set UDP header fields
+        udp_packet.set_source(12345);
+        udp_packet.set_destination(80);
+        udp_packet.set_length(8 + 6);
+        udp_packet.set_checksum(0x5678); // Incorrect checksum
+
+        // UDP payload
+        udp_packet.payload_mut().copy_from_slice(b"Hello!");
+
+        //println!("ethernet-payload : {:?}",ethernet_packet.packet());
+
+        assert!(!forward::is_checksum_correct_udp_test(
+            &mut udp_packet,
+            &ipv4_packet.get_source(),
+            &ipv4_packet.get_destination()
+        ));
+        assert!(!forward::is_checksum_correct_ipv4_test(
+            &mut ipv4_packet,
+            &Ipv4Addr::new(0, 0, 0, 0),
+            &Ipv4Addr::new(0, 0, 0, 0)
+        ));
+    }
+
+    #[test]
+    fn test_checksum_check_correct_checksums() {
+        // Total packet length: Ethernet (14) + IPv4 (20) + UDP (8) + UDP payload (25) = 67 bytes.
+        let mut packet_buffer = [0u8; 67];
+
+        // ===== Build Ethernet Header =====
+        // The Ethernet header occupies the first 14 bytes.
+        let mut eth_packet = MutableEthernetPacket::new(&mut packet_buffer[..14])
+            .expect("Failed to create Ethernet packet");
+        eth_packet.set_destination([0x70, 0x32, 0x17, 0x92, 0x5f, 0x95].into());
+        eth_packet.set_source([0x00, 0x09, 0x0f, 0x09, 0x00, 0x08].into());
+        eth_packet.set_ethertype(EtherTypes::Ipv4);
+
+        // ===== Build IPv4 Header and UDP Payload =====
+        // The IPv4 packet occupies the next 53 bytes.
+        let ipv4_buf = &mut packet_buffer[14..];
+
+        // Split the IPv4 buffer: first 20 bytes for the IPv4 header, and the remaining 33 bytes for the UDP packet.
+        let (ip_header_buf, udp_buf) = ipv4_buf.split_at_mut(20);
+
+        let mut ip_packet =
+            MutableIpv4Packet::new(ip_header_buf).expect("Failed to create IPv4 packet");
+        ip_packet.set_version(4);
+        ip_packet.set_header_length(5); // 5 * 4 = 20 bytes
+        ip_packet.set_total_length(53); // 20 (IPv4 header) + 8 (UDP header) + 25 (UDP payload)
+        ip_packet.set_identification(0);
+        ip_packet.set_flags(2); // DF flag
+        ip_packet.set_fragment_offset(0);
+        ip_packet.set_ttl(59); // 0x3b in hex
+        ip_packet.set_next_level_protocol(IpNextHeaderProtocols::Udp);
+        ip_packet.set_source(Ipv4Addr::new(34, 36, 202, 116));
+        ip_packet.set_destination(Ipv4Addr::new(172, 18, 9, 14));
+        ip_packet.set_checksum(0x9dff);
+
+        // Save the source and destination for UDP checksum calculation.
+        let ip_src = ip_packet.get_source();
+        let ip_dst = ip_packet.get_destination();
+
+        // ===== Build UDP Header and Payload =====
+        // The UDP packet uses the remaining 33 bytes.
+        let mut udp_packet = MutableUdpPacket::new(udp_buf).expect("Failed to create UDP packet");
+        udp_packet.set_source(443); // 0x01bb
+        udp_packet.set_destination(0xEDEE); // 0xedee (61166 decimal)
+        udp_packet.set_length(33); // 8 (UDP header) + 25 (payload)
+
+        // udp_packet.set_checksum(computed_checksum);
+        udp_packet.set_checksum(0x58b9);
+
+        // Copy the UDP payload (25 bytes).
+        let udp_payload = udp_packet.payload_mut();
+        let payload_data: [u8; 25] = [
+            0x5b, 0x26, 0x2d, 0xb3, 0x11, 0x72, 0x61, 0x87, 0xed, 0x8c, 0x4c, 0xf7, 0x0e, 0x78,
+            0x21, 0x20, 0xc7, 0x1e, 0xe5, 0x83, 0x51, 0xbe, 0x65, 0x3f, 0x4c,
+        ];
+        udp_payload.copy_from_slice(&payload_data);
+
+        // Check that the UDP checksum is correct.
+        assert!(forward::is_checksum_correct_udp_test(
+            &mut udp_packet,
+            &ip_src,
+            &ip_dst
+        ));
+        assert!(forward::is_checksum_correct_ipv4_test(
+            &mut ip_packet,
+            &Ipv4Addr::new(0, 0, 0, 0),
+            &Ipv4Addr::new(0, 0, 0, 0)
+        ));
     }
 }

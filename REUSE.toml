@@ -19,6 +19,7 @@ path = [
   "packages/ghaf-artwork/**/*.svg",
   "packages/ghaf-theme/**/*.svg",
   "packages/ghaf-nw-packet-forwarder/Cargo.lock",
+  "packages/ghaf-nw-packet-forwarder/flake.lock",
 ]
 
 [[annotations]]
