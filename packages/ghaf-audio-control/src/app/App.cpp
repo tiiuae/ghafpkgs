@@ -134,12 +134,16 @@ App::App(int argc, char** argv)
     const std::weak_ptr weakBackend = m_audioControlBackend;
 
     m_connections += m_dbusService.subscribeToDeviceUpdatedSignal().connect(
-        [this, weakBackend]()
+        [this, weakBackend](const auto& destination)
         {
             if (auto strong = weakBackend.lock())
             {
                 for (const auto& device : strong->getAllDevices())
-                    sendDeviceUpdateToDbus({.eventType = DBusService::DeviceEventType::Add, .index = device->getIndex(), .type = device->getType(), .ptr = device});
+                    sendDeviceUpdateToDbus({.eventType = DBusService::DeviceEventType::Add,
+                                            .index = device->getIndex(),
+                                            .type = device->getType(),
+                                            .ptr = device},
+                                           destination);
             }
         });
 
@@ -182,7 +186,7 @@ App::App(int argc, char** argv)
             m_metaDeviceManager.sendDeviceInfoUpdate(info);
 
         m_audioControl->sendDeviceInfoUpdate(info);
-        sendDeviceUpdateToDbus(info);
+        sendDeviceUpdateToDbus(info, std::nullopt);
     };
 
     const auto onError = [this](std::string_view error)
@@ -270,7 +274,7 @@ void App::on_activate()
     m_audioControl->show();
 }
 
-void App::sendDeviceUpdateToDbus(const ghaf::AudioControl::IAudioControlBackend::OnSignalMapChangeSignalInfo& info)
+void App::sendDeviceUpdateToDbus(const ghaf::AudioControl::IAudioControlBackend::OnSignalMapChangeSignalInfo& info, std::optional<std::string> destination)
 {
     if (info.ptr)
     {
@@ -281,12 +285,15 @@ void App::sendDeviceUpdateToDbus(const ghaf::AudioControl::IAudioControlBackend:
                                          info.ptr->getVolume(),
                                          info.ptr->isMuted(),
                                          defaultable->isDefault(),
-                                         info.eventType);
+                                         info.eventType,
+                                         destination);
         else
-            m_dbusService.sendDeviceInfo(info.index, info.type, info.ptr->getName(), info.ptr->getVolume(), info.ptr->isMuted(), false, info.eventType);
+            m_dbusService
+                .sendDeviceInfo(info.index, info.type, info.ptr->getName(), info.ptr->getVolume(), info.ptr->isMuted(), false, info.eventType, destination);
     }
     else
-        m_dbusService.sendDeviceInfo(info.index, info.type, "Deleted", Volume::fromPercents(0U), false, false, IAudioControlBackend::EventType::Delete);
+        m_dbusService
+            .sendDeviceInfo(info.index, info.type, "Deleted", Volume::fromPercents(0U), false, false, IAudioControlBackend::EventType::Delete, destination);
 }
 
 RaiiWrap<AppIndicator*> App::createAppIndicator()
