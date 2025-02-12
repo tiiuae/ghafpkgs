@@ -53,7 +53,7 @@ private:
 
     void on_activate() override;
 
-    void sendDeviceUpdateToDbus(const ghaf::AudioControl::IAudioControlBackend::OnSignalMapChangeSignalInfo& info);
+    void sendDeviceUpdateToDbus(const ghaf::AudioControl::IAudioControlBackend::OnSignalMapChangeSignalInfo& info, std::optional<std::string> destination);
 
 private:
     std::shared_ptr<ghaf::AudioControl::Backend::PulseAudio::AudioControlBackend> m_audioControlBackend;

@@ -219,7 +219,7 @@ DBusService::~DBusService()
 }
 
 void DBusService::sendDeviceInfo(DeviceIndex index, DeviceType type, const std::string& name, DeviceVolume volume, bool isMuted, bool isDefault,
-                                 DeviceEventType eventType)
+                                 DeviceEventType eventType, std::optional<std::string> destination)
 {
     const Glib::VariantContainerBase args = Glib::VariantContainerBase::create_tuple({
         Glib::Variant<int>::create(index),                      // id
@@ -231,10 +231,21 @@ void DBusService::sendDeviceInfo(DeviceIndex index, DeviceType type, const std::
         Glib::Variant<int>::create(static_cast<int>(eventType)) // event
     });
 
-    Logger::debug("DBusService::sendDeviceInfo: {}", args.print(true).c_str());
+    const auto sendToClient = [&args](const std::string& client)
+    {
+        Logger::debug("DBusService::sendDeviceInfo: {} to the client: {}", args.print(true).c_str(), client);
 
-    Gio::DBus::Connection::get_sync(Gio::DBus::BUS_TYPE_SESSION)
-        ->emit_signal(AudioControlService::ObjectPath, AudioControlService::InterfaceName, AudioControlService::SignalName::DeviceUpdated, "", args);
+        Gio::DBus::Connection::get_sync(Gio::DBus::BUS_TYPE_SESSION)
+            ->emit_signal(AudioControlService::ObjectPath, AudioControlService::InterfaceName, AudioControlService::SignalName::DeviceUpdated, client, args);
+    };
+
+    if (destination)
+        sendToClient(*destination);
+    else
+    {
+        for (const auto& client : m_subscribedClients.getList())
+            sendToClient(client);
+    }
 }
 
 void DBusService::registerSystemTrayIcon(const Glib::ustring& iconName)
@@ -305,14 +316,14 @@ void DBusService::onMethodCall([[maybe_unused]] const Glib::RefPtr<Gio::DBus::Co
         if (objectPath == AudioControlService::ObjectPath)
         {
             if (auto method = m_audioControlServiceMethodHandlers.find(methodName); method != m_audioControlServiceMethodHandlers.end())
-                invocation->return_value(method->second(parameters));
+                invocation->return_value(method->second(sender, parameters));
             else
                 throw std::runtime_error{std::format("Unsupported method: {}", methodName.c_str())};
         }
         else if (objectPath == StatusNotifierItem::ObjectPath)
         {
             if (auto method = m_statusNotifierItemMethodHandlers.find(methodName); method != m_statusNotifierItemMethodHandlers.end())
-                invocation->return_value(method->second(parameters));
+                invocation->return_value(method->second(sender, parameters));
             else
                 throw std::runtime_error{std::format("Unsupported method: {}", methodName.c_str())};
         }
@@ -358,31 +369,36 @@ bool DBusService::onPropertySet([[maybe_unused]] const Glib::RefPtr<Gio::DBus::C
     return false;
 }
 
-DBusService::MethodResult DBusService::onOpenMethod([[maybe_unused]] const MethodParameters& parameters)
+DBusService::MethodResult DBusService::onOpenMethod([[maybe_unused]] const Glib::ustring& sender, [[maybe_unused]] const MethodParameters& parameters)
 {
     m_openSignal();
     return CreateEmptyResponse();
 }
 
-DBusService::MethodResult DBusService::onToggleMethod([[maybe_unused]] const MethodParameters& parameters)
+DBusService::MethodResult DBusService::onToggleMethod([[maybe_unused]] const Glib::ustring& sender, [[maybe_unused]] const MethodParameters& parameters)
 {
     m_toggleSignal();
     return CreateEmptyResponse();
 }
 
-DBusService::MethodResult DBusService::onSubscribeToDeviceUpdatedSignalMethod([[maybe_unused]] const MethodParameters& parameters)
+DBusService::MethodResult DBusService::onSubscribeToDeviceUpdatedSignalMethod(const Glib::ustring& sender, [[maybe_unused]] const MethodParameters& parameters)
 {
-    m_subscribeToDeviceUpdatedSignal();
+    m_subscribedClients.add(sender);
+    m_subscribeToDeviceUpdatedSignal(sender);
+
     return CreateEmptyResponse();
 }
 
-DBusService::MethodResult DBusService::onUnsubscribeFromDeviceUpdatedSignalMethod([[maybe_unused]] const MethodParameters& parameters)
+DBusService::MethodResult DBusService::onUnsubscribeFromDeviceUpdatedSignalMethod([[maybe_unused]] const Glib::ustring& sender,
+                                                                                  [[maybe_unused]] const MethodParameters& parameters)
 {
-    // m_unsubscribeToDeviceUpdatedSignal();
+    m_subscribedClients.remove(sender);
+    m_unsubscribeToDeviceUpdatedSignal();
+
     return CreateEmptyResponse();
 }
 
-DBusService::MethodResult DBusService::onSetDeviceVolumeMethod(const MethodParameters& parameters)
+DBusService::MethodResult DBusService::onSetDeviceVolumeMethod([[maybe_unused]] const Glib::ustring& sender, const MethodParameters& parameters)
 {
     Glib::Variant<int> id;
     Glib::Variant<int> type;
@@ -397,7 +413,7 @@ DBusService::MethodResult DBusService::onSetDeviceVolumeMethod(const MethodParam
     return CreateResultOkResponse();
 }
 
-DBusService::MethodResult DBusService::onSetDeviceMuteMethod(const MethodParameters& parameters)
+DBusService::MethodResult DBusService::onSetDeviceMuteMethod([[maybe_unused]] const Glib::ustring& sender, const MethodParameters& parameters)
 {
     Glib::Variant<int> id;
     Glib::Variant<int> type;
@@ -412,7 +428,7 @@ DBusService::MethodResult DBusService::onSetDeviceMuteMethod(const MethodParamet
     return CreateResultOkResponse();
 }
 
-DBusService::MethodResult DBusService::onMakeDeviceDefaultMethod(const MethodParameters& parameters)
+DBusService::MethodResult DBusService::onMakeDeviceDefaultMethod([[maybe_unused]] const Glib::ustring& sender, const MethodParameters& parameters)
 {
     Glib::Variant<int> id;
     Glib::Variant<int> type;
@@ -430,7 +446,42 @@ DBusService::MethodResult DBusService::onMakeDeviceDefaultMethod(const MethodPar
     return CreateResultOkResponse();
 }
 
-DBusService::MethodResult DBusService::onActivateMethod(const MethodParameters& parameters)
+DBusService::MethodResult DBusService::onActivateMethod([[maybe_unused]] const Glib::ustring& sender, const MethodParameters& parameters)
 {
-    return onToggleMethod(parameters);
+    return onToggleMethod(sender, parameters);
+}
+
+void DBusService::Clients::add(const std::string& client)
+{
+    if (m_set.contains(client))
+    {
+        Logger::debug("DBusService: the client: {} already exists", client);
+        return;
+    }
+
+    if (m_deque.size() == m_maxSize)
+    {
+        Logger::debug("DBusService: erasing the old client: {} as reached the limit of clients: {}", m_deque.front(), m_maxSize);
+
+        m_set.erase(m_deque.front());
+        m_deque.pop_front();
+    }
+
+    Logger::debug("DBusService: add new client: {}", client);
+
+    m_deque.push_back(client);
+    m_set.insert(client);
+}
+
+void DBusService::Clients::remove(const std::string& client)
+{
+    if (auto it = m_set.find(client); it != m_set.end())
+    {
+        m_deque.erase(std::find(m_deque.begin(), m_deque.end(), client));
+        m_set.erase(it);
+
+        Logger::debug("DBusService: deleted the client: {}", client);
+    }
+    else
+        Logger::debug("DBusService: couldn't delete the client: {} as it doesn't exist", client);
 }
