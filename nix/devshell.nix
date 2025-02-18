@@ -1,19 +1,27 @@
 # Copyright 2022-2024 TII (SSRC) and the Ghaf contributors
 # SPDX-License-Identifier: Apache-2.0
+{ inputs, lib, ... }:
 {
+  imports = [
+    inputs.devshell.flakeModule
+  ];
   perSystem =
-    { pkgs, ... }:
+    { config, pkgs, ... }:
     {
-      devShells.default = pkgs.mkShell {
-        name = "Ghaf Artwork devshell";
-        packages = with pkgs; [
-          bashInteractive
-          git
-          nix
-          alejandra
-          reuse
-          imagemagick
-        ];
+      devshells.default.devshell = {
+        name = "Ghafpkgs devshell";
+        meta.description = "Ghafpkgs development environment";
+        packages = [
+          pkgs.bashInteractive
+          pkgs.imagemagick
+          pkgs.nixVersions.latest
+          pkgs.nix-eval-jobs
+          pkgs.nix-fast-build
+          pkgs.nix-output-monitor
+          pkgs.nix-tree
+          pkgs.reuse
+          config.treefmt.build.wrapper
+        ] ++ lib.attrValues config.treefmt.build.programs; # make all the trefmt packages available
       };
     };
 }

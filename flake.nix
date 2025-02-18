@@ -28,7 +28,6 @@
       url = "github:cachix/pre-commit-hooks.nix";
       inputs = {
         nixpkgs.follows = "nixpkgs";
-        nixpkgs-stable.follows = "nixpkgs";
         flake-compat.follows = "flake-compat";
       };
     };
@@ -38,6 +37,12 @@
       url = "github:nix-community/flake-compat";
       flake = false;
     };
+
+    devshell = {
+      url = "github:numtide/devshell";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
   };
 
   outputs =
@@ -50,7 +55,6 @@
       systems = [
         "x86_64-linux"
         "aarch64-linux"
-        "riscv64-linux"
       ];
     };
 }
