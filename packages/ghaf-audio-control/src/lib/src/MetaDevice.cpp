@@ -4,9 +4,11 @@
  */
 
 #include <GhafAudioControl/MetaDevice.hpp>
-#include <GhafAudioControl/utils/Check.hpp>
 
+#include <GhafAudioControl/utils/Check.hpp>
 #include <GhafAudioControl/utils/Logger.hpp>
+
+#include <ranges>
 
 namespace ghaf::AudioControl
 {
@@ -29,37 +31,40 @@ bool MetaDevice::isEnabled() const
 
 bool MetaDevice::isMuted() const
 {
-    if (m_devices.empty())
-        return false;
-
-    return m_devices.begin()->second->isMuted();
+    return m_isMuted.value_or(false);
 }
 
 void MetaDevice::setMuted(bool mute)
 {
+    m_isMuted = mute;
+
     for (const auto& [_, device] : m_devices)
-        device->setMuted(mute);
+        device->setMuted(*m_isMuted);
 }
 
 Volume MetaDevice::getVolume() const
 {
-    if (m_devices.empty())
-        return Volume::fromPercents(0U);
-
-    return m_devices.begin()->second->getVolume();
+    return m_volume.value_or(Volume::fromPercents(0u));
 }
 
 void MetaDevice::setVolume(Volume volume)
 {
-    for (const auto& [_, device] : m_devices)
-        device->setVolume(volume);
+    m_volume = volume;
+
+    for (const auto& device : std::ranges::views::values(m_devices))
+        device->setVolume(*m_volume);
 
     m_onUpdate();
 }
 
 std::string MetaDevice::toString() const
 {
-    return std::format("MetaDevice: index: {}, name: {}, devices: {}", m_index, m_name, m_devices.size());
+    return std::format("MetaDevice: index: {}, name: {}, isMuted: {}, volume: {}, devices: {}",
+                       m_index,
+                       m_name,
+                       isMuted(),
+                       getVolume().getPercents(),
+                       m_devices.size());
 }
 
 MetaDevice::MetaDevice(Index index, std::string name)
@@ -77,6 +82,16 @@ void MetaDevice::addDevice(IDevice::Ptr device)
     if (!m_devices.contains(index))
     {
         m_connections[index] = device->onDelete().connect([this, index] { deleteDevice(index); });
+
+        if (m_isMuted)
+            device->setMuted(*m_isMuted);
+        else
+            m_isMuted = device->isMuted();
+
+        if (m_volume)
+            device->setVolume(*m_volume);
+        else
+            m_volume = device->getVolume();
 
         m_devices.insert({index, std::move(device)});
     }

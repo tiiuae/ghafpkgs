@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.5)
 
 project(GhafAudioControl LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_FLAGS "-Wall -Wextra -fPIE")
 set(EXECUTABLE_OUTPUT_PATH build/)

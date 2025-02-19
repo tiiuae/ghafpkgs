@@ -12,12 +12,15 @@
 
 #include <GhafAudioControl/AppVmMetaGroup.hpp>
 
-#include "DBusService.hpp"
+#include "dbus/Service.hpp"
 
 #include <gtkmm/application.h>
 #include <gtkmm/applicationwindow.h>
 
 #include <libayatana-appindicator/app-indicator.h>
+
+namespace ghaf::AudioControl::app
+{
 
 class App : public Gtk::Application
 {
@@ -51,6 +54,8 @@ private:
     bool onWindowDelete([[maybe_unused]] GdkEventAny* event);
     void onQuit();
 
+    void setupDbus();
+
     void on_activate() override;
 
     void sendDeviceUpdateToDbus(const ghaf::AudioControl::IAudioControlBackend::OnSignalMapChangeSignalInfo& info, std::optional<std::string> destination);
@@ -60,13 +65,18 @@ private:
 
     ghaf::AudioControl::MetaDeviceManager m_metaDeviceManager;
 
-    DBusService m_dbusService;
+    dbus::DBusService m_dbusService;
 
     std::unique_ptr<ghaf::AudioControl::AudioControl> m_audioControl;
     std::unique_ptr<Gtk::ApplicationWindow> m_window;
+
+    std::shared_ptr<dbus::SubscribeToDeviceUpdatedSignalMethod> m_subscribeMethod;
+    std::shared_ptr<dbus::DeviceUpdateSignal> m_deviceUpdateSignal;
 
     AppMenu m_menu;
     std::optional<ghaf::AudioControl::RaiiWrap<AppIndicator*>> m_indicator;
 
     ghaf::AudioControl::ConnectionContainer m_connections;
 };
+
+} // namespace ghaf::AudioControl::app
