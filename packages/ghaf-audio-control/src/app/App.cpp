@@ -5,6 +5,8 @@
 
 #include "App.hpp"
 
+#include "dbus/Interface.hpp"
+
 #include <gtkmm/icontheme.h>
 
 #include <glibmm/main.h>
@@ -12,12 +14,21 @@
 
 #include <ranges>
 
-using namespace ghaf::AudioControl;
+namespace ghaf::AudioControl::app
+{
 
 namespace
 {
 
 constexpr auto AppId = "Ghaf Audio Control";
+
+namespace AudioControlService
+{
+
+constexpr auto ObjectPath = "/org/ghaf/Audio";
+constexpr auto InterfaceName = "org.ghaf.Audio";
+
+} // namespace AudioControlService
 
 struct AppArgs
 {
@@ -55,8 +66,6 @@ App::AppMenu::AppMenu(App& app)
 App::App(int argc, char** argv)
     : Gtk::Application("org.ghaf.AudioControl", Gio::APPLICATION_HANDLES_COMMAND_LINE)
     , m_menu(*this)
-    , m_connections{m_dbusService.openSignal().connect(sigc::mem_fun(*this, &App::openWindow)),
-                    m_dbusService.toggleSignal().connect(sigc::mem_fun(*this, &App::toggleWindow))}
 {
     AppArgs appArgs;
 
@@ -133,51 +142,6 @@ App::App(int argc, char** argv)
 
     const std::weak_ptr weakBackend = m_audioControlBackend;
 
-    m_connections += m_dbusService.subscribeToDeviceUpdatedSignal().connect(
-        [this, weakBackend](const auto& destination)
-        {
-            if (auto strong = weakBackend.lock())
-            {
-                for (const auto& device : strong->getAllDevices())
-                    sendDeviceUpdateToDbus({.eventType = DBusService::DeviceEventType::Add,
-                                            .index = device->getIndex(),
-                                            .type = device->getType(),
-                                            .ptr = device},
-                                           destination);
-            }
-        });
-
-    m_connections += m_dbusService.setDeviceVolumeSignal().connect(
-        [this, weakBackend](auto id, auto type, auto volume)
-        {
-            if (type == IAudioControlBackend::IDevice::Type::Meta)
-                m_metaDeviceManager.setDeviceVolume(id, volume);
-            else if (auto backend = weakBackend.lock())
-                backend->setDeviceVolume(id, type, volume);
-            else
-                Logger::error("m_dbusService.setDeviceVolumeSignal().connect: backend doesn't exist anymore");
-        });
-
-    m_connections += m_dbusService.setDeviceMuteSignal().connect(
-        [this, weakBackend](auto id, auto type, auto mute)
-        {
-            if (type == IAudioControlBackend::IDevice::Type::Meta)
-                m_metaDeviceManager.setDeviceMute(id, mute);
-            if (auto backend = weakBackend.lock())
-                backend->setDeviceMute(id, type, mute);
-            else
-                Logger::error("m_dbusService.setDeviceMuteSignal().connect: backend doesn't exist anymore");
-        });
-
-    m_connections += m_dbusService.makeDeviceDefaultSignal().connect(
-        [weakBackend](auto id, auto type)
-        {
-            if (auto backend = weakBackend.lock())
-                backend->makeDeviceDefault(id, type);
-            else
-                Logger::error("m_dbusService.setDeviceMuteSignal().connect: backend doesn't exist anymore");
-        });
-
     m_audioControl = std::make_unique<AudioControl>(GetAppVmsList(appArgs.appVms), appArgs.allowMultipleStreamsPerVm == "true");
 
     const auto onDevice = [this](const IAudioControlBackend::OnSignalMapChangeSignalInfo& info)
@@ -194,10 +158,12 @@ App::App(int argc, char** argv)
         m_audioControl->sendError(error);
     };
 
+    setupDbus();
+
     m_connections += m_audioControlBackend->onSinksChanged().connect(onDevice);
     m_connections += m_audioControlBackend->onSourcesChanged().connect(onDevice);
     m_connections += m_audioControlBackend->onSinkInputsChanged().connect(onDevice);
-    // m_connections += m_audioControlBackend->onSourceOutputsChanged().connect(onDevice); // We don't it now
+    // m_connections += m_audioControlBackend->onSourceOutputsChanged().connect(onDevice); // We don't need it now
     m_connections += m_audioControlBackend->onError().connect(onError);
     m_connections += m_metaDeviceManager.onDeviceUpdateSignal().connect(onDevice);
 
@@ -257,6 +223,81 @@ void App::onQuit()
     quit();
 }
 
+void App::setupDbus()
+{
+    const std::weak_ptr weakBackend = m_audioControlBackend;
+
+    dbus::Interface::Ptr interface = std::make_shared<dbus::Interface>(AudioControlService::InterfaceName, AudioControlService::ObjectPath);
+
+    auto openMethod = std::make_shared<dbus::OpenMethod>();
+    m_connections += openMethod->onInvokation().connect(sigc::mem_fun(*this, &App::openWindow));
+
+    auto toggleMethod = std::make_shared<dbus::ToggleMethod>();
+    m_connections += toggleMethod->onInvokation().connect(sigc::mem_fun(*this, &App::toggleWindow));
+
+    m_subscribeMethod = std::make_shared<dbus::SubscribeToDeviceUpdatedSignalMethod>();
+    m_connections += m_subscribeMethod->onInvokation().connect(
+        [this, weakBackend](const auto& destination)
+        {
+            if (auto strong = weakBackend.lock())
+            {
+                for (const auto& device : strong->getAllDevices())
+                    sendDeviceUpdateToDbus({.eventType = dbus::DeviceEventType::Add, .index = device->getIndex(), .type = device->getType(), .ptr = device},
+                                           destination);
+            }
+        });
+
+    auto unsubscribeMethod = std::make_shared<dbus::UnsubscribeFromDeviceUpdatedSignalMethod>();
+    m_connections += unsubscribeMethod->onInvokation().connect(sigc::mem_fun(*m_subscribeMethod, &dbus::SubscribeToDeviceUpdatedSignalMethod::unsubscribe));
+
+    auto setDeviceVolume = std::make_shared<dbus::SetDeviceVolumeMethod>();
+    m_connections += setDeviceVolume->onInvokation().connect(
+        [this, weakBackend](auto id, auto type, auto volume)
+        {
+            if (type == IAudioControlBackend::IDevice::Type::Meta)
+                m_metaDeviceManager.setDeviceVolume(id, volume);
+            else if (auto backend = weakBackend.lock())
+                backend->setDeviceVolume(id, type, volume);
+            else
+                Logger::error("m_dbusService.setDeviceVolumeSignal().connect: backend doesn't exist anymore");
+        });
+
+    auto setDeviceMute = std::make_shared<dbus::SetDeviceMuteMethod>();
+    m_connections += setDeviceMute->onInvokation().connect(
+        [this, weakBackend](auto id, auto type, auto mute)
+        {
+            if (type == IAudioControlBackend::IDevice::Type::Meta)
+                m_metaDeviceManager.setDeviceMute(id, mute);
+            if (auto backend = weakBackend.lock())
+                backend->setDeviceMute(id, type, mute);
+            else
+                Logger::error("m_dbusService.setDeviceMuteSignal().connect: backend doesn't exist anymore");
+        });
+
+    auto makeDeviceDefault = std::make_shared<dbus::MakeDeviceDefaultMethod>();
+    m_connections += makeDeviceDefault->onInvokation().connect(
+        [weakBackend](auto id, auto type)
+        {
+            if (auto backend = weakBackend.lock())
+                backend->makeDeviceDefault(id, type);
+            else
+                Logger::error("m_dbusService.setDeviceMuteSignal().connect: backend doesn't exist anymore");
+        });
+
+    m_deviceUpdateSignal = std::make_shared<dbus::DeviceUpdateSignal>();
+
+    interface->addMethod(openMethod)
+        .addMethod(toggleMethod)
+        .addMethod(m_subscribeMethod)
+        .addMethod(unsubscribeMethod)
+        .addMethod(setDeviceVolume)
+        .addMethod(setDeviceMute)
+        .addMethod(makeDeviceDefault)
+        .addSignal(m_deviceUpdateSignal);
+
+    m_dbusService.addInterface(std::move(interface));
+}
+
 void App::on_activate()
 {
     Logger::debug(__PRETTY_FUNCTION__);
@@ -276,24 +317,30 @@ void App::on_activate()
 
 void App::sendDeviceUpdateToDbus(const ghaf::AudioControl::IAudioControlBackend::OnSignalMapChangeSignalInfo& info, std::optional<std::string> destination)
 {
+    std::string name = "Deleted";
+    auto volume = Volume::fromPercents(0U);
+    bool isMuted = false;
+    bool isDefault = false;
+    IAudioControlBackend::EventType eventType = IAudioControlBackend::EventType::Delete;
+
     if (info.ptr)
     {
-        if (auto* defaultable = dynamic_cast<IAudioControlBackend::IDefaultable*>(info.ptr.get()))
-            m_dbusService.sendDeviceInfo(info.index,
-                                         info.type,
-                                         info.ptr->getDescription(),
-                                         info.ptr->getVolume(),
-                                         info.ptr->isMuted(),
-                                         defaultable->isDefault(),
-                                         info.eventType,
-                                         destination);
-        else
-            m_dbusService
-                .sendDeviceInfo(info.index, info.type, info.ptr->getName(), info.ptr->getVolume(), info.ptr->isMuted(), false, info.eventType, destination);
+        auto* defaultable = dynamic_cast<IAudioControlBackend::IDefaultable*>(info.ptr.get());
+
+        name = defaultable ? info.ptr->getDescription() : info.ptr->getName();
+        volume = info.ptr->getVolume();
+        isMuted = info.ptr->isMuted();
+        isDefault = defaultable ? defaultable->isDefault() : false;
+        eventType = info.eventType;
     }
+
+    if (destination)
+        m_deviceUpdateSignal->emit(info.index, info.type, name, volume, isMuted, isDefault, eventType, *destination);
     else
-        m_dbusService
-            .sendDeviceInfo(info.index, info.type, "Deleted", Volume::fromPercents(0U), false, false, IAudioControlBackend::EventType::Delete, destination);
+    {
+        for (const auto& client : m_subscribeMethod->getClientList())
+            m_deviceUpdateSignal->emit(info.index, info.type, name, volume, isMuted, isDefault, eventType, client);
+    }
 }
 
 RaiiWrap<AppIndicator*> App::createAppIndicator()
@@ -309,3 +356,5 @@ RaiiWrap<AppIndicator*> App::createAppIndicator()
 
     return {contructor, {}};
 }
+
+} // namespace ghaf::AudioControl::app

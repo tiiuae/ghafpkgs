@@ -15,7 +15,7 @@ int main(int argc, char** argv)
 
     try
     {
-        App app(argc, argv);
+        app::App app(argc, argv);
         return app.start();
     }
     catch (const Glib::Error& ex)

@@ -44,11 +44,9 @@ public:
     [[nodiscard]] bool isEnabled() const override;
 
     [[nodiscard]] bool isMuted() const override;
-
     void setMuted(bool mute) override;
 
     [[nodiscard]] Volume getVolume() const override;
-
     void setVolume(Volume volume) override;
 
     [[nodiscard]] uint32_t getCardIndex() const noexcept
@@ -76,6 +74,9 @@ public:
 private:
     Index m_index;
     std::string m_name;
+
+    std::optional<Volume> m_volume;
+    std::optional<bool> m_isMuted;
 
     std::map<Index, IDevice::Ptr> m_devices;
     std::map<Index, sigc::connection> m_connections;

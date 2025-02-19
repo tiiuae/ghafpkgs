@@ -12,11 +12,19 @@ include_directories(${AYATANA_INCLUDE_DIRS})
 link_directories(${AYATANA_INCLUDE_DIRS})
 
 add_executable(GhafAudioControlStandalone
+
+    dbus/Interface.hpp
+    dbus/Methods.hpp
+    dbus/Service.hpp
+
     App.hpp
-    DBusService.hpp
+
+
+    dbus/Interface.cpp
+    dbus/Methods.cpp
+    dbus/Service.cpp
 
     App.cpp
-    DBusService.cpp
     main.cpp
 )
 target_link_libraries(GhafAudioControlStandalone GhafAudioControl ${AYATANA_LIBRARIES})
