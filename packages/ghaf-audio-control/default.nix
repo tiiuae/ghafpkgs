@@ -20,8 +20,6 @@ stdenv.mkDerivation rec {
 
   nativeBuildInputs = [
     cmake
-    gtkmm3
-    libayatana-appindicator
     ninja
     pkg-config
   ];
