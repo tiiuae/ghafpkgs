@@ -2,22 +2,17 @@
  * Copyright 2025 TII (SSRC) and the Ghaf contributors
  * SPDX-License-Identifier: Apache-2.0
  */
-
-use anyhow::{bail, Context, Result};
+use anyhow::Result;
 use clap::Parser;
-use serde::{Deserialize, Serialize};
 use std::{
-    cell::RefCell,
     collections::HashMap,
     path::PathBuf,
     time::{Duration, Instant},
 };
-use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufStream},
-    net::UnixStream,
-    sync::mpsc,
-};
 use tracing::{info, warn};
+
+mod qmp;
+use qmp::QmpEndpoint;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -51,214 +46,6 @@ struct Args {
     high: u8,
 }
 
-#[derive(Serialize, Debug)]
-#[serde(rename_all = "kebab-case")]
-struct QmpCommand {
-    execute: &'static str,
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    arguments: HashMap<&'static str, serde_json::Value>,
-}
-
-impl QmpCommand {
-    pub fn new(cmd: &'static str) -> Self {
-        Self {
-            execute: cmd,
-            arguments: HashMap::new(),
-        }
-    }
-
-    pub fn arg<T: Into<serde_json::Value>>(self, key: &'static str, v: T) -> Self {
-        let Self {
-            execute,
-            mut arguments,
-        } = self;
-        arguments.insert(key, v.into());
-        Self { execute, arguments }
-    }
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "kebab-case")]
-struct BalloonInfo {
-    actual: usize,
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "kebab-case")]
-struct MemoryInfo {
-    base_memory: usize,
-    plugged_memory: usize,
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "kebab-case")]
-struct GuestMemoryStats {
-    stat_available_memory: usize,
-    stat_free_memory: usize,
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "kebab-case")]
-struct GuestMemoryInfo {
-    last_update: usize,
-    stats: GuestMemoryStats,
-}
-
-#[derive(Deserialize, Debug)]
-struct Empty {}
-
-type ReplyChannel = mpsc::Sender<serde_json::Value>;
-type CommandChannel = mpsc::Sender<(QmpCommand, ReplyChannel)>;
-
-struct QmpConnection {
-    path: PathBuf,
-    channel: RefCell<Option<CommandChannel>>,
-    last_balloon: RefCell<Instant>,
-}
-
-impl QmpConnection {
-    fn new<P: Into<PathBuf>>(path: P) -> Self {
-        Self {
-            path: path.into(),
-            channel: RefCell::new(None),
-            last_balloon: RefCell::new(Instant::now()),
-        }
-    }
-
-    async fn connect(
-        &self,
-    ) -> Result<(
-        impl std::future::Future<Output = ()>,
-        mpsc::Receiver<serde_json::Value>,
-    )> {
-        let mut stream = BufStream::new(
-            UnixStream::connect(&self.path)
-                .await
-                .context("Failed to connect to QMP socket")?,
-        );
-        info!("Connected to {}", self.path.display());
-        let mut buf = vec![];
-        stream.read_until(b'\n', &mut buf).await?;
-        buf.clear();
-        stream
-            .write_all(&serde_json::to_vec(&QmpCommand::new("qmp_capabilities"))?)
-            .await?;
-        stream.write_all(b"\n").await?;
-        stream.flush().await?;
-        stream.read_until(b'\n', &mut buf).await?;
-
-        let (sender, mut receiver) = mpsc::channel(16);
-        let (evsender, evreceiver) = mpsc::channel(16);
-        *self.channel.borrow_mut() = Some(sender);
-        let mut tx: Option<ReplyChannel> = None;
-        let task = async move {
-            loop {
-                if let Some(curtx) = tx.take() {
-                    buf.clear();
-                    while let Ok(len) = stream.read_until(b'\n', &mut buf).await {
-                        if len == 0 {
-                            return;
-                        }
-                        let Ok(serde_json::Value::Object(mut data)) = serde_json::from_slice(&buf)
-                        else {
-                            continue;
-                        };
-                        if let Some(reply) = data.remove("return") {
-                            let _ = curtx.send(reply).await;
-                            break;
-                        } else if evsender
-                            .send(serde_json::Value::Object(data))
-                            .await
-                            .is_err()
-                        {
-                            return;
-                        }
-                        buf.clear();
-                    }
-                } else {
-                    buf.clear();
-                    tokio::select! {
-                        cmd = receiver.recv() => {
-                            let Some((cmd, newtx)) = cmd else { break; };
-                            if let Ok(vec) = serde_json::to_vec(&cmd) {
-                                if stream.write_all(&vec).await.is_err() ||
-                                    stream.write_all(b"\n").await.is_err() ||
-                                    stream.flush().await.is_err() {
-                                    return;
-                                }
-                                tx = Some(newtx);
-                            } else {
-                                warn!("Command serialization failed");
-                            }
-                        },
-                        Ok(len) = stream.read_until(b'\n', &mut buf) => {
-                            if len == 0 {
-                                return;
-                            }
-                            let Ok(data) = serde_json::from_slice(&buf) else { continue; };
-                            let serde_json::Value::Object(data) = data else { continue; };
-                            if evsender.send(serde_json::Value::Object(data)).await.is_err() {
-                                return;
-                            }
-                        },
-                    }
-                }
-            }
-        };
-
-        Ok((task, evreceiver))
-    }
-
-    pub async fn disconnect(&self) -> Result<()> {
-        self.channel.borrow_mut().take();
-        Ok(())
-    }
-
-    async fn send_command<T: for<'a> Deserialize<'a>>(&self, cmd: QmpCommand) -> Result<T> {
-        let (tx, mut rx) = mpsc::channel(1);
-        let Some(channel) = self.channel.borrow().as_ref().cloned() else {
-            bail!("Not connected");
-        };
-        channel.send((cmd, tx)).await?;
-        Ok(serde_json::from_value(
-            rx.recv().await.context("Invalid response")?,
-        )?)
-    }
-
-    pub async fn query_balloon(&self) -> Result<BalloonInfo> {
-        let cmd = QmpCommand::new("query-balloon");
-        self.send_command(cmd).await
-    }
-
-    pub async fn balloon(&self, size: usize) -> Result<()> {
-        let cmd = QmpCommand::new("balloon").arg("value", size);
-        self.send_command::<Empty>(cmd)
-            .await
-            .map(|_| ())
-            .inspect(|_| *self.last_balloon.borrow_mut() = Instant::now())
-    }
-
-    pub async fn query_memory(&self) -> Result<MemoryInfo> {
-        let cmd = QmpCommand::new("query-memory-size-summary");
-        self.send_command(cmd).await
-    }
-
-    pub async fn set_stats_interval(&self, ival: std::time::Duration) -> Result<()> {
-        let cmd = QmpCommand::new("qom-set")
-            .arg("path", "/machine/peripheral/balloon0")
-            .arg("property", "guest-stats-polling-interval")
-            .arg("value", ival.as_secs());
-        self.send_command::<Empty>(cmd).await.map(|_| ())
-    }
-
-    pub async fn query_stats(&self) -> Result<GuestMemoryInfo> {
-        let cmd = QmpCommand::new("qom-get")
-            .arg("path", "/machine/peripheral/balloon0")
-            .arg("property", "guest-stats");
-        self.send_command(cmd).await
-    }
-}
-
 #[derive(Debug)]
 struct MemoryStats {
     balloon_size: usize,
@@ -277,6 +64,21 @@ impl MemoryStats {
 
     pub fn reserved(&self) -> usize {
         self.balloon_size - self.available_memory
+    }
+
+    pub fn adjusted(&self, target: u8) -> usize {
+        self.reserved() * 100 / target as usize
+    }
+
+    pub fn window(&self, min: u8, max: u8) -> Option<usize> {
+        let p = self.pressure();
+        if p < min {
+            Some(self.adjusted(min))
+        } else if p > max {
+            Some(self.adjusted(max - 2))
+        } else {
+            None
+        }
     }
 }
 
@@ -302,34 +104,34 @@ impl std::fmt::Display for MemoryStats {
 }
 
 async fn monitor_memory(args: Args) -> Result<()> {
-    let qmps: Vec<_> = args.socket.iter().map(QmpConnection::new).collect();
+    let mut qmps: HashMap<_, (_, Option<Instant>)> = args
+        .socket
+        .iter()
+        .map(|p| (QmpEndpoint::new(p), (None, None)))
+        .collect();
     let dur = Duration::from_secs(args.interval);
+    let bival = Duration::from_secs(args.balloon_interval);
     let mut ival = tokio::time::interval(dur);
-    let mut last = None;
+    ival.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
     loop {
         ival.tick().await;
-        for qmp in &qmps {
-            let (task, mut receiver) = match qmp.connect().await {
+        for (qmp, (last, last_balloon)) in qmps.iter_mut() {
+            let (conn, task, mut receiver) = match qmp.connect().await {
                 Ok(a) => a,
                 Err(e) => {
-                    warn!(
-                        "Connection to {} failed: {e}, trying again later",
-                        qmp.path.display()
-                    );
+                    warn!("Connection to {qmp} failed: {e}, trying again later",);
                     continue;
                 }
             };
             tokio::select! {
                 e = async {
-                    qmp.set_stats_interval(dur).await?;
-                    let balloon = qmp.query_balloon().await?;
-                    let memory = qmp.query_memory().await?;
-                    let guest_stats = qmp.query_stats().await?;
+                    conn.set_stats_interval(dur).await?;
+                    let balloon = conn.query_balloon().await?;
+                    let memory = conn.query_memory().await?;
+                    let guest_stats = conn.query_stats().await?;
 
-                    #[allow(clippy::nonminimal_bool)]
-                    if !last.is_some_and(|last| last == guest_stats.last_update) {
-                        last = Some(guest_stats.last_update);
+                    if last.replace(guest_stats.last_update) != Some(guest_stats.last_update) {
                         let stats = MemoryStats {
                             balloon_size: balloon.actual,
                             base_memory: memory.base_memory,
@@ -339,39 +141,27 @@ async fn monitor_memory(args: Args) -> Result<()> {
                             available_memory: guest_stats.stats.stat_available_memory,
                         };
 
-                        let pressure = stats.pressure();
-                        if let Some(target) = if pressure < args.low {
-                            if qmp.last_balloon.borrow().elapsed().as_secs() > args.balloon_interval {
-                                info!("Pressure below limit, inflating balloon");
-                                Some(stats.reserved() * 100 / args.low as usize)
-                            } else {
-                                info!("Pressure below limit, waiting for stabilisation");
-                                None
-                            }
-                        } else if pressure > args.high {
-                            if qmp.last_balloon.borrow().elapsed().as_secs() > args.balloon_interval {
-                                info!("Pressure above limit, deflating balloon");
-                                Some(stats.total_memory.min(stats.reserved() * 100 / (args.high as usize - 2)))
-                            } else {
-                                info!("Pressure above limit, waiting for stabilisation");
-                                None
-                            }
+                        if let Some(target) = stats
+                            .window(args.low, args.high)
+                            .map(|t| t.clamp(args.minimum, args.maximum))
+                            .filter(|&t| t != stats.balloon_size)
+                            .filter(|_| last_balloon.is_none_or(|l| l.elapsed() >= bival))
+                        {
+                            last_balloon.replace(Instant::now());
+                            conn.balloon(target).await
                         } else {
-                            None
-                        } {
-                            let target = target.clamp(args.minimum, args.maximum);
-                            if target != stats.balloon_size {
-                                qmp.balloon(target).await?;
-                            }
+                            Ok(())
                         }
+                    } else {
+                        Ok(())
                     }
-
-                    qmp.disconnect().await
                 } => e,
                 _ = task => Ok(()),
-                _ = async move {
-                    while let Some(e) = receiver.recv().await {
-                        info!("Got event: {e:?}");
+                _ = {
+                    async move {
+                        while let Some(e) = receiver.recv().await {
+                            info!("Got event: {e:?}");
+                        }
                     }
                 } => Ok(()),
             }?;
