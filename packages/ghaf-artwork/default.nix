@@ -13,6 +13,6 @@ stdenvNoCC.mkDerivation {
   installPhase = ''
     mkdir -p $out
     cp -r * $out
-    rm default.nix
+    rm $out/default.nix
   '';
 }
