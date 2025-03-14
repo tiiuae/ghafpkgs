@@ -2,16 +2,18 @@
  * Copyright 2025 TII (SSRC) and the Ghaf contributors
  * SPDX-License-Identifier: Apache-2.0
 */
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, path::PathBuf, time::Duration};
+use std::{collections::HashMap, path::PathBuf, result::Result as StdResult, time::Duration};
 use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufStream},
+    io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufStream},
     net::UnixStream,
     sync::mpsc,
     time::{sleep, Sleep},
 };
-use tracing::info;
+use tracing::trace;
+
+pub type Result<T> = anyhow::Result<T>;
 
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "kebab-case")]
@@ -65,7 +67,7 @@ pub struct GuestMemoryInfo {
 #[derive(Deserialize, Debug)]
 struct Empty {}
 
-type ReplyChannel = mpsc::Sender<Result<serde_json::Value, serde_json::Value>>;
+type ReplyChannel = mpsc::Sender<StdResult<serde_json::Value, serde_json::Value>>;
 type CommandChannel = mpsc::Sender<(QmpCommand, ReplyChannel)>;
 
 #[derive(Hash, PartialEq, Eq, Debug)]
@@ -77,6 +79,45 @@ pub struct QmpConnection {
     channel: CommandChannel,
 }
 
+enum QmpResponse {
+    Return(serde_json::Value),
+    Error(serde_json::Value),
+    Event(serde_json::Value),
+}
+
+trait QmpStreamExt {
+    async fn send_cmd(&mut self, cmd: &QmpCommand) -> Result<()>;
+    async fn get_json(&mut self) -> Result<QmpResponse>;
+}
+
+impl<RW: AsyncWrite + AsyncRead + std::marker::Unpin> QmpStreamExt for BufStream<RW> {
+    async fn send_cmd(&mut self, cmd: &QmpCommand) -> Result<()> {
+        self.write_all(&serde_json::to_vec(cmd)?).await?;
+        self.write_all(b"\n").await?;
+        self.flush().await?;
+        Ok(())
+    }
+
+    async fn get_json(&mut self) -> Result<QmpResponse> {
+        let mut buf = vec![];
+        let len = self.read_until(b'\n', &mut buf).await?;
+        if len == 0 {
+            bail!("Connection closed unexpectedly");
+        }
+        let serde_json::Value::Object(mut data) = serde_json::from_slice(&buf)? else {
+            bail!("Unexpceted reply type");
+        };
+
+        if let Some(ret) = data.remove("return") {
+            Ok(QmpResponse::Return(ret))
+        } else if let Some(err) = data.remove("error") {
+            Ok(QmpResponse::Error(err))
+        } else {
+            Ok(QmpResponse::Event(data.into()))
+        }
+    }
+}
+
 impl QmpEndpoint {
     pub fn new<P: Into<PathBuf>>(path: P) -> Self {
         Self { path: path.into() }
@@ -86,27 +127,21 @@ impl QmpEndpoint {
         &self,
     ) -> Result<(
         QmpConnection,
-        impl std::future::Future<Output = ()>,
+        impl std::future::Future<Output = Result<()>>,
         mpsc::Receiver<serde_json::Value>,
     )> {
-        let mut buf = vec![];
         let mut stream = tokio::select! {
-            _ = sleep(Duration::from_secs(3)) => Err(anyhow!("QMP conncetion timed out")),
+            () = sleep(Duration::from_secs(3)) => Err(anyhow!("QMP conncetion timed out")),
             r = async {
                 let mut stream = BufStream::new(
                     UnixStream::connect(&self.path)
                     .await
                     .context("Failed to connect to QMP socket")?,
                 );
-                info!("Connected to {}", self.path.display());
-                stream.read_until(b'\n', &mut buf).await?;
-                buf.clear();
-                stream
-                    .write_all(&serde_json::to_vec(&QmpCommand::new("qmp_capabilities"))?)
-                    .await?;
-                stream.write_all(b"\n").await?;
-                stream.flush().await?;
-                stream.read_until(b'\n', &mut buf).await?;
+                trace!("Connected to {self}");
+                stream.get_json().await.context("Handshake failed")?;
+                stream.send_cmd(&QmpCommand::new("qmp_capabilities")).await?;
+                stream.get_json().await.context("Capabilities query failed")?;
                 Ok(stream)
             } => r
         }?;
@@ -118,64 +153,39 @@ impl QmpEndpoint {
         let task = async move {
             loop {
                 if let Some((curtx, timeout)) = tx.take() {
-                    buf.clear();
                     tokio::select! {
-                        _ = async {
-                            while let Ok(len) = stream.read_until(b'\n', &mut buf).await {
-                                if len == 0 {
-                                    return;
-                                }
-                                let Ok(serde_json::Value::Object(mut data)) = serde_json::from_slice(&buf)
-                                else {
-                                    continue;
+                        e = async {
+                            loop {
+                                let reply = match stream.get_json().await? {
+                                    QmpResponse::Return(r) => Ok(r),
+                                    QmpResponse::Error(e) => Err(e),
+                                    QmpResponse::Event(e) => {
+                                        evsender.send(e).await?;
+                                        continue;
+                                    },
                                 };
-                                if let Some(reply) = data.remove("return") {
-                                    let _ = curtx.send(Ok(reply)).await;
-                                    break;
-                                } else if let Some(error) = data.remove("error") {
-                                    let _ = curtx.send(Err(error)).await;
-                                    break;
-                                } else if evsender
-                                    .send(serde_json::Value::Object(data))
-                                        .await
-                                        .is_err()
-                                {
-                                    return;
-                                }
-                                buf.clear();
+
+                                break curtx.send(reply).await.map_err(anyhow::Error::from);
                             }
-                        } => {},
-                        _ = timeout => {
-                            let _ = curtx.send(Err("Command timed out".into())).await;
-                            break;
+                        } => e?,
+                        () = timeout => {
+                            bail!("QMP connection timed out");
                         }
                     }
                 } else {
-                    buf.clear();
                     tokio::select! {
                         cmd = receiver.recv() => {
-                            let Some((cmd, newtx)) = cmd else { break; };
-                            if let Ok(vec) = serde_json::to_vec(&cmd) {
-                                if stream.write_all(&vec).await.is_err() ||
-                                    stream.write_all(b"\n").await.is_err() ||
-                                    stream.flush().await.is_err() {
-                                    return;
-                                }
-                                tx = Some((newtx, sleep(Duration::from_secs(3))));
-                            } else {
-                                let _ = newtx.send(Err("Command serialization failed".into())).await;
-                            }
+                            let Some((cmd, newtx)) = cmd else { break Result::Ok(()); };
+                            stream.send_cmd(&cmd).await?;
+                            tx.replace((newtx, sleep(Duration::from_secs(3))));
                         },
-                        Ok(len) = stream.read_until(b'\n', &mut buf) => {
-                            if len == 0 {
-                                return;
+                        res = async {
+                            while let Ok(resp) = stream.get_json().await {
+                                let QmpResponse::Event(e) = resp else { continue; };
+                                evsender.send(e).await?;
                             }
-                            let Ok(data) = serde_json::from_slice(&buf) else { continue; };
-                            let serde_json::Value::Object(data) = data else { continue; };
-                            if evsender.send(serde_json::Value::Object(data)).await.is_err() {
-                                return;
-                            }
-                        },
+                            Result::Ok(())
+                        } => res?,
                     }
                 }
             }
@@ -186,8 +196,8 @@ impl QmpEndpoint {
 }
 
 impl std::fmt::Display for QmpEndpoint {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        write!(f, "{}", self.path.display())
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> StdResult<(), std::fmt::Error> {
+        self.path.display().fmt(f)
     }
 }
 
@@ -210,7 +220,7 @@ impl QmpConnection {
 
     pub async fn balloon(&self, size: usize) -> Result<()> {
         let cmd = QmpCommand::new("balloon").arg("value", size);
-        self.send_command(cmd).await
+        self.send_command::<Empty>(cmd).await.map(|_| ())
     }
 
     pub async fn query_memory(&self) -> Result<MemoryInfo> {
@@ -223,7 +233,7 @@ impl QmpConnection {
             .arg("path", "/machine/peripheral/balloon0")
             .arg("property", "guest-stats-polling-interval")
             .arg("value", ival.as_secs());
-        self.send_command(cmd).await
+        self.send_command::<Empty>(cmd).await.map(|_| ())
     }
 
     pub async fn query_stats(&self) -> Result<GuestMemoryInfo> {
