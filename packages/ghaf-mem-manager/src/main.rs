@@ -9,7 +9,7 @@ use std::{
     path::PathBuf,
     time::{Duration, Instant},
 };
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 mod qmp;
 use qmp::QmpEndpoint;
@@ -57,9 +57,9 @@ struct MemoryStats {
 }
 
 impl MemoryStats {
+    #[allow(clippy::cast_possible_truncation)]
     pub fn pressure(&self) -> u8 {
-        ((self.balloon_size - self.available_memory) as f64 * 100. / self.balloon_size as f64)
-            .round() as u8
+        ((201 * self.balloon_size - 200 * self.available_memory) / self.balloon_size / 2) as u8
     }
 
     pub fn reserved(&self) -> usize {
@@ -116,7 +116,7 @@ async fn monitor_memory(args: Args) -> Result<()> {
 
     loop {
         ival.tick().await;
-        for (qmp, (last, last_balloon)) in qmps.iter_mut() {
+        for (qmp, (last, last_balloon)) in &mut qmps {
             let (conn, task, mut receiver) = match qmp.connect().await {
                 Ok(a) => a,
                 Err(e) => {
@@ -141,23 +141,23 @@ async fn monitor_memory(args: Args) -> Result<()> {
                             available_memory: guest_stats.stats.stat_available_memory,
                         };
 
+                        debug!("Stats for {qmp}: {stats}, pressure: {}%", stats.pressure());
                         if let Some(target) = stats
                             .window(args.low, args.high)
                             .map(|t| t.clamp(args.minimum, args.maximum))
                             .filter(|&t| t != stats.balloon_size)
                             .filter(|_| last_balloon.is_none_or(|l| l.elapsed() >= bival))
                         {
+                            info!("Adjusting {qmp} balloon size from {} to {target}",
+                                stats.balloon_size);
                             last_balloon.replace(Instant::now());
-                            conn.balloon(target).await
-                        } else {
-                            Ok(())
+                            conn.balloon(target).await?;
                         }
-                    } else {
-                        Ok(())
                     }
+                    Ok(())
                 } => e,
-                _ = task => Ok(()),
-                _ = {
+                e = task => e,
+                () = {
                     async move {
                         while let Some(e) = receiver.recv().await {
                             info!("Got event: {e:?}");
