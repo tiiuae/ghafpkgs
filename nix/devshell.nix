@@ -27,6 +27,7 @@
             pkgs.nix-tree
             pkgs.reuse
 
+            pkgs.stdenv.cc
             pkgs.clippy
 
             config.treefmt.build.wrapper
