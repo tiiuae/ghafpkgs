@@ -331,6 +331,47 @@ mod test {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn test_connect_timeout() -> anyhow::Result<()> {
+        let tmpd = tempfile::tempdir()?;
+        let sockpath = tmpd.path().join("socket");
+        let _listener = tokio::net::UnixListener::bind(&sockpath)?;
+        let qe = QmpEndpoint::new(sockpath);
+
+        tokio::select! {
+            e = qe.connect() => {
+                if e.is_ok() {
+                    bail!("Unexpected connect success");
+                }
+            },
+            _ = tokio::time::sleep(TIMEOUT_SLOW) => {
+                bail!("Timed out waiting for timeout");
+            },
+        };
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_unix_handshake() -> anyhow::Result<()> {
+        let tmpd = tempfile::tempdir()?;
+        let sockpath = tmpd.path().join("socket");
+        let listener = tokio::net::UnixListener::bind(&sockpath)?;
+        let qe = QmpEndpoint::new(sockpath);
+
+        tokio::select! {
+            e = async move {
+                let (mut server, _) = listener.accept().await?;
+                handshake(&mut server).await?;
+                std::future::pending::<()>().await;
+                unreachable!();
+            } => e,
+            e = qe.connect() => e.map(|_| ()),
+            _ = tokio::time::sleep(TIMEOUT_SLOW) => {
+                bail!("Timed out waiting for timeout");
+            },
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn test_handshake_timeout() -> anyhow::Result<()> {
         let (client, mut server) = tokio::io::duplex(4096);
         //let mut server = BufStream::new(server);
@@ -511,9 +552,9 @@ mod test {
                     Ok(())
                 });
                 tokio::select! {
-                    _ = ev.recv() => Ok::<_, anyhow::Error>(()),
+                    _ = ev.recv() => (),
                     _ = &mut qb => bail!("Command completed before event"),
-                }?;
+                };
                 qb.await
             },
             TIMEOUT_SLOW,
