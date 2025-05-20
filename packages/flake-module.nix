@@ -13,6 +13,7 @@ let
       ghaf-mem-manager = callPackage ./ghaf-mem-manager { inherit (inputs) crane; };
       ghaf-theme = callPackage ./ghaf-theme { };
       ghaf-nw-packet-forwarder = callPackage ./ghaf-nw-packet-forwarder { inherit (inputs) crane; };
+      ghaf-wallpapers = callPackage ./ghaf-wallpapers { };
     };
 in
 {
