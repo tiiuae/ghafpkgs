@@ -298,14 +298,9 @@ mod test {
         }
     }
 
-    async fn harness<
-        FuS: std::future::Future<Output = anyhow::Result<()>>,
-        FuC: std::future::Future<Output = anyhow::Result<()>>,
-        FS: FnOnce(tokio::io::DuplexStream) -> FuS,
-        FC: FnOnce(QmpConnection, mpsc::Receiver<serde_json::Value>) -> FuC,
-    >(
-        fs: FS,
-        fc: FC,
+    async fn harness(
+        fs: impl AsyncFnOnce(tokio::io::DuplexStream) -> anyhow::Result<()>,
+        fc: impl AsyncFnOnce(QmpConnection, mpsc::Receiver<serde_json::Value>) -> anyhow::Result<()>,
         timeout: Duration,
     ) -> anyhow::Result<()> {
         let (client, mut server) = tokio::io::duplex(4096);
@@ -434,7 +429,7 @@ mod test {
     #[tokio::test(flavor = "current_thread")]
     async fn test_query_command() -> anyhow::Result<()> {
         harness(
-            |mut server| async move {
+            async move |mut server| {
                 let serde_json::Value::Object(cmd) = read_json_line(&mut server).await? else {
                     bail!("Unexpected data");
                 };
@@ -447,7 +442,7 @@ mod test {
                 server.write_all(BALLOON_RETURN_JSON).await?;
                 Ok(())
             },
-            |client, mut ev| async move {
+            async move |client, mut ev| {
                 tokio::select! {
                     _ = ev.recv() => bail!("Unexpected event"),
                     e = async move {
@@ -466,7 +461,7 @@ mod test {
     #[tokio::test(flavor = "current_thread")]
     async fn test_command_error() -> anyhow::Result<()> {
         harness(
-            |mut server| async move {
+            async move |mut server| {
                 let serde_json::Value::Object(cmd) = read_json_line(&mut server).await? else {
                     bail!("Unexpected data");
                 };
@@ -479,7 +474,7 @@ mod test {
                 server.write_all(ERROR_JSON).await?;
                 Ok(())
             },
-            |client, mut ev| async move {
+            async move |client, mut ev| {
                 tokio::select! {
                     _ = ev.recv() => bail!("Unexpected event"),
                     r = async move {
@@ -498,7 +493,7 @@ mod test {
     #[tokio::test(flavor = "current_thread")]
     async fn test_command_timeout() -> anyhow::Result<()> {
         harness(
-            |mut server| async move {
+            async move |mut server| {
                 let serde_json::Value::Object(cmd) = read_json_line(&mut server).await? else {
                     bail!("Unexpected data");
                 };
@@ -510,7 +505,7 @@ mod test {
                 }
                 Ok(())
             },
-            |client, mut ev| async move {
+            async move |client, mut ev| {
                 tokio::select! {
                     _ = ev.recv() => bail!("Unexpected event"),
                     e = async move {
@@ -529,7 +524,7 @@ mod test {
     #[tokio::test(flavor = "current_thread")]
     async fn test_query_command_with_event() -> anyhow::Result<()> {
         harness(
-            |mut server| async move {
+            async move |mut server| {
                 server.write_all(EVENT_JSON).await?;
                 let serde_json::Value::Object(cmd) = read_json_line(&mut server).await? else {
                     bail!("Unexpected data");
@@ -540,22 +535,22 @@ mod test {
                 {
                     bail!("Missing or unexpected command");
                 }
-                tokio::task::yield_now().await;
                 server.write_all(BALLOON_RETURN_JSON).await?;
                 Ok(())
             },
-            |client, mut ev| async move {
-                let mut qb = Box::pin(async move {
+            async move |client, mut ev| {
+                let qb = Box::pin(async move {
                     if client.query_balloon().await?.actual != 123 {
                         bail!("Unexpected `actual` value");
                     }
                     Ok(())
                 });
-                tokio::select! {
-                    _ = ev.recv() => (),
-                    _ = &mut qb => bail!("Command completed before event"),
+                let (ev, qb) = tokio::join! {
+                    ev.recv(),
+                    qb,
                 };
-                qb.await
+                ev.context("Event not received")?;
+                qb
             },
             TIMEOUT_SLOW,
         )
