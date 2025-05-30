@@ -5,7 +5,7 @@ let
   ghafpkgs =
     pkgs:
     let
-      callPackage = pkgs.lib.callPackageWith pkgs;
+      inherit (pkgs) callPackage;
     in
     {
       ghaf-artwork = callPackage ./ghaf-artwork { };
