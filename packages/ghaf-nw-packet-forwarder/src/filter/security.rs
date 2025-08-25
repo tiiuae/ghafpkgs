@@ -3,14 +3,14 @@
     SPDX-License-Identifier: Apache-2.0
 */
 use log::{debug, info, warn};
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::collections::VecDeque;
+use std::collections::hash_map::Entry;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tokio::time::interval;
 use tokio::time::Duration;
 use tokio::time::Instant;
+use tokio::time::interval;
 use tokio_util::sync::CancellationToken;
 
 use pnet::packet::ip::IpNextHeaderProtocol;

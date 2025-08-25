@@ -2,14 +2,14 @@
  * Copyright 2025 TII (SSRC) and the Ghaf contributors
  * SPDX-License-Identifier: Apache-2.0
 */
-use anyhow::{anyhow, bail, Context};
+use anyhow::{Context, anyhow, bail};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::PathBuf, result::Result as StdResult, time::Duration};
 use tokio::{
     io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufStream},
     net::UnixStream,
     sync::mpsc,
-    time::{sleep, Sleep},
+    time::{Sleep, sleep},
 };
 
 pub type Result<T> = anyhow::Result<T>;
