@@ -100,7 +100,9 @@ fn handling_args() -> Result<Args, Box<dyn Error>> {
 impl Args {
     fn validate(&self) {
         if 1 == self.chromecast && (self.chromevm_ip.is_none() || self.chromevm_mac.is_none()) {
-            panic!("Error: --chromevm_ip and --chromevm_mac are required when --chromecast is enabled.");
+            panic!(
+                "Error: --chromevm_ip and --chromevm_mac are required when --chromecast is enabled."
+            );
         }
     }
 }

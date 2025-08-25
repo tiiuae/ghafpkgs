@@ -31,7 +31,8 @@
             pkgs.clippy
 
             config.treefmt.build.wrapper
-          ] ++ lib.attrValues config.treefmt.build.programs; # make all the trefmt packages available
+          ]
+          ++ lib.attrValues config.treefmt.build.programs; # make all the trefmt packages available
 
           packagesFrom = builtins.attrValues self'.packages ++ self'.packages.ghaf-audio-control.buildInputs;
         };

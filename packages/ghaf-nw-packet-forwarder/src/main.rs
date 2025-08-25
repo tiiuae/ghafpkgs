@@ -8,8 +8,8 @@ mod forward_impl; // Declare the forward module
 
 use cli::LogOutput;
 use env_logger::Builder;
-use filter::chromecast::{ExternalOps, InternalOps};
 use filter::Chromecast;
+use filter::chromecast::{ExternalOps, InternalOps};
 use forward_impl::forward::{self, get_ifaces};
 use log::{debug, error, info, trace, warn};
 use pnet::datalink::DataLinkReceiver;
@@ -20,7 +20,7 @@ use std::sync::Arc;
 use syslog::{BasicLogger, Facility, Formatter3164};
 use tokio::signal;
 use tokio::sync::Mutex;
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 use tokio_util::sync::CancellationToken;
 
 #[tokio::main]

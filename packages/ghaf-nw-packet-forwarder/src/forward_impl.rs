@@ -10,6 +10,8 @@ use log::{debug, error, info, trace};
 use pnet::datalink;
 use pnet::datalink::NetworkInterface;
 use pnet::ipnetwork::IpNetwork;
+use pnet::packet::MutablePacket;
+use pnet::packet::Packet;
 use pnet::packet::arp::ArpPacket;
 use pnet::packet::ethernet::EtherTypes;
 use pnet::packet::ethernet::MutableEthernetPacket;
@@ -22,8 +24,6 @@ use pnet::packet::tcp;
 use pnet::packet::tcp::{MutableTcpPacket, TcpPacket};
 use pnet::packet::udp;
 use pnet::packet::udp::{MutableUdpPacket, UdpPacket};
-use pnet::packet::MutablePacket;
-use pnet::packet::Packet;
 use pnet::util::MacAddr;
 use std::error::Error;
 use std::net::IpAddr;
@@ -405,9 +405,9 @@ pub mod forward {
                                 let src_port = tcp_packet.get_source();
                                 let dest_port = tcp_packet.get_destination();
                                 return format!(
-                                "TCP Packet - Src IP: {}, Src Port: {}, Dest IP: {}, Dest Port: {}",
-                                src_ip, src_port, dest_ip, dest_port
-                            );
+                                    "TCP Packet - Src IP: {}, Src Port: {}, Dest IP: {}, Dest Port: {}",
+                                    src_ip, src_port, dest_ip, dest_port
+                                );
                             }
                         }
                         IpNextHeaderProtocols::Udp => {
@@ -415,9 +415,9 @@ pub mod forward {
                                 let src_port = udp_packet.get_source();
                                 let dest_port = udp_packet.get_destination();
                                 return format!(
-                                "UDP Packet - Src MAC: {}, Src IP: {}, Src Port: {}, Dest MAC: {}, Dest IP: {}, Dest Port: {}",
-                                src_mac,src_ip, src_port, dest_mac,dest_ip, dest_port
-                            );
+                                    "UDP Packet - Src MAC: {}, Src IP: {}, Src Port: {}, Dest MAC: {}, Dest IP: {}, Dest Port: {}",
+                                    src_mac, src_ip, src_port, dest_mac, dest_ip, dest_port
+                                );
                             }
                         }
                         IpNextHeaderProtocols::Icmp => {
