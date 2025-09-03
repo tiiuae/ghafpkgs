@@ -6,14 +6,22 @@ on:
   pull_request:
     branches:
       - main
+permissions:
+  contents: read
+
 jobs:
   run-checks:
     runs-on: ubuntu-latest
     steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@ec9f2d5744a09debf3a187a3f4f675c53b671911 # v2.13.0
+        with:
+          egress-policy: audit
+
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
       - name: Install nix
-        uses: cachix/install-nix-action@v24
+        uses: cachix/install-nix-action@7ac1ec25491415c381d9b62f0657c7a028df52a7 # v24
       - name: Check .nix formatting
         run: nix fmt -- --fail-on-change
       - name: Check reuse lint
