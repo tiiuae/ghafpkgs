@@ -5,7 +5,7 @@ let
   ghafpkgs =
     pkgs:
     let
-      inherit (pkgs) callPackage;
+      inherit (pkgs) callPackage python3Packages;
     in
     {
       ghaf-artwork = callPackage ./ghaf-artwork { };
@@ -14,6 +14,9 @@ let
       ghaf-theme = callPackage ./ghaf-theme { };
       ghaf-nw-packet-forwarder = callPackage ./ghaf-nw-packet-forwarder { inherit (inputs) crane; };
       ghaf-wallpapers = callPackage ./ghaf-wallpapers { };
+      hotplug = python3Packages.callPackage ./hotplug/package.nix { };
+      vhotplug = python3Packages.callPackage ./vhotplug/package.nix { };
+      vinotify = python3Packages.callPackage ./vinotify/package.nix { };
     };
 in
 {
