@@ -4,22 +4,18 @@ updates:
     directory: /
     schedule:
       interval: daily
-
   - package-ecosystem: cargo
     directory: /packages/ghaf-mem-manager
     schedule:
       interval: daily
-
   - package-ecosystem: cargo
     directory: /packages/ghaf-nw-packet-forwarder
     schedule:
       interval: daily
-
   - package-ecosystem: pip
     directory: /packages/hotplug/hotplug
     schedule:
       interval: daily
-
   - package-ecosystem: pip
     directory: /packages/vinotify/vinotify
     schedule:

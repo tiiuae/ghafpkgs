@@ -13,6 +13,7 @@ SPDX-FileCopyrightText = "2022-2025 TII (SSRC) and the Ghaf contributors"
 precedence = "closest"
 path = [
   "flake.lock",
+  "SECURITY.md",
   "packages/ghaf-mem-manager/Cargo.lock",
   "packages/ghaf-artwork/**/*.png",
   "packages/ghaf-artwork/**/*.jpg",
@@ -20,6 +21,10 @@ path = [
   "packages/ghaf-theme/**/*.svg",
   "packages/ghaf-nw-packet-forwarder/Cargo.lock",
   "packages/ghaf-nw-packet-forwarder/flake.lock",
+  ".github/dependabot.yml",
+  ".github/workflows/codeql.yml",
+  ".github/workflows/dependency-review.yml",
+  ".github/workflows/scorecards.yml"
 ]
 
 [[annotations]]
