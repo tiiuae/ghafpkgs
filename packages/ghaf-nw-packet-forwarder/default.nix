@@ -3,7 +3,6 @@
 {
   pkgs,
   crane,
-  src,
 }:
 let
   craneLib = crane.mkLib pkgs;
