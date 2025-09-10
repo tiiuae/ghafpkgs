@@ -29,6 +29,7 @@
 
             pkgs.stdenv.cc
             pkgs.clippy
+            pkgs.cmake-language-server
 
             config.treefmt.build.wrapper
           ]
