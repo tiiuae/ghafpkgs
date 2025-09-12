@@ -112,19 +112,20 @@ async fn monitor_memory(args: Args) -> Result<()> {
     let dur = Duration::from_secs(args.interval);
     let bival = Duration::from_secs(args.balloon_interval);
     let mut ival = tokio::time::interval(dur);
+    let mut errors = 0;
     ival.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
     loop {
         ival.tick().await;
         for (qmp, (last, last_balloon)) in &mut qmps {
             let (conn, task, mut receiver) = match qmp.connect().await {
-                Ok(a) => a,
+                Ok(ctr) => ctr,
                 Err(e) => {
                     warn!("Connection to {qmp} failed: {e}, trying again later",);
                     continue;
                 }
             };
-            tokio::select! {
+            if let Err(e) = tokio::select! {
                 e = async {
                     conn.set_stats_interval(dur).await?;
                     let balloon = conn.query_balloon().await?;
@@ -164,7 +165,16 @@ async fn monitor_memory(args: Args) -> Result<()> {
                         }
                     }
                 } => Ok(()),
-            }?;
+            } {
+                errors += 1;
+                if errors >= 5 {
+                    Err(e)?;
+                } else {
+                    warn!("Got error {e} with {qmp} for the {errors}th time");
+                }
+            } else {
+                errors = 0;
+            }
         }
     }
 }
