@@ -17,6 +17,7 @@ let
       hotplug = python3Packages.callPackage ./hotplug/package.nix { };
       vhotplug = python3Packages.callPackage ./vhotplug/package.nix { };
       vinotify = python3Packages.callPackage ./vinotify/package.nix { };
+      usb-passthrough-manager = python3Packages.callPackage ./usb-passthrough-manager/package.nix { };
     };
 in
 {

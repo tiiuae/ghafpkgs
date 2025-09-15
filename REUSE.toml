@@ -29,7 +29,7 @@ path = [
   "packages/vhotplug/vhotplug/config.json"
   "packages/vhotplug/vhotplug/.pylintrc"
   "packages/vhotplug/vhotplug/.gitignore"
-
+  "packages/usb-passthrough-manager/usb_passthrough_manager/.gitignore"
 ]
 
 [[annotations]]
