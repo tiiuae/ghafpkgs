@@ -7,10 +7,16 @@ import json
 import logging
 import asyncio
 import pyudev
-from vhotplug.device import get_usb_devices, vm_for_usb_device, attach_usb_device, remove_usb_device
+from vhotplug.device import (
+    get_usb_devices,
+    vm_for_usb_device,
+    attach_usb_device,
+    remove_usb_device,
+)
 from vhotplug.usb import get_usb_info
 
 logger = logging.getLogger("vhotplug")
+
 
 class APIServer:
     # pylint: disable = too-many-instance-attributes
@@ -40,7 +46,9 @@ class APIServer:
             self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.server_socket.bind((self.host, self.port))
-            logger.info("API server listening on TCP port %s, host: %s", self.port, self.host)
+            logger.info(
+                "API server listening on TCP port %s, host: %s", self.port, self.host
+            )
         else:
             raise ValueError("API transport must be either vsock or tcp")
 
@@ -68,7 +76,11 @@ class APIServer:
                 logger.info("API client connected %s", client_addr)
                 with self.clients_lock:
                     self.clients.append(client_sock)
-                t = threading.Thread(target=self._client_handler, args=(client_sock, client_addr), daemon=True)
+                t = threading.Thread(
+                    target=self._client_handler,
+                    args=(client_sock, client_addr),
+                    daemon=True,
+                )
                 t.start()
                 self.client_threads.append(t)
             except OSError as e:
@@ -93,7 +105,12 @@ class APIServer:
                             res = self.handle_message(client_sock, client_addr, msg)
                             self._send(client_sock, res)
                         except (TypeError, ValueError) as e:
-                            logger.error("Invalid JSON from %s: %s, error %s", client_addr, raw_msg, e)
+                            logger.error(
+                                "Invalid JSON from %s: %s, error %s",
+                                client_addr,
+                                raw_msg,
+                                e,
+                            )
         except OSError as e:
             logger.error("API client %s receive failed: %s", client_addr, e)
         finally:
@@ -107,7 +124,7 @@ class APIServer:
         try:
             data = json.dumps(msg) + "\n"
             client_sock.sendall(data.encode("utf-8"))
-        except (OSError) as e:
+        except OSError as e:
             logger.error("API send failed (OS error): %s", e)
         except (TypeError, ValueError) as e:
             logger.error("API send failed (JSON error): %s", e)
@@ -119,13 +136,27 @@ class APIServer:
                 self._send(client_sock, msg)
 
     def notify_usb_attached(self, usb_info, vm_name):
-        self.notify({"event": "usb_attached", "usb_device": usb_info.to_dict(), "vm": vm_name})
+        self.notify(
+            {"event": "usb_attached", "usb_device": usb_info.to_dict(), "vm": vm_name}
+        )
 
     def notify_usb_detached(self, usb_info, vm_name):
-        self.notify({"event": "usb_detached", "usb_device": {"device_node": usb_info.device_node}, "vm": vm_name})
+        self.notify(
+            {
+                "event": "usb_detached",
+                "usb_device": {"device_node": usb_info.device_node},
+                "vm": vm_name,
+            }
+        )
 
     def notify_usb_select_vm(self, usb_info, allowed_vms):
-        self.notify({"event": "usb_select_vm", "usb_device": usb_info.to_dict(), "allowed_vms": allowed_vms})
+        self.notify(
+            {
+                "event": "usb_select_vm",
+                "usb_device": usb_info.to_dict(),
+                "allowed_vms": allowed_vms,
+            }
+        )
 
     # pylint: disable = too-many-return-statements
     def handle_message(self, client_sock, client_addr, msg):
@@ -137,7 +168,10 @@ class APIServer:
             return {"result": "ok"}
         if msg_name == "usb_list":
             logger.info("API request usb list from %s", client_addr)
-            return {"result": "ok", "usb_devices": get_usb_devices(self.context, self.config)}
+            return {
+                "result": "ok",
+                "usb_devices": get_usb_devices(self.context, self.config),
+            }
         if msg_name == "usb_attach":
             logger.info("API request usb attach from %s", client_addr)
             try:
@@ -150,7 +184,9 @@ class APIServer:
                 usb_info = get_usb_info(device)
 
                 # Check that target VM is allowed for this device
-                vm_coro = vm_for_usb_device(self.context, self.config, self, usb_info, vm_name, False)
+                vm_coro = vm_for_usb_device(
+                    self.context, self.config, self, usb_info, vm_name, False
+                )
                 future = asyncio.run_coroutine_threadsafe(vm_coro, self.loop)
                 vm = future.result()
                 if not vm:
@@ -185,7 +221,7 @@ class APIServer:
                 raise RuntimeError("USB device not found") from None
             except RuntimeError as e:
                 logger.error("Failed to detach device: %s", e)
-                return {"result": "failed", "error":  str(e)}
+                return {"result": "failed", "error": str(e)}
 
         logger.warning("API server unknown message: %s", msg_name)
         return {"result": "failed", "error": f"Unknown message: {msg_name}"}

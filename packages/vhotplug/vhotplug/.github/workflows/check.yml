@@ -6,7 +6,6 @@ on:
   push:
     branches:
       - master
-
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -15,7 +14,6 @@ jobs:
       - uses: actions/setup-python@v4
         with:
           python-version: 3.12
-
       - name: Setup venv
         run: |
           python -m venv venv
@@ -23,13 +21,11 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
           pip install pylint pytest
-
       - name: Run pylint
         run: |
           source venv/bin/activate
           pylint ./vhotplug
-
       - name: Run pytest
-        run:  |
+        run: |
           source venv/bin/activate
           pytest ./tests

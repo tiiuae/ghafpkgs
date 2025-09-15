@@ -2,12 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0
 {
   buildPythonApplication,
-  fetchFromGitHub,
   qemu-qmp,
   pyudev,
   psutil,
   inotify-simple,
   setuptools,
+  usb-passthrough-manager,
 }:
 buildPythonApplication {
   pname = "vhotplug";
@@ -19,11 +19,12 @@ buildPythonApplication {
     psutil
     inotify-simple
     qemu-qmp
+    usb-passthrough-manager
   ];
 
   doCheck = false;
 
-  src = ./vhotplug
+  src = ./vhotplug;
 
   build-system = [ setuptools ];
 

@@ -8,6 +8,7 @@ import time
 
 logger = logging.getLogger("vhotplug")
 
+
 def is_unix_socket_alive(socket_path, sock_type):
     if not os.path.exists(socket_path):
         return False
@@ -19,6 +20,7 @@ def is_unix_socket_alive(socket_path, sock_type):
     except OSError as e:
         logger.warning("Socket %s is not alive: %s", socket_path, e)
     return False
+
 
 def wait_for_boot(socket_path, vm_boot_timeout, wait_after_boot, sock_type):
     for attempt in range(1, vm_boot_timeout + 1):
@@ -33,8 +35,14 @@ def wait_for_boot(socket_path, vm_boot_timeout, wait_after_boot, sock_type):
         time.sleep(1)
     return False
 
+
 def wait_for_boot_crosvm(socket_path, vm_boot_timeout, wait_after_boot):
-    return wait_for_boot(socket_path, vm_boot_timeout, wait_after_boot, socket.SOCK_SEQPACKET)
+    return wait_for_boot(
+        socket_path, vm_boot_timeout, wait_after_boot, socket.SOCK_SEQPACKET
+    )
+
 
 def wait_for_boot_qemu(socket_path, vm_boot_timeout, wait_after_boot):
-    return wait_for_boot(socket_path, vm_boot_timeout, wait_after_boot, socket.SOCK_STREAM)
+    return wait_for_boot(
+        socket_path, vm_boot_timeout, wait_after_boot, socket.SOCK_STREAM
+    )
