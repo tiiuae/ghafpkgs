@@ -40,7 +40,7 @@ def show_new_device_popup_async(dev_struct: DeviceStruct):
 class PopupWindow(Gtk.ApplicationWindow):
     def __init__(self, app: Gtk.Application, dev_struct: DeviceStruct):
         super().__init__(application=app, title="Notification")
-        self.set_default_size(300, 290)
+        self.set_default_size(320, 320)
 
         self.dev_struct = dev_struct
         self.blocks: dict[str, dict[str, Gtk.Widget]] = {}
