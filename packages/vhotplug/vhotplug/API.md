@@ -1,3 +1,8 @@
+<!--
+    Copyright 2022-2025 TII (SSRC) and the Ghaf contributors
+    SPDX-License-Identifier: CC-BY-SA-4.0
+-->
+
 # Overview
 
 The API provides a mechanism for managing USB device hotplug events and controlling their attachment to virtual machines.

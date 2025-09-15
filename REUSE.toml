@@ -25,6 +25,11 @@ path = [
   ".github/workflows/codeql.yml",
   ".github/workflows/dependency-review.yml",
   ".github/workflows/scorecards.yml"
+  "packages/vhotplug/vhotplug/LICENSE"
+  "packages/vhotplug/vhotplug/config.json"
+  "packages/vhotplug/vhotplug/.pylintrc"
+  "packages/vhotplug/vhotplug/.gitignore"
+
 ]
 
 [[annotations]]

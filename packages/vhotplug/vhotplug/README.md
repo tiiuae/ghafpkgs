@@ -1,3 +1,8 @@
+<!--
+    Copyright 2022-2025 TII (SSRC) and the Ghaf contributors
+    SPDX-License-Identifier: CC-BY-SA-4.0
+-->
+
 # vhotplug
 
 This application runs as a service on the host, monitors device add/remove events using libudev and dynamically attaches USB devices to virtual machines based on rules defined in a configuration file.
