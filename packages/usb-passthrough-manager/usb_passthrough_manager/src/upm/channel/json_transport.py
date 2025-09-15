@@ -6,7 +6,7 @@ import socket
 import logging
 from collections.abc import Generator
 from typing import Any
-from upm.logger import log_entry_exit
+
 logger = logging.getLogger("upm")
 
 

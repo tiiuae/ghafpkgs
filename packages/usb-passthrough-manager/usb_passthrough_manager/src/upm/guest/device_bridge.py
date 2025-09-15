@@ -4,13 +4,16 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import gi
+
 gi.require_version("Gtk", "4.0")
 gi.require_version("GLib", "2.0")
-from gi.repository import Gtk, GLib, Gio
+
+from gi.repository import Gtk, Gio
 
 logger = logging.getLogger("upm")
 
 SELECT_LABEL = "Select"
+
 
 def _read_schema_once(path: Path) -> Dict[str, Any]:
     try:
@@ -20,6 +23,7 @@ def _read_schema_once(path: Path) -> Dict[str, Any]:
         logger.error(f"Failed to read schema file: {e}")
         return {}
     return doc if isinstance(doc, dict) else {}
+
 
 class AppWindow(Gtk.ApplicationWindow):
     def __init__(
@@ -88,7 +92,9 @@ class AppWindow(Gtk.ApplicationWindow):
                 self.inner.remove(container)
         self.blocks.clear()
 
-    def _make_dropdown(self, device_id: str, items: List[str], selected: Optional[str]) -> Gtk.DropDown:
+    def _make_dropdown(
+        self, device_id: str, items: List[str], selected: Optional[str]
+    ) -> Gtk.DropDown:
         model = Gtk.StringList.new([SELECT_LABEL] + items)
         dropdown = Gtk.DropDown.new(model=model, expression=None)
         dropdown.set_hexpand(False)
@@ -132,7 +138,11 @@ class AppWindow(Gtk.ApplicationWindow):
 
         self.inner.append(frame)
 
-        self.blocks[device_id] = {"container": frame, "label": lbl, "dropdown": dropdown}
+        self.blocks[device_id] = {
+            "container": frame,
+            "label": lbl,
+            "dropdown": dropdown,
+        }
 
     def _apply_reload_ui(self):
         doc = _read_schema_once(self.file_path)
@@ -155,7 +165,9 @@ class AppWindow(Gtk.ApplicationWindow):
                 return False
         return False
 
-    def _on_dropdown_changed(self, dropdown: Gtk.DropDown, _pspec, device_id: str) -> None:
+    def _on_dropdown_changed(
+        self, dropdown: Gtk.DropDown, _pspec, device_id: str
+    ) -> None:
         idx = dropdown.get_selected()
         if idx < 0:
             return
@@ -187,8 +199,9 @@ class AppWindow(Gtk.ApplicationWindow):
 
 class DeviceBridge(Gtk.Application):
     def __init__(self, data_dir: str):
-        super().__init__(application_id="ghaf.device.bridge",
-                         flags=Gio.ApplicationFlags.FLAGS_NONE)
+        super().__init__(
+            application_id="ghaf.device.bridge", flags=Gio.ApplicationFlags.FLAGS_NONE
+        )
         self._data_dir = data_dir
         self._win: Optional[AppWindow] = None
 
@@ -201,6 +214,7 @@ class DeviceBridge(Gtk.Application):
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     import sys
+
     data_dir = sys.argv[1] if len(sys.argv) > 1 else "."
     app = DeviceBridge(data_dir=data_dir)
     raise SystemExit(app.run(None))

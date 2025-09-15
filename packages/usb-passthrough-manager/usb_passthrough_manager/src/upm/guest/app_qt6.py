@@ -23,11 +23,13 @@ logger = logging.getLogger("upm")
 
 SELECT_LABEL = "Select"
 
+
 def device_title_html(device_id: str, vendor: str, product: str) -> str:
     # Bold: Vendor (Product) [vid:pid]:
     v = vendor or ""
     p = product or ""
     return f"<b>{v} ({p}) [{device_id}]:</b>"
+
 
 def _read_schema_once(path: Path) -> dict[str, Any]:
     try:

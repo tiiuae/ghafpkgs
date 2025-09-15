@@ -1,10 +1,10 @@
 import logging
 import threading
 import sys
-import gi
-
-from typing import Any, List, Optional, Callable
+from typing import List, Optional, Callable
 from dataclasses import dataclass
+
+import gi
 
 gi.require_version("Gtk", "4.0")
 from gi.repository import Gtk, Gio
@@ -13,14 +13,18 @@ logger = logging.getLogger("upm")
 
 SELECT_LABEL = "Select"
 
+
 @dataclass
 class DeviceStruct:
-    passthrough_handler: Callable[[str, str], bool]  # callable(device_id, new_vm) -> bool
+    passthrough_handler: Callable[
+        [str, str], bool
+    ]  # callable(device_id, new_vm) -> bool
     device_id: str
     vendor: str
     product: str
     permitted_vms: List[str]
     current_vm: Optional[str] = None
+
 
 def popup_thread_func(dev_struct: DeviceStruct):
     app = NotifyUser(dev_struct=dev_struct)
@@ -28,12 +32,10 @@ def popup_thread_func(dev_struct: DeviceStruct):
 
 
 def show_new_device_popup_async(dev_struct: DeviceStruct):
-    th = threading.Thread(
-        target=popup_thread_func,
-        args=(dev_struct,)
-    )
+    th = threading.Thread(target=popup_thread_func, args=(dev_struct,))
     th.start()
     th.join()
+
 
 class PopupWindow(Gtk.ApplicationWindow):
     def __init__(self, app: Gtk.Application, dev_struct: DeviceStruct):
@@ -100,13 +102,17 @@ class PopupWindow(Gtk.ApplicationWindow):
             dev_struct.current_vm,
         )
 
-    def _make_dropdown(self, device_id: str, items: List[str], selected: Optional[str]) -> Gtk.DropDown:
+    def _make_dropdown(
+        self, device_id: str, items: List[str], selected: Optional[str]
+    ) -> Gtk.DropDown:
         strings = [SELECT_LABEL] + items
         dropdown = Gtk.DropDown.new_from_strings(strings)
         dropdown.set_hexpand(False)
 
         if selected and selected in items:
-            dropdown.set_selected(items.index(selected) + 1)  # +1 because of SELECT_LABEL
+            dropdown.set_selected(
+                items.index(selected) + 1
+            )  # +1 because of SELECT_LABEL
         else:
             dropdown.set_selected(0)
 
@@ -143,7 +149,11 @@ class PopupWindow(Gtk.ApplicationWindow):
 
         self.inner.append(frame)
 
-        self.blocks[device_id] = {"container": frame, "label": lbl, "dropdown": dropdown}
+        self.blocks[device_id] = {
+            "container": frame,
+            "label": lbl,
+            "dropdown": dropdown,
+        }
         logger.debug("Added UI block for device %s with targets %s", device_id, targets)
 
     def _request_passthrough(self, device_id: str, new_vm: str) -> bool:
@@ -154,10 +164,14 @@ class PopupWindow(Gtk.ApplicationWindow):
             ok = False
 
         if not ok:
-            self._show_error_dialog(title="Error", message="Failed to request passthrough.")
+            self._show_error_dialog(
+                title="Error", message="Failed to request passthrough."
+            )
         return ok
 
-    def _on_dropdown_changed(self, dropdown: Gtk.DropDown, _pspec, device_id: str) -> None:
+    def _on_dropdown_changed(
+        self, dropdown: Gtk.DropDown, _pspec, device_id: str
+    ) -> None:
         idx = dropdown.get_selected()
         if idx < 0:
             return
@@ -189,10 +203,12 @@ class PopupWindow(Gtk.ApplicationWindow):
     def _on_close_request(self, *_args) -> bool:
         return False
 
+
 class NotifyUser(Gtk.Application):
     def __init__(self, dev_struct: DeviceStruct):
-        super().__init__(application_id="ghaf.notify.user",
-                         flags=Gio.ApplicationFlags.FLAGS_NONE)
+        super().__init__(
+            application_id="ghaf.notify.user", flags=Gio.ApplicationFlags.FLAGS_NONE
+        )
         self._dev_struct = dev_struct
         self._win: Optional[PopupWindow] = None
 
@@ -201,12 +217,13 @@ class NotifyUser(Gtk.Application):
             self._win = PopupWindow(self, dev_struct=self._dev_struct)
         self._win.present()
 
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
     def passthrough_handler(device_id: str, new_vm: str) -> bool:
         print(f"Device {device_id} passed to VM {new_vm}")
-        return False ##Test Error dialog
+        return False  ##Test Error dialog
 
     device_struct = DeviceStruct(
         passthrough_handler=passthrough_handler,

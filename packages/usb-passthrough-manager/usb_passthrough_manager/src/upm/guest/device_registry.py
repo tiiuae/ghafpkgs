@@ -161,8 +161,9 @@ class DeviceRegister:
                 vendor=entry["vendor"],
                 product=entry["product"],
                 permitted_vms=entry["permitted-vms"],
-                current_vm=entry["current-vm"])
-                
+                current_vm=entry["current-vm"],
+            )
+
             show_new_device_popup_async(dev_struct=dev_struct)
         # A device removed
         elif msgtype == "device_removed":

@@ -17,6 +17,11 @@ dependencies = [
   "PyGObject>=3.46",
 ]
 
+# Ignore formatting error "E402 Module level import not at top of file"
+# Ordering is required to select gtk version
+[tool.ruff]
+ignore = ["E402"]
+
 # Optional extras (keep or remove as you like)
 [project.optional-dependencies]
 dev = ["pytest", "ruff", "mypy"]

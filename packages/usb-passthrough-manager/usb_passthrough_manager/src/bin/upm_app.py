@@ -27,9 +27,10 @@ def build_parser():
 def main():
     args = build_parser().parse_args()
     setup_logger(args.loglevel)
-    
+
     app = DeviceBridge(data_dir=args.dir)
     sys.exit(app.run(None))
+
 
 if __name__ == "__main__":
     main()
