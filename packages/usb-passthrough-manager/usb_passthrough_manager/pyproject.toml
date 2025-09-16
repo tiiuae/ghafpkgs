@@ -15,6 +15,7 @@ requires-python = ">=3.13"
 license = "Apache-2.0"
 dependencies = [
   "PyGObject>=3.46",
+  "vsock_bridge @ file://../../vsock_bridge"
 ]
 
 # Ignore formatting error "E402 Module level import not at top of file"
@@ -28,11 +29,11 @@ dev = ["pytest", "ruff", "mypy"]
 
 # GUI launcher for the app window; service binaries stay as console scripts.
 [project.gui-scripts]
-upm_app = "bin.upm_app:main"
+upm = "bin.upm_app:main"
 
 [project.scripts]
-upm_service = "bin.upm_service:main"
-upm_host_service = "bin.upm_host:main"
+upm_server = "bin.upm_server:main"
+upm_test = "bin.upm_test_host:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

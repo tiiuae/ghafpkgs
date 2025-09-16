@@ -2,18 +2,16 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import json
-import logging
 import os
 import stat
 import tempfile
 from pathlib import Path
 from typing import Any
 
-from upm.channel.vsock import VsockServer
+from vsock_bridge.vsock import VsockServer
+from vsock_bridge.protocols import dpm
 from upm.guest.notify_user import show_new_device_popup_async, DeviceStruct
-from upm.logger import log_entry_exit
-
-logger = logging.getLogger("upm")
+from upm.logger import logger, log_entry_exit
 
 
 class DeviceRegister:
@@ -71,12 +69,8 @@ class DeviceRegister:
 
     @log_entry_exit
     def request_passthrough(self, device_id: str, new_vm: str) -> bool:
-        device_schema = {
-            "type": "passthrough_request",
-            "device_id": device_id,
-            "current-vm": new_vm,
-        }
-        if not self.server.send(device_schema):
+        passthrough_request = dpm.PassthroughRequest(device_id, new_vm)
+        if not self.server.send(passthrough_request.to_json()):
             logger.error("Failed to send passthrough request to host")
             return False
         return True
@@ -85,10 +79,8 @@ class DeviceRegister:
     def on_connect(self):
         self.connected = True
         logger.info("Connected to Host, Requesting devices...")
-        device_schema = {
-            "type": "get_devices",
-        }
-        if not self.server.send(device_schema):
+        get_devices_request = dpm.GetDevices()
+        if not self.server.send(get_devices_request.to_json()):
             logger.critical("System error! Service restart required.")
 
     @log_entry_exit
@@ -122,71 +114,50 @@ class DeviceRegister:
                     logger.error(f"Failed to clean up temporary file: {tmp_name}: {e}")
 
     @log_entry_exit
-    def passthrough_request(self, device_id: str, new_vm: str) -> bool:
-        device_schema = {
-            "type": "passthrough_request",
-            "device_id": device_id,
-            "current-vm": new_vm,
-        }
-        if not self.server.send(device_schema):
-            logger.critical("Passthrough error! Send request failed.")
-            return False
-        return True
-
-    @log_entry_exit
     def on_msg(self, msg: dict[str, Any]):
-        msgtype = msg.get("type")
+        msgtype = dpm.get_message_type(msg)
         # A new device connected
         logger.info(f"New message received: {msgtype}")
-        if msgtype == "device_connected":
-            device = msg.get("device") or {}
-            device_id = device.get("device_id")
-            if not device_id:
-                logger.error("Device_connected: missing device_id")
-                return
+        if msgtype == dpm.DeviceConnected.MSG_TYPE:
+            dev = dpm.DeviceConnected.from_message(msg)
 
-            entry = {
-                "vendor": device.get("vendor") or "",
-                "product": device.get("product") or "",
-                "permitted-vms": list(device.get("permitted-vms") or []),
-                "current-vm": device.get("current-vm") or "",
-            }
-
-            self.device_registry[device_id] = entry
+            self.device_registry[dev.device_id] = dev.device
             self.atomic_write_registry(self.device_registry)
-            logger.info(f"device_connected: {device_id} -> {entry['current-vm']}")
+            logger.info(f"device_connected: {dev.device_id} -> {dev.current_vm}")
             dev_struct = DeviceStruct(
-                passthrough_handler=self.passthrough_request,
-                device_id=device_id,
-                vendor=entry["vendor"],
-                product=entry["product"],
-                permitted_vms=entry["permitted-vms"],
-                current_vm=entry["current-vm"],
+                passthrough_handler=self.request_passthrough,
+                device_id=dev.device_id,
+                vendor=dev.vendor,
+                product=dev.product,
+                permitted_vms=dev.permitted_vms,
+                current_vm=dev.current_vm,
             )
 
             show_new_device_popup_async(dev_struct=dev_struct)
         # A device removed
-        elif msgtype == "device_removed":
-            device_id = msg.get("device_id")
-            if device_id in self.device_registry:
-                del self.device_registry[device_id]
+        elif msgtype == dpm.DeviceRemoved.MSG_TYPE:
+            dev = dpm.DeviceRemoved.from_message(msg)
+            if dev.device_id in self.device_registry:
+                del self.device_registry[dev.device_id]
                 self.atomic_write_registry(self.device_registry)
-                logger.info(f"device_removed: {device_id} removed")
+                logger.info(f"Device: {dev.device_id} removed")
             else:
-                logger.error(f"{device_id} not found!")
+                logger.error(f"{dev.device_id} not found!")
         # A snapshot of connected devices
-        elif msgtype == "connected_devices":
-            devices = msg.get("devices")
-            self.device_registry = devices
+        elif msgtype == dpm.ConnectedDevices.MSG_TYPE:
+            connected_devices = dpm.ConnectedDevices.from_message(msg)
+            self.device_registry = connected_devices.devices
             self.atomic_write_registry(self.device_registry)
         # A device switched
-        elif msgtype == "passthrough_ack":
-            device_id = msg.get("device_id")
-            new_vm = msg.get("current-vm")
-            self.device_registry[device_id]["current-vm"] = new_vm
-            self.atomic_write_registry(self.device_registry)
-        elif msgtype == "reset":
+        elif msgtype == dpm.PassthroughAck.MSG_TYPE:
+            ack = dpm.PassthroughAck.from_message(msg)
+            if ack.status == "ok":
+                self.device_registry[ack.device_id]["current_vm"] = ack.current_vm
+                self.atomic_write_registry(self.device_registry)
+            else:
+                logger.error(f"Passthrough failed: {ack.device_id} -> {ack.current_vm}")
+        elif msgtype == dpm.Reset.MSG_TYPE:
             self.device_registry.clear()
             self.atomic_write_registry(self.device_registry)
         else:
-            logger.error(f"unknown schema: {msg}")
+            logger.error(f"Unexpected msg: {msg}")

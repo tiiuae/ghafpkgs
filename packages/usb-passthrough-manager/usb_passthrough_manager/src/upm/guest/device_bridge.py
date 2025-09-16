@@ -10,7 +10,7 @@ gi.require_version("GLib", "2.0")
 
 from gi.repository import Gtk, Gio
 
-logger = logging.getLogger("upm")
+from upm.logger import logger
 
 SELECT_LABEL = "Select"
 
@@ -108,7 +108,6 @@ class AppWindow(Gtk.ApplicationWindow):
     def _add_block_ui(
         self,
         device_id: str,
-        vendor: str,
         product: str,
         targets: List[str],
         selected: Optional[str],
@@ -130,7 +129,7 @@ class AppWindow(Gtk.ApplicationWindow):
         lbl.set_selectable(True)
         lbl.set_xalign(0.0)
         lbl.set_hexpand(True)
-        lbl.set_markup(f"{product}:{vendor}")
+        lbl.set_markup(f"{product}:")
         vbox.append(lbl)
 
         dropdown = self._make_dropdown(device_id, targets, selected)
@@ -148,11 +147,10 @@ class AppWindow(Gtk.ApplicationWindow):
         doc = _read_schema_once(self.file_path)
         self._clear_blocks_ui()
         for dev_id, meta in doc.items():
-            permitted = list(meta.get("permitted-vms", []))
-            vendor = meta.get("vendor") or ""
+            permitted = list(meta.get("permitted_vms", []))
             product = meta.get("product") or ""
-            selected = meta.get("current-vm") or ""
-            self._add_block_ui(dev_id, vendor, product, permitted, selected)
+            selected = meta.get("current_vm") or ""
+            self._add_block_ui(dev_id, product, permitted, selected)
 
     def _request_passthrough(self, device_id: str, new_vm: str) -> bool:
         request = f"{device_id}->{new_vm}\n"

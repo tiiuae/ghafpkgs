@@ -42,13 +42,13 @@ def emulate(svc):
                 logger.debug("Processing request: " + request["type"])
                 match request["type"]:
                     case "passthrough_request":
-                        if "device_id" not in request or "current-vm" not in request:
+                        if "device_id" not in request or "current_vm" not in request:
                             logger.error(
-                                "Could not find device_id or current-vm field in request! Send new command!"
+                                "Could not find device_id or current_vm field in request! Send new command!"
                             )
                         else:
                             device_id = request.get("device_id")
-                            target_vm = request.get("current-vm")
+                            target_vm = request.get("current_vm")
                             if not svc.notify_device_passthrough(device_id, target_vm):
                                 logger.error("Notify error! Service restart required.")
                             else:
@@ -69,8 +69,8 @@ def emulate(svc):
                             "device_id" not in request["device"]
                             or "vendor" not in request["device"]
                             or "product" not in request["device"]
-                            or "permitted-vms" not in request["device"]
-                            or "current-vm" not in request["device"]
+                            or "permitted_vms" not in request["device"]
+                            or "current_vm" not in request["device"]
                         ):
                             logger.error(
                                 "Could not find connected device data in request! Send new command!"
@@ -79,8 +79,8 @@ def emulate(svc):
                             device_id = request["device"].get("device_id")
                             vendor = request["device"].get("vendor")
                             product = request["device"].get("product")
-                            permitted_vms = request["device"].get("permitted-vms")
-                            current_vm = request["device"].get("current-vm")
+                            permitted_vms = request["device"].get("permitted_vms")
+                            current_vm = request["device"].get("current_vm")
 
                             logger.debug("device_connected request.")
                             if not svc.notify_device_connected(

@@ -1,15 +1,12 @@
 # Copyright 2022-2025 TII (SSRC) and the Ghaf contributors
 # SPDX-License-Identifier: Apache-2.0
 
-import logging
 import os
 import threading
 from pathlib import Path
 
 from upm.guest.device_registry import DeviceRegister
-from upm.logger import log_entry_exit
-
-logger = logging.getLogger("upm")
+from upm.logger import logger, log_entry_exit
 
 
 def _create_fifo(service_dir: str) -> Path:

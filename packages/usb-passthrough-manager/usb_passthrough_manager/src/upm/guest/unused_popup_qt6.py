@@ -1,7 +1,6 @@
 # Copyright 2022-2025 TII (SSRC) and the Ghaf contributors
 # SPDX-License-Identifier: Apache-2.0
 
-import logging
 import sys
 import threading
 from typing import Any
@@ -19,8 +18,6 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-
-logger = logging.getLogger("upm")
 
 SELECT_LABEL = "Select"
 

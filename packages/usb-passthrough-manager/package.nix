@@ -10,6 +10,7 @@
   wrapGAppsHook,
   gsettings-desktop-schemas,
   pygobject3,
+  vsock-bridge,
 }:
 
 buildPythonApplication {
@@ -27,6 +28,7 @@ buildPythonApplication {
 
   propagatedBuildInputs = [
     pygobject3
+    vsock-bridge
   ];
 
   buildInputs = [

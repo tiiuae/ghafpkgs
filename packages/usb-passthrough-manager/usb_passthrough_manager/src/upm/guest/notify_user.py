@@ -9,7 +9,7 @@ import gi
 gi.require_version("Gtk", "4.0")
 from gi.repository import Gtk, Gio
 
-logger = logging.getLogger("upm")
+from upm.logger import logger
 
 SELECT_LABEL = "Select"
 
@@ -96,7 +96,6 @@ class PopupWindow(Gtk.ApplicationWindow):
         self.connect("close-request", self._on_close_request)
         self._add_block_ui(
             dev_struct.device_id,
-            dev_struct.vendor,
             dev_struct.product,
             dev_struct.permitted_vms,
             dev_struct.current_vm,
@@ -122,7 +121,6 @@ class PopupWindow(Gtk.ApplicationWindow):
     def _add_block_ui(
         self,
         device_id: str,
-        vendor: str,
         product: str,
         targets: List[str],
         selected: Optional[str],
@@ -140,7 +138,7 @@ class PopupWindow(Gtk.ApplicationWindow):
         frame.set_child(vbox)
 
         lbl = Gtk.Label()
-        notice_lbl = Gtk.Label(label=f"{product}:({vendor})")
+        notice_lbl = Gtk.Label(label=f"{product}:")
         notice_lbl.set_xalign(0.5)
         vbox.append(notice_lbl)
 

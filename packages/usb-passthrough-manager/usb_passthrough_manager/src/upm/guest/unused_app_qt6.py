@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import json
-import logging
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +18,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-logger = logging.getLogger("upm")
+from upm.logger import logger
 
 SELECT_LABEL = "Select"
 
@@ -157,10 +156,10 @@ class App(QWidget):
         self._clear_blocks()
 
         for dev_id, meta in doc.items():
-            permitted = list(meta.get("permitted-vms", []))
+            permitted = list(meta.get("permitted_vms", []))
             vendor = meta.get("vendor") or ""
             product = meta.get("product") or ""
-            selected = meta.get("current-vm") or ""
+            selected = meta.get("current_vm") or ""
             self._add_block(dev_id, vendor, product, permitted, selected)
 
     def request_passthrough(self, device_id: str, new_vm: str) -> bool:

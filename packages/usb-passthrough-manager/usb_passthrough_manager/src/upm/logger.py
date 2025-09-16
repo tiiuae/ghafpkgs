@@ -4,7 +4,9 @@
 import logging
 from functools import wraps
 
-logger = logging.getLogger("upm")
+MODULE_NAME = "upm"
+
+logger = logging.getLogger(MODULE_NAME)
 CALL_TRACER = True
 
 

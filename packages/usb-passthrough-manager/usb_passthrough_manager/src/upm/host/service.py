@@ -1,15 +1,13 @@
 # Copyright 2022-2025 TII (SSRC) and the Ghaf contributors
 # SPDX-License-Identifier: Apache-2.0
 
-import logging
 from collections.abc import Callable
 from threading import Lock
 from typing import Any, TypeVar
+from vsock_bridge.vsock import VsockClient
+from vsock_bridge.protocols import dpm
 
-from upm.channel.vsock import VsockClient
-from upm.logger import log_entry_exit
-
-logger = logging.getLogger("upm")
+from upm.logger import logger, log_entry_exit
 
 T = TypeVar("T")
 
@@ -70,10 +68,11 @@ class HostService:
         with self.lock:
             if device_id not in self.device_registry:
                 self.device_registry[device_id] = {
+                    "device_id": device_id,
                     "vendor": vendor,
                     "product": product,
-                    "permitted-vms": permitted_vms,
-                    "current-vm": current_vm,
+                    "permitted_vms": permitted_vms,
+                    "current_vm": current_vm,
                 }
             else:
                 logger.error(
@@ -81,18 +80,11 @@ class HostService:
                 )
                 return True
 
-        device_schema = {
-            "type": "device_connected",
-            "device": {
-                "device_id": device_id,
-                "vendor": vendor,
-                "product": product,
-                "permitted-vms": permitted_vms,
-                "current-vm": current_vm,
-            },
-        }
-
-        if not self.gui_vm.send(device_schema):
+        device_connected_msg = dpm.DeviceConnected(
+            device_id, vendor, product, permitted_vms, current_vm
+        )
+        device_connected_msg.print()
+        if not self.gui_vm.send(device_connected_msg.to_json()):
             return False
         return True
 
@@ -100,8 +92,8 @@ class HostService:
     def reset(self) -> bool:
         with self.lock:
             self.device_registry.clear()
-        device_schema = {"type": "reset"}
-        if not self.gui_vm.send(device_schema):
+        reset_msg = dpm.Reset()
+        if not self.gui_vm.send(reset_msg):
             return False
         return True
 
@@ -115,11 +107,8 @@ class HostService:
                 return False
             else:
                 del self.device_registry[device_id]
-        device_schema = {
-            "type": "device_removed",
-            "device_id": device_id,
-        }
-        if not self.gui_vm.send(device_schema):
+        device_removed_msg = dpm.DeviceRemoved(device_id)
+        if not self.gui_vm.send(device_removed_msg.to_json()):
             return False
 
         return True
@@ -133,39 +122,33 @@ class HostService:
                 )
                 return False
             else:
-                if new_vm in self.device_registry[device_id]["permitted-vms"]:
-                    if new_vm != self.device_registry[device_id]["current-vm"]:
-                        self.device_registry[device_id]["current-vm"] = new_vm
+                if new_vm in self.device_registry[device_id]["permitted_vms"]:
+                    if new_vm != self.device_registry[device_id]["current_vm"]:
+                        self.device_registry[device_id]["current_vm"] = new_vm
                     else:
                         logger.info(f"Device {device_id} already on VM {new_vm}")
                         return True
                 else:
                     logger.error(f"Device {device_id} not permitted on VM {new_vm}")
                     return False
-        device_schema = {
-            "type": "passthrough_ack",
-            "device_id": device_id,
-            "current-vm": new_vm,
-        }
-        if not self.gui_vm.send(device_schema):
+        passthrough_ack_msg = dpm.PassthroughAck(device_id, new_vm, "ok")
+
+        if not self.gui_vm.send(passthrough_ack_msg.to_json()):
             return False
         return True
 
     @log_entry_exit
     def handle_request(self, msg: dict[str, Any]):
         logger.debug(f"Received request: {msg}")
-        msgtype = msg.get("type")
-        if msgtype == "get_devices":
-            device_schema = {
-                "type": "connected_devices",
-                "devices": self.device_registry,
-            }
-            print(device_schema)
-            if not self.gui_vm.send(device_schema):
+        msgtype = dpm.get_message_type(msg)
+        if msgtype == dpm.GetDevices.MSG_TYPE:
+            connected_devices = dpm.ConnectedDevices(self.device_registry)
+            if not self.gui_vm.send(connected_devices.to_json()):
                 logger.error("System error! Service restart required.")
-        elif msgtype == "passthrough_request":
-            device_id = msg.get("device_id")
-            target_vm = msg.get("current-vm")
+        elif msgtype == dpm.PassthroughRequest.MSG_TYPE:
+            passthrough_request = dpm.PassthroughRequest.from_message(msg)
+            device_id = passthrough_request.device_id
+            target_vm = passthrough_request.target_vm
             if device_id in self.device_registry:
                 if self.passthrough_handler(self.metadata, device_id, target_vm):
                     if not self.notify_device_passthrough(device_id, target_vm):
