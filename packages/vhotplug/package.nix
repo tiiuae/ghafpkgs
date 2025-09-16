@@ -7,7 +7,7 @@
   psutil,
   inotify-simple,
   setuptools,
-  usb-passthrough-manager,
+  vsock-bridge,
 }:
 buildPythonApplication {
   pname = "vhotplug";
@@ -19,7 +19,7 @@ buildPythonApplication {
     psutil
     inotify-simple
     qemu-qmp
-    usb-passthrough-manager
+    vsock-bridge
   ];
 
   doCheck = false;

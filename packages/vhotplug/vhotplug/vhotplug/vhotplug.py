@@ -23,91 +23,10 @@ from vhotplug.apiserver import APIServer
 
 logger = logging.getLogger("vhotplug")
 
-
-class UserDevices:
-    def __init__(self) -> None:
-        self._devices = {}
-        self._lock = threading.RLock()
-
-    def add(self, id, usbInfo):
-        with self._lock:
-            self._devices[id] = copy.deepcopy(usbInfo)
-
-    def get(self, id):
-        with self._lock:
-            return self._devices.get(id)
-
-    def delete(self, id):
-        with self._lock:
-            if id in self._devices:
-                del self._devices[id]
-                return True
-            return False
-
-    def list_ids(self):
-        with self._lock:
-            return list(self._devices.keys())
-
-    def has(self, id):
-        with self._lock:
-            return id is not None and id in self._devices
+userDevices = {}
 
 
-userDevices = UserDevices()
-
-
-async def device_event(context, config, device, api_server):
-    if device.action == "add":
-        logger.debug("Device plugged: %s", device.sys_name)
-        logger.debug("Subsystem: %s, path: %s", device.subsystem, device.device_path)
-        log_device(device)
-        if is_usb_device(device):
-            usb_info = get_usb_info(device)
-            logger.info(
-                "USB device %s:%s (%s %s) connected: %s",
-                usb_info.vid,
-                usb_info.pid,
-                usb_info.vendor_name,
-                usb_info.product_name,
-                device.device_node,
-            )
-            logger.info(
-                'Device class: "%s", subclass: "%s", protocol: "%s", interfaces: "%s"',
-                usb_info.device_class,
-                usb_info.device_subclass,
-                usb_info.device_protocol,
-                usb_info.interfaces,
-            )
-            try:
-                vm = await vm_for_usb_device(
-                    context, config, api_server, usb_info, None, True
-                )
-                if vm:
-                    await attach_usb_device(config, api_server, usb_info, vm)
-            except RuntimeError as e:
-                logger.error("Failed to attach device: %s", e)
-    elif device.action == "remove":
-        logger.debug("Device unplugged: %s", device.sys_name)
-        logger.debug("Subsystem: %s, path: %s", device.subsystem, device.device_path)
-        log_device(device)
-        if is_usb_device(device):
-            usb_info = get_usb_info(device)
-            logger.info("USB device disconnected: %s", device.device_node)
-            try:
-                await remove_usb_device(config, usb_info, api_server)
-            except RuntimeError as e:
-                logger.error("Failed to detach device: %s", e)
-    elif device.action == "change":
-        logger.debug("Device changed: %s", device.sys_name)
-        logger.debug("Subsystem: %s, path: %s", device.subsystem, device.device_path)
-        if device.subsystem == "power_supply":
-            logger.info(
-                "Power supply device %s changed, this may indicate a system resume",
-                device.sys_name,
-            )
-
-
-async def device_event_with_upm(context, config, device, upm_host):
+async def device_event(context, config, device, api_server, upmclient):
     global userDevices
     if device.action == "add":
         logger.debug("Device plugged: %s", device.sys_name)
@@ -136,14 +55,14 @@ async def device_event_with_upm(context, config, device, upm_host):
                     logger.info("No VM found for %s:%s", usb_info.vid, usb_info.pid)
                     return None
                 permitted = res[1]
-                if len(permitted) == 0:
+                if len(permitted) == 0 or upmclient is None:
                     vm = await vm_for_usb_device(
-                        context, config, None, usb_info, None, True
+                        context, config, api_server, usb_info, None, True
                     )
-                    await attach_usb_device(config, None, usb_info, vm)
+                    await attach_usb_device(config, api_server, usb_info, vm)
                 else:
                     device_id = usb_info.dev_id()
-                    if not upm_host.notify_device_connected(
+                    if not upmclient.notify_device_connected(
                         device_id,
                         usb_info.vendor_name,
                         usb_info.product_name,
@@ -152,7 +71,7 @@ async def device_event_with_upm(context, config, device, upm_host):
                     ):
                         logger.error("Notify device connected failed")
                     else:
-                        userDevices.add(device_id, usb_info)
+                        userDevices[device_id] = usb_info
                         logger.info(f"Device {device_id} connected")
             except RuntimeError as e:
                 logger.error("Failed to attach device: %s", e)
@@ -164,12 +83,12 @@ async def device_event_with_upm(context, config, device, upm_host):
             usb_info = get_usb_info(device)
             logger.info("USB device disconnected: %s", device.device_node)
             try:
-                await remove_usb_device(config, usb_info, None)
+                await remove_usb_device(config, usb_info, api_server)
                 device_id = usb_info.dev_id()
-                if userDevices.has(device_id):
-                    if not upm_host.notify_device_disconnected(device_id):
+                if device_id in userDevices:
+                    if not upmclient.notify_device_disconnected(device_id):
                         logger.error("Notify device disconnected failed")
-                    userDevices.delete(device_id)
+                    del userDevices[device_id]
             except RuntimeError as e:
                 logger.error("Failed to detach device: %s", e)
     elif device.action == "change":
@@ -184,30 +103,27 @@ async def device_event_with_upm(context, config, device, upm_host):
 
 # pylint: disable = too-many-positional-arguments
 async def monitor_loop(
-    monitor, context, config, user_interface, watcher, attach_connected, with_upm
+    monitor, context, config, api_server, watcher, attach_connected, upmclient
 ):
     while True:
         device = await asyncio.to_thread(monitor.poll, 1)
         if device:
-            if with_upm:
-                await device_event_with_upm(context, config, device, user_interface)
-            else:
-                await device_event(context, config, device, user_interface)
+            await device_event(context, config, device, api_server, upmclient)
 
         if watcher.detect_restart() and attach_connected:
             await attach_connected_devices(context, config)
 
 
 def handle_user_device_passthrough_request(metadata, device_id, new_vm):
-    config, devices = metadata
+    config, devices, api_server = metadata
     try:
         usb_info = devices.get(device_id)
         if not usb_info:
             logger.error("Device not found")
             return False
         vm = config.get_vm(new_vm)
-        asyncio.run(remove_usb_device(config, usb_info, None))
-        asyncio.run(attach_usb_device(config, None, usb_info, vm))
+        asyncio.run(remove_usb_device(config, usb_info, api_server))
+        asyncio.run(attach_usb_device(config, api_server, usb_info, vm))
         return True
     except RuntimeError as e:
         logger.error("Failed to attach device: %s", e)
@@ -228,27 +144,7 @@ async def async_main():
         action=argparse.BooleanOptionalAction,
         help="Attach connected devices on startup",
     )
-    parser.add_argument(
-        "-u",
-        "--usb-passthrough-manager",
-        default=True,
-        action=argparse.BooleanOptionalAction,
-        help="With USB passthrough manager",
-    )
-    parser.add_argument(
-        "-t",
-        "--target-cid",
-        type=int,
-        default=5,
-        help="cid of target vm (gui-vm) to send hotplug events to",
-    )
-    parser.add_argument(
-        "-p",
-        "--target-port",
-        type=int,
-        default=7000,
-        help="port of target vm (gui-vm) to send hotplug events to",
-    )
+
     parser.add_argument(
         "-d",
         "--debug",
@@ -281,33 +177,32 @@ async def async_main():
         if vm_socket:
             watcher.add_file(vm_socket)
 
-    server = None
-    if args.usb_passthrough_manager:
-        from upm.host.service import HostService
-        from upm.logger import setup_logger as upm_logger_setup
+    api_server = None
+    upmclient = None
+    if config.is_upmclient_enabled():
+        from vhotplug.upmclient import UPMClient
 
-        upm_logger_setup("debug" if args.debug else "info")
-        server = HostService(
-            port=args.target_port,
-            cid=args.target_cid,
+        upmclient = UPMClient(
+            port=config.get_upmserver_port(),
+            cid=config.get_upmserver_cid(),
             passthrough_handler=handle_user_device_passthrough_request,
-            metadata=(config, userDevices),
+            metadata=(config, userDevices, api_server),
         )
-        server.start()
-    else:
-        if config.api_enabled():
-            server = APIServer(config, context, asyncio.get_event_loop())
-            server.start()
+        upmclient.start()
+
+    if config.api_enabled():
+        api_server = APIServer(config, context, asyncio.get_event_loop())
+        api_server.start()
 
     logger.info("Waiting for new devices")
     await monitor_loop(
         monitor,
         context,
         config,
-        server,
+        api_server,
         watcher,
         args.attach_connected,
-        args.usb_passthrough_manager,
+        upmclient
     )
 
 

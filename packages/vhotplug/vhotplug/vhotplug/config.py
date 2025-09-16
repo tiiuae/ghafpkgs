@@ -202,3 +202,18 @@ class Config:
 
     def api_enabled(self):
         return self.config.get("general", {}).get("api", {}).get("enable", False)
+
+    def is_upmclient_enabled(self):
+        return self.config.get("general", {}).get("upmclient", {}).get("enable", False)
+
+    def get_upmserver_cid(self):
+        if self.is_upmclient_enabled():
+            return self.config.get("general", {}).get("upmclient", {}).get("server_cid")
+        return None
+
+    def get_upmserver_port(self):
+        if self.is_upmclient_enabled():
+            return (
+                self.config.get("general", {}).get("upmclient", {}).get("server_port")
+            )
+        return None
