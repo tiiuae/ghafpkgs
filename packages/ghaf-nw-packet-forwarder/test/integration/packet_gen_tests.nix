@@ -3,7 +3,7 @@
 { pkgs, crane, ... }:
 let
   nw-packet-forwarder = pkgs.callPackage ../../default.nix { inherit crane; };
-  packet-gen = pkgs.callPackage ./packages/packet-generator/derivation.nix { };
+  packet-gener = pkgs.python3Packages.callPackage ./packages/packet-generator/derivation.nix { };
 
   users.users.ghaf = {
     password = "ghaf";
@@ -90,7 +90,7 @@ in
       networking.useDHCP = false;
       networking.enableIPv6 = false;
       environment.systemPackages = [
-        packet-gen
+        packet-gener
         pkgs.tshark
       ];
     };
