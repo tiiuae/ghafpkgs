@@ -3,20 +3,20 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: daily
+      interval: weekly
   - package-ecosystem: cargo
     directory: /packages/ghaf-mem-manager
     schedule:
-      interval: daily
+      interval: weekly
   - package-ecosystem: cargo
     directory: /packages/ghaf-nw-packet-forwarder
     schedule:
-      interval: daily
+      interval: weekly
   - package-ecosystem: pip
     directory: /packages/hotplug/hotplug
     schedule:
-      interval: daily
+      interval: weekly
   - package-ecosystem: pip
     directory: /packages/vinotify/vinotify
     schedule:
-      interval: daily
+      interval: weekly
