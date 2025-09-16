@@ -155,9 +155,8 @@
         nwPcktFwdRelease = mknwPcktFwdPackage "release";
         nwPcktFwdDebug = mknwPcktFwdPackage "debug";
       in
-      with pkgs;
       {
-        formatter = pkgs.alejandra;
+        formatter = pkgs.nixfmt-tree;
         packages = {
           inherit nwPcktFwdRelease nwPcktFwdDebug;
           default = nwPcktFwdRelease; # Default to release build
