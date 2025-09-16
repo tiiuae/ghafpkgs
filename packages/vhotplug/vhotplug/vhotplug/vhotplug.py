@@ -6,8 +6,6 @@ import asyncio
 import argparse
 import os
 import pyudev
-import copy
-import threading
 from vhotplug.device import (
     vm_for_usb_device,
     attach_usb_device,
@@ -55,7 +53,7 @@ async def device_event(context, config, device, api_server, upmclient):
                     logger.info("No VM found for %s:%s", usb_info.vid, usb_info.pid)
                     return None
                 permitted = res[1]
-                if len(permitted) == 0 or upmclient is None:
+                if len(permitted) < 2 or upmclient is None:
                     vm = await vm_for_usb_device(
                         context, config, api_server, usb_info, None, True
                     )
@@ -196,13 +194,7 @@ async def async_main():
 
     logger.info("Waiting for new devices")
     await monitor_loop(
-        monitor,
-        context,
-        config,
-        api_server,
-        watcher,
-        args.attach_connected,
-        upmclient
+        monitor, context, config, api_server, watcher, args.attach_connected, upmclient
     )
 
 

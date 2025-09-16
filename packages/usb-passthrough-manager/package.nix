@@ -15,7 +15,7 @@
 
 buildPythonApplication {
   pname = "usb_passthrough_manager";
-  version = "0.0.1";
+  version = "0.1.0";
   src = ./usb_passthrough_manager;
   pyproject = true;
 

@@ -9,7 +9,7 @@
 
 buildPythonPackage {
   pname = "vsock_bridge";
-  version = "0.0.1";
+  version = "0.1.0";
   src = ./vsock_bridge;
   pyproject = true;
 
