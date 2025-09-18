@@ -1,17 +1,17 @@
-# Copyright 2022-2024 TII (SSRC) and the Ghaf contributors
+# Copyright 2022-2025 TII (SSRC) and the Ghaf contributors
 # SPDX-License-Identifier: Apache-2.0
 {
   buildPythonApplication,
-  fetchFromGitHub,
   qemu-qmp,
   pyudev,
   psutil,
   inotify-simple,
   setuptools,
+  vsock-bridge,
 }:
 buildPythonApplication {
   pname = "vhotplug";
-  version = "0.1";
+  version = "0.1.0";
   pyproject = true;
 
   propagatedBuildInputs = [
@@ -19,16 +19,12 @@ buildPythonApplication {
     psutil
     inotify-simple
     qemu-qmp
+    vsock-bridge
   ];
 
   doCheck = false;
 
-  src = fetchFromGitHub {
-    owner = "tiiuae";
-    repo = "vhotplug";
-    rev = "e17360469a2c787526b251a0fa75cbec7e7ae6b3";
-    hash = "sha256-l66Skt5T7qys0GSjXfGFftTydH3SSFK1bftMBxVt+lQ=";
-  };
+  src = ./vhotplug;
 
   build-system = [ setuptools ];
 
