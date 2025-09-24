@@ -11,6 +11,7 @@
   gsettings-desktop-schemas,
   pygobject3,
   vsock-bridge,
+  vhotplug-schemas,
 }:
 
 buildPythonApplication {
@@ -29,6 +30,7 @@ buildPythonApplication {
   propagatedBuildInputs = [
     pygobject3
     vsock-bridge
+    vhotplug-schemas
   ];
 
   buildInputs = [

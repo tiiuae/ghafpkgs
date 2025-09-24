@@ -7,18 +7,15 @@ import logging
 from upm.guest.app_interface import handle_app_request
 from upm.guest.device_registry import DeviceRegister
 from upm.logger import setup_logger
+from vsock_bridge.logger import setup_logger as vsock_logger
 
 logger = logging.getLogger("upm")
 
 
 def build_parser():
     p = argparse.ArgumentParser(description="controller VM ↔ HOST (vsock)")
-    p.add_argument(
-        "--cid", type=int, default=5, help="Host vsock listen port (default 5)"
-    )
-    p.add_argument(
-        "--port", type=int, default=7000, help="Host vsock listen port (default 7000)"
-    )
+    p.add_argument("--cid", type=int, default=2, help="Server cid (default 2(host))")
+    p.add_argument("--port", type=int, default=7000, help="Server port (default 7000)")
     p.add_argument(
         "--dir",
         type=str,
@@ -32,6 +29,7 @@ def build_parser():
 def main():
     args = build_parser().parse_args()
     setup_logger(args.loglevel)
+    vsock_logger(args.loglevel)
 
     svc = DeviceRegister(args.cid, args.port, args.dir)
     svc.start()

@@ -8,6 +8,7 @@
   inotify-simple,
   setuptools,
   vsock-bridge,
+  vhotplug-schemas,
 }:
 buildPythonApplication {
   pname = "vhotplug";
@@ -20,6 +21,7 @@ buildPythonApplication {
     inotify-simple
     qemu-qmp
     vsock-bridge
+    vhotplug-schemas
   ];
 
   doCheck = false;

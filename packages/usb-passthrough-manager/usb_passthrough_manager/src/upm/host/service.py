@@ -5,7 +5,7 @@ from collections.abc import Callable
 from threading import Lock
 from typing import Any, TypeVar
 from vsock_bridge.vsock import VsockClient
-from vsock_bridge.protocols import dpm
+from vhotplug_schemas import usb_passthrough as gui_schema
 
 from upm.logger import logger, log_entry_exit
 
@@ -80,7 +80,7 @@ class HostService:
                 )
                 return True
 
-        device_connected_msg = dpm.DeviceConnected(
+        device_connected_msg = gui_schema.DeviceConnected(
             device_id, vendor, product, permitted_vms, current_vm
         )
         device_connected_msg.print()
@@ -92,7 +92,7 @@ class HostService:
     def reset(self) -> bool:
         with self.lock:
             self.device_registry.clear()
-        reset_msg = dpm.Reset()
+        reset_msg = gui_schema.Reset()
         if not self.gui_vm.send(reset_msg):
             return False
         return True
@@ -107,7 +107,7 @@ class HostService:
                 return False
             else:
                 del self.device_registry[device_id]
-        device_removed_msg = dpm.DeviceRemoved(device_id)
+        device_removed_msg = gui_schema.DeviceRemoved(device_id)
         if not self.gui_vm.send(device_removed_msg.to_json()):
             return False
 
@@ -131,7 +131,7 @@ class HostService:
                 else:
                     logger.error(f"Device {device_id} not permitted on VM {new_vm}")
                     return False
-        passthrough_ack_msg = dpm.PassthroughAck(device_id, new_vm, "ok")
+        passthrough_ack_msg = gui_schema.PassthroughAck(device_id, new_vm, "ok")
 
         if not self.gui_vm.send(passthrough_ack_msg.to_json()):
             return False
@@ -140,13 +140,13 @@ class HostService:
     @log_entry_exit
     def handle_request(self, msg: dict[str, Any]):
         logger.debug(f"Received request: {msg}")
-        msgtype = dpm.get_message_type(msg)
-        if msgtype == dpm.GetDevices.MSG_TYPE:
-            connected_devices = dpm.ConnectedDevices(self.device_registry)
+        msgtype = gui_schema.get_message_type(msg)
+        if msgtype == gui_schema.GetDevices.MSG_TYPE:
+            connected_devices = gui_schema.ConnectedDevices(self.device_registry)
             if not self.gui_vm.send(connected_devices.to_json()):
                 logger.error("System error! Service restart required.")
-        elif msgtype == dpm.PassthroughRequest.MSG_TYPE:
-            passthrough_request = dpm.PassthroughRequest.from_message(msg)
+        elif msgtype == gui_schema.PassthroughRequest.MSG_TYPE:
+            passthrough_request = gui_schema.PassthroughRequest.from_message(msg)
             device_id = passthrough_request.device_id
             target_vm = passthrough_request.target_vm
             if device_id in self.device_registry:

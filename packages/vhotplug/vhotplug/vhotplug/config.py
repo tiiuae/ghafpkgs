@@ -203,17 +203,30 @@ class Config:
     def api_enabled(self):
         return self.config.get("general", {}).get("api", {}).get("enable", False)
 
-    def is_upmclient_enabled(self):
-        return self.config.get("general", {}).get("upmclient", {}).get("enable", False)
+    def is_vhotplug_server_enabled(self):
+        return self.config.get("general", {}).get("server", {}).get("enable", False)
 
-    def get_upmserver_cid(self):
-        if self.is_upmclient_enabled():
-            return self.config.get("general", {}).get("upmclient", {}).get("server_cid")
+    def get_vhotplug_server_port(self):
+        if self.is_vhotplug_server_enabled():
+            return self.config.get("general", {}).get("server", {}).get("port")
         return None
 
-    def get_upmserver_port(self):
+    def is_upmclient_enabled(self):
+        return (
+            self.config.get("general", {})
+            .get("server", {})
+            .get("handlers", {})
+            .get("upm", {})
+            .get("enable", False)
+        )
+
+    def get_upmclient_cid(self):
         if self.is_upmclient_enabled():
             return (
-                self.config.get("general", {}).get("upmclient", {}).get("server_port")
+                self.config.get("general", {})
+                .get("server", {})
+                .get("handlers", {})
+                .get("upm", {})
+                .get("guest_cid")
             )
         return None
