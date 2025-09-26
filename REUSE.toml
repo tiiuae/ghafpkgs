@@ -24,7 +24,11 @@ path = [
   ".github/dependabot.yml",
   ".github/workflows/codeql.yml",
   ".github/workflows/dependency-review.yml",
-  ".github/workflows/scorecards.yml"
+  ".github/workflows/scorecards.yml",
+  "packages/vhotplug/vhotplug/LICENSE",
+  "packages/vhotplug/vhotplug/config.json",
+  "packages/vhotplug/vhotplug/.pylintrc",
+  "packages/usb-passthrough-manager/usb_passthrough_manager/assets/icon/usb.png",
 ]
 
 [[annotations]]

@@ -1,0 +1,21 @@
+# Copyright 2022-2025 TII (SSRC) and the Ghaf contributors
+# SPDX-License-Identifier: Apache-2.0
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vhotplug_schemas"
+version = "0.1.0"
+description = "shchema for vhotplug"
+authors = [{ name = "Ganga Ram" }]
+readme = "README.md"
+requires-python = ">=3.8"
+license = "Apache-2.0"
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
