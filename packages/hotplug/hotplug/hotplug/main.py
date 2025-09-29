@@ -180,7 +180,6 @@ async def handle_detach_pci(
 ):
     """Finds devices by their vendor/product IDs, detaches them, and records their info."""
     logger.debug(f"Attempting to detach {len(vendor_product_ids)} device(s)...")
-    _delete_state_file(data_path, PciDevice)
 
     successfully_detached: list[PciDevice] = []
     pci_info = await qmp.execute("query-pci")
@@ -217,6 +216,8 @@ async def handle_detach_pci(
             logger.error(f"Failed to detach device '{qdev_id}': {e}")
 
     if successfully_detached:
+        # Only delete the state file for PciDevice when writing new state information
+        _delete_state_file(data_path, PciDevice)
         _write_state(data_path, successfully_detached, PciDevice)
         logger.info(
             f"Successfully detached and saved state for {len(successfully_detached)} device(s)."
@@ -286,7 +287,6 @@ async def handle_attach_pci(qmp: QMPClient, data_path: str):
 async def handle_detach_usb(qmp: QMPClient, bus_port_qid: list[str], data_path: str):
     """Finds device by their vendor/product/Qemu IDs, detaches them, and records their info."""
     logger.debug(f"Attempting to detach {len(bus_port_qid)} device(s)...")
-    _delete_state_file(data_path, UsbDevice)
 
     successfully_detached: list[UsbDevice] = []
 
@@ -312,6 +312,8 @@ async def handle_detach_usb(qmp: QMPClient, bus_port_qid: list[str], data_path: 
             logger.error(f"Failed to detach device '{qdev_id}': {e}")
 
         if successfully_detached:
+            # Only delete the state file for UsbDevice when writing new state information
+            _delete_state_file(data_path, UsbDevice)
             _write_state(data_path, successfully_detached, UsbDevice)
             logger.info(
                 f"Successfully detached and saved state for {len(successfully_detached)} device(s)."
