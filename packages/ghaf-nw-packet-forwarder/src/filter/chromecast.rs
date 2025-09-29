@@ -14,9 +14,7 @@ use pnet::packet::ipv4::Ipv4Packet;
 use pnet::packet::udp::UdpPacket;
 use pnet::util::MacAddr;
 use std::collections::VecDeque;
-use std::net::IpAddr;
 use std::net::Ipv4Addr;
-use std::net::UdpSocket;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::sync::Mutex;
@@ -48,11 +46,11 @@ impl Chromecast {
     ///
     /// Returns a new `Chromecast` instance that is initialized with the provided
     /// interface information and the necessary operations for interacting with it.
-    pub fn new(ifaces: Ifaces) -> Self {
+    pub fn new(_ifaces: Ifaces) -> Self {
         let shared_data = Arc::new(SharedData::new(
             cli::get_chromecast(),
-            cli::get_chromevm_ip(),
-            cli::get_chromevm_mac(),
+            cli::get_chromecastvm_ip(),
+            cli::get_chromecastvm_mac(),
             false,
             true,
         )); // Ensure shared_data is wrapped in Arc
@@ -60,30 +58,12 @@ impl Chromecast {
         let external_ops = Arc::new(ExternalOps::new(shared_data.clone()));
         let internal_ops = Arc::new(InternalOps::new(shared_data.clone()));
 
-        let interface = "0.0.0.0"; // Use the appropriate interface address or "0.0.0.0" for default.
-
-        // Create a UDP socket and bind it to the local interface.
-        let socket = UdpSocket::bind(format!("{interface}:{}", 0)).expect("Failed to bind socket");
-        Self::join_multicast_groups(&socket, &ifaces.ext_ip);
-        Self::join_multicast_groups(&socket, &ifaces.int_ip);
-
         Self {
             external_ops,
             internal_ops,
         }
     }
 
-    fn join_multicast_groups(socket: &UdpSocket, ip: &IpNetwork) {
-        if let IpAddr::V4(ipv4) = ip.ip() {
-            socket
-                .join_multicast_v4(&SSDP_MULTICAST_ADDR, &ipv4)
-                .unwrap_or_else(|_| panic!("Failed to join multicast group ssdp for IP: {}", ipv4));
-
-            socket
-                .join_multicast_v4(&MDNS_IP, &ipv4)
-                .unwrap_or_else(|_| panic!("Failed to join multicast group mdns for IP: {}", ipv4));
-        }
-    }
     /// Returns a reference to the external operations instance (`ExternalOps`) wrapped in an `Arc`.
     ///
     /// This function allows external code to access the operations related to the Chromecast in the external network.
