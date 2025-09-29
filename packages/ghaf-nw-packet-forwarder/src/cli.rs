@@ -70,17 +70,13 @@ struct Args {
     #[arg(long, default_value_t = 50)]
     rate_limiting_max_routes: usize,
 
-    /// Enable Chromecast packet forwarding functionality
-    #[arg(long, default_value_t = 0)]
-    chromecast: u8,
-
-    /// Chrome VM Ip address
+    /// Chromecast VM Ip address
     #[arg(long)]
-    chromevm_ip: Option<IpNetwork>,
+    ccastvm_ip: Option<IpNetwork>,
 
-    /// Chrome VM Mac address   
+    /// Chromecast VM Mac address   
     #[arg(long)]
-    chromevm_mac: Option<MacAddr>,
+    ccastvm_mac: Option<MacAddr>,
 
     /// Log severity
     #[arg(long, default_value_t = log::Level::Info)]
@@ -99,10 +95,8 @@ fn handling_args() -> Result<Args, Box<dyn Error>> {
 
 impl Args {
     fn validate(&self) {
-        if 1 == self.chromecast && (self.chromevm_ip.is_none() || self.chromevm_mac.is_none()) {
-            panic!(
-                "Error: --chromevm_ip and --chromevm_mac are required when --chromecast is enabled."
-            );
+        if self.ccastvm_ip.is_none() != self.ccastvm_mac.is_none() {
+            panic!("Error: --ccastvm-ip and --ccastvm-mac must be either both set or both unset.");
         }
     }
 }
@@ -123,15 +117,15 @@ pub fn get_int_ip() -> Option<IpNetwork> {
 }
 
 pub fn get_chromecast() -> bool {
-    CLI_ARGS.chromecast == 1
+    CLI_ARGS.ccastvm_ip.is_some() && CLI_ARGS.ccastvm_mac.is_some()
 }
 
-pub fn get_chromevm_ip() -> IpNetwork {
-    CLI_ARGS.chromevm_ip.unwrap()
+pub fn get_chromecastvm_ip() -> IpNetwork {
+    CLI_ARGS.ccastvm_ip.unwrap()
 }
 
-pub fn get_chromevm_mac() -> MacAddr {
-    CLI_ARGS.chromevm_mac.unwrap()
+pub fn get_chromecastvm_mac() -> MacAddr {
+    CLI_ARGS.ccastvm_mac.unwrap()
 }
 
 pub fn get_log_level() -> &'static log::Level {

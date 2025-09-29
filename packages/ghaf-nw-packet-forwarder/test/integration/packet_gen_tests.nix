@@ -102,7 +102,7 @@ in
       udp_checksum_tshark = "tshark -o 'udp.check_checksum:TRUE' -Y 'udp.checksum.bad' -r ";
       netvm_udp_checksum = "${udp_checksum_tshark} netvm_capture.pcap | ${checksum_printout}";
       internal_vm_checksum = "${udp_checksum_tshark} internalvm_capture.pcap  | ${checksum_printout}";
-      nw-pckt-fwd = "${nw-packet-forwarder}/bin/nw-pckt-fwd --external-iface eth1 --internal-iface eth2 --internal-ip 192.168.1.3 --chromecast=1 --chromevm-mac ${internalVMMac} --chromevm-ip 192.168.1.2/24 --log-level debug";
+      nw-pckt-fwd = "${nw-packet-forwarder}/bin/nw-pckt-fwd --external-iface eth1 --internal-iface eth2 --internal-ip 192.168.1.3 --ccastvm-mac ${internalVMMac} --ccastvm-ip 192.168.1.2/24 --log-level debug";
       mdns_flood_tshark = "tshark -o 'udp.check_checksum:TRUE' -Y 'mdns && !udp.checksum.bad' -r ";
       netvm_mdns_flood = "${mdns_flood_tshark} netvm_capture.pcap | wc -l";
       internal_vm_mdns_flood = "${mdns_flood_tshark} internalvm_capture.pcap | wc -l";
