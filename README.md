@@ -61,6 +61,7 @@ Go-based system services and utilities.
 C++ applications with desktop integration.
 
 - **`ghaf-audio-control`** - Audio control application with Qt6 GUI
+- **`dbus-proxy`** - Proxy connecting DBuses between two separate VMs
 - **`vsockproxy`** - VM Sockets proxy for guest-to-guest communication
 
 ### 🛠️ Development Tools (`packages/update-deps/`)

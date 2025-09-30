@@ -5,6 +5,7 @@ let
   inherit (pkgs) callPackage;
 in
 {
+  dbus-proxy = callPackage ./dbus-proxy { };
   ghaf-audio-control = callPackage ./ghaf-audio-control { };
   vsockproxy = callPackage ./vsockproxy { };
 }

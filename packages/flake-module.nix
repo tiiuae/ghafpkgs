@@ -67,6 +67,7 @@ in
     swtpm-proxy-shim = prev.callPackage ./go/swtpm-proxy-shim { };
 
     # C++ packages
+    dbus-proxy = prev.callPackage ./cpp/dbus-proxy { };
     ghaf-audio-control = prev.callPackage ./cpp/ghaf-audio-control { };
     vsockproxy = prev.callPackage ./cpp/vsockproxy { };
 
