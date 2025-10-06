@@ -26,8 +26,8 @@ buildPythonApplication {
   src = fetchFromGitHub {
     owner = "tiiuae";
     repo = "vhotplug";
-    rev = "72ce4dd15b421d7664835b43639920911065ada5";
-    hash = "sha256-mI3bE0ZxNsM/6xqo53GhGU2l7td/tv+7nBLOR0rY5BY=";
+    rev = "8332c2e9e6ca19554eab90160ca161bf9a169a47";
+    hash = "sha256-+VRRPOXJuLrWfnf0uW7BZwhp/9LMsk6HIMpxqS3vqeA=";
   };
 
   build-system = [ setuptools ];
@@ -38,5 +38,6 @@ buildPythonApplication {
       "x86_64-linux"
       "aarch64-linux"
     ];
+    mainProgram = "vhotplug";
   };
 }
