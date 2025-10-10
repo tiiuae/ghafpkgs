@@ -14,6 +14,7 @@ let
       ghaf-theme = callPackage ./ghaf-theme { };
       ghaf-nw-packet-forwarder = callPackage ./ghaf-nw-packet-forwarder { inherit (inputs) crane; };
       ghaf-wallpapers = callPackage ./ghaf-wallpapers { };
+      swtpm-proxy-shim = callPackage ./swtpm-proxy-shim { };
       hotplug = python3Packages.callPackage ./hotplug/package.nix { };
       ldap-query = python3Packages.callPackage ./ldap-query/package.nix { };
       vhotplug = python3Packages.callPackage ./vhotplug/package.nix { };
