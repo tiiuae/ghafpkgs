@@ -21,6 +21,7 @@ path = [
   "packages/ghaf-theme/**/*.svg",
   "packages/ghaf-nw-packet-forwarder/Cargo.lock",
   "packages/ghaf-nw-packet-forwarder/flake.lock",
+  "packages/swtpm-proxy-shim/go.sum",
   ".github/dependabot.yml",
   ".github/workflows/codeql.yml",
   ".github/workflows/dependency-review.yml",
