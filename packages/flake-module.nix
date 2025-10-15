@@ -10,6 +10,7 @@ let
     {
       ghaf-artwork = callPackage ./ghaf-artwork { };
       ghaf-audio-control = callPackage ./ghaf-audio-control { };
+      ghaf-kill-switch-app = callPackage ./ghaf-kill-switch-app { inherit (inputs) crane; };
       ghaf-mem-manager = callPackage ./ghaf-mem-manager { inherit (inputs) crane; };
       ghaf-theme = callPackage ./ghaf-theme { };
       ghaf-nw-packet-forwarder = callPackage ./ghaf-nw-packet-forwarder { inherit (inputs) crane; };
