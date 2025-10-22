@@ -8,15 +8,16 @@ let
       inherit (pkgs) callPackage;
       artPackages = callPackage ./art { inherit pkgs; };
       pythonPackages = callPackage ./python { inherit pkgs; };
+      goPackages = callPackage ./go { inherit pkgs; };
     in
     {
       ghaf-audio-control = callPackage ./ghaf-audio-control { };
       ghaf-mem-manager = callPackage ./ghaf-mem-manager { inherit (inputs) crane; };
       ghaf-nw-packet-forwarder = callPackage ./ghaf-nw-packet-forwarder { inherit (inputs) crane; };
-      swtpm-proxy-shim = callPackage ./swtpm-proxy-shim { };
     }
     // artPackages
-    // pythonPackages;
+    // pythonPackages
+    // goPackages;
 in
 {
   perSystem =
