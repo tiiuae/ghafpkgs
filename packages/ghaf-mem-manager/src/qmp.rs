@@ -42,27 +42,35 @@ impl QmpCommand {
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "kebab-case")]
 pub struct BalloonInfo {
+    #[serde(default)]
     pub actual: usize,
 }
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "kebab-case")]
 pub struct MemoryInfo {
+    #[serde(default)]
     pub base_memory: usize,
+    #[serde(default)]
     pub plugged_memory: usize,
 }
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub struct GuestMemoryStats {
+    #[serde(default)]
     pub stat_available_memory: usize,
+    #[serde(default)]
     pub stat_free_memory: usize,
 }
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "kebab-case")]
 pub struct GuestMemoryInfo {
+    #[serde(default)]
     pub last_update: usize,
+    #[serde(default)]
     pub stats: GuestMemoryStats,
 }
 
