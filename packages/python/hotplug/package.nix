@@ -4,22 +4,28 @@
   buildPythonApplication,
   qemu-qmp,
   systemd,
-  setuptools,
+  hatchling,
+  uv,
 }:
 buildPythonApplication {
   pname = "hotplug";
-  version = "0.1";
+  version = "1.0.0";
 
+  # Use the hotplug subdirectory as source, where package.nix is located alongside pyproject.toml
   src = ./hotplug;
 
   propagatedBuildInputs = [
     qemu-qmp
     systemd
   ];
+
   doCheck = false;
 
   pyproject = true;
-  build-system = [ setuptools ];
+  build-system = [
+    hatchling
+    uv
+  ];
 
   meta = {
     description = "Qemu hotplug helper for PCI and USB devices";
