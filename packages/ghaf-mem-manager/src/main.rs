@@ -59,6 +59,9 @@ struct MemoryStats {
 impl MemoryStats {
     #[allow(clippy::cast_possible_truncation)]
     pub fn pressure(&self) -> u8 {
+        if self.balloon_size == 0 {
+            return 0;
+        }
         ((201 * self.balloon_size - 200 * self.available_memory) / self.balloon_size / 2) as u8
     }
 
@@ -72,7 +75,7 @@ impl MemoryStats {
 
     pub fn window(&self, min: u8, max: u8) -> Option<usize> {
         let p = self.pressure();
-        if p < min {
+        if p > 0 && p < min {
             Some(self.adjusted(min))
         } else if p > max {
             Some(self.adjusted(max - 2))
