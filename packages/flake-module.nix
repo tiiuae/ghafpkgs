@@ -9,15 +9,15 @@ let
       artPackages = callPackage ./art { inherit pkgs; };
       pythonPackages = callPackage ./python { inherit pkgs; };
       goPackages = callPackage ./go { inherit pkgs; };
+      rustPackages = callPackage ./rust { inherit pkgs; inherit (inputs) crane; };
     in
     {
       ghaf-audio-control = callPackage ./ghaf-audio-control { };
-      ghaf-mem-manager = callPackage ./ghaf-mem-manager { inherit (inputs) crane; };
-      ghaf-nw-packet-forwarder = callPackage ./ghaf-nw-packet-forwarder { inherit (inputs) crane; };
     }
     // artPackages
     // pythonPackages
-    // goPackages;
+    // goPackages
+    // rustPackages;
 in
 {
   perSystem =
