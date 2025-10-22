@@ -15,12 +15,7 @@ let
       };
       cppPackages = callPackage ./cpp { inherit pkgs; };
     in
-    { }
-    // artPackages
-    // pythonPackages
-    // goPackages
-    // rustPackages
-    // cppPackages;
+    { } // artPackages // pythonPackages // goPackages // rustPackages // cppPackages;
 in
 {
   perSystem =

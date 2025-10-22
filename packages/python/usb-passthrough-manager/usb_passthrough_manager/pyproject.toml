@@ -35,4 +35,3 @@ usb_device_notification = "bin.usb_device_notification:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
