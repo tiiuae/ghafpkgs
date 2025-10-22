@@ -28,8 +28,13 @@ let
         }
       );
       cppPackages = filterPackages (callPackage ./cpp { inherit pkgs; });
+
+      # Utility packages
+      utilityPackages = {
+        update-deps = callPackage ./update-deps { };
+      };
     in
-    artPackages // pythonPackages // goPackages // rustPackages // cppPackages;
+    artPackages // pythonPackages // goPackages // rustPackages // cppPackages // utilityPackages;
 in
 {
   perSystem =

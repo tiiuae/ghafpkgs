@@ -31,6 +31,9 @@
             pkgs.clippy
             pkgs.cmake-language-server
 
+            # Development utilities (includes all package managers as dependencies)
+            self'.packages.update-deps
+
             config.treefmt.build.wrapper
           ]
           ++ config.pre-commit.settings.enabledPackages
