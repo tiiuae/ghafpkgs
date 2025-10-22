@@ -7,11 +7,14 @@
   pyudev,
   psutil,
   inotify-simple,
-  setuptools,
+  setuptools, # Required for legacy setup.py in external repo
+  hatchling,
+  uv,
+  lib,
 }:
 buildPythonApplication {
   pname = "vhotplug";
-  version = "0.1";
+  version = "1.0.0";
   pyproject = true;
 
   propagatedBuildInputs = [
@@ -30,10 +33,15 @@ buildPythonApplication {
     hash = "sha256-+VRRPOXJuLrWfnf0uW7BZwhp/9LMsk6HIMpxqS3vqeA=";
   };
 
-  build-system = [ setuptools ];
+  build-system = [
+    setuptools # Required for legacy setup.py in external repo
+    hatchling
+    uv
+  ];
 
   meta = {
-    description = "Virtio Hotplug";
+    description = "Virtio Hotplug - Virtual device hotplug management for QEMU";
+    license = lib.licenses.asl20;
     platforms = [
       "x86_64-linux"
       "aarch64-linux"
