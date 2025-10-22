@@ -14,6 +14,7 @@ precedence = "closest"
 path = [
   "flake.lock",
   "SECURITY.md",
+  "packages/ghaf-audio-control/src/.gitignore",
   "packages/ghaf-mem-manager/Cargo.lock",
   "packages/ghaf-artwork/**/*.png",
   "packages/ghaf-artwork/**/*.jpg",
