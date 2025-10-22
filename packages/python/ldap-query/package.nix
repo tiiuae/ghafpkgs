@@ -2,17 +2,21 @@
 # SPDX-License-Identifier: Apache-2.0
 {
   buildPythonApplication,
-  setuptools,
+  hatchling,
+  uv,
   ldap3,
   gssapi,
   lib,
 }:
 buildPythonApplication {
   pname = "ldap-query";
-  version = "0.1";
+  version = "1.0.0";
 
   pyproject = true;
-  build-system = [ setuptools ];
+  build-system = [
+    hatchling
+    uv
+  ];
 
   src = ./ldap-query;
 
