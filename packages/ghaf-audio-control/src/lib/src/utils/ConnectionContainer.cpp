@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+// set some commentary
 #include <GhafAudioControl/utils/ConnectionContainer.hpp>
 
 namespace ghaf::AudioControl
@@ -22,10 +23,7 @@ ScopeExit ConnectionContainer::blockGuarded()
 {
     block();
 
-    return {[this]()
-            {
-                unblock();
-            }};
+    return {[this]() { unblock(); }};
 }
 
 void ConnectionContainer::block()
