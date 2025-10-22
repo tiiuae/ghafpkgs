@@ -38,7 +38,18 @@
 
           startup.hook.text = config.pre-commit.installationScript;
 
-          packagesFrom = builtins.attrValues self'.packages ++ self'.packages.ghaf-audio-control.buildInputs;
+          packagesFrom =
+            let
+              # Filter out function attributes like 'override' and 'overrideDerivation'
+              isPackage =
+                name: _value:
+                !(lib.elem name [
+                  "override"
+                  "overrideDerivation"
+                ]);
+              packageAttrs = lib.filterAttrs isPackage self'.packages;
+            in
+            builtins.attrValues packageAttrs ++ self'.packages.ghaf-audio-control.buildInputs;
         };
         # TODO: what is using the below?
         env = [
