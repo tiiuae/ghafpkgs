@@ -1,0 +1,41 @@
+# Copyright 2022-2025 TII (SSRC) and the Ghaf contributors
+# SPDX-License-Identifier: Apache-2.0
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ldap-query"
+version = "1.0.0"
+description = "A simple LDAP query tool"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "TII (SSRC) and the Ghaf contributors"},
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Systems Administration",
+    "Topic :: Internet :: Name Service (DNS)",
+]
+requires-python = ">=3.11"
+dependencies = [
+    "ldap3>=2.9.1",
+    "gssapi>=1.9.0",
+]
+
+[project.scripts]
+ldap-query = "ldap_query.main:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ldap_query"]
+
+[tool.uv]
+dev-dependencies = []
