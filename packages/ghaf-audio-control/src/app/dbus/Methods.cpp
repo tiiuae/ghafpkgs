@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "Methods.hpp"
+#include <ghaf-audio-control-app/dbus/Methods.hpp>
 
 #include <GhafAudioControl/utils/Logger.hpp>
 

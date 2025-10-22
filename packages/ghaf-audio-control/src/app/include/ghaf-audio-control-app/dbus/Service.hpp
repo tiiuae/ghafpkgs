@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "Interface.hpp"
+#include <ghaf-audio-control-app/dbus/Interface.hpp>
 
 #include <GhafAudioControl/IAudioControlBackend.hpp>
 

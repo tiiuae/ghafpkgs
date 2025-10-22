@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "Service.hpp"
+#include <ghaf-audio-control-app/dbus/Service.hpp>
 
-#include "GhafAudioControl/utils/Check.hpp"
+#include <GhafAudioControl/utils/Check.hpp>
 #include <GhafAudioControl/utils/Logger.hpp>
 
 #include <giomm/dbuserror.h>

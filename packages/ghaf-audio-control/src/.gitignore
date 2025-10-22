@@ -1,0 +1,47 @@
+# Build directories
+build/
+cmake-build-*/
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+Makefile
+cmake_install.cmake
+install_manifest.txt
+CTestTestfile.cmake
+_deps/
+
+# Compiled binaries
+*.o
+*.so
+*.a
+*.exe
+
+# IDE/Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Language Server / Development files
+# Note: We want to KEEP compile_commands.json for language server support
+# compile_commands.json  # <-- Commented out so it gets tracked
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Debug/Log files
+*.log
+core
+vgcore.*
+
+# Temporary files
+*.tmp
+*.temp

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "App.hpp"
+#include <ghaf-audio-control-app/App.hpp>
 
 #include <GhafAudioControl/utils/Check.hpp>
 
