@@ -3,8 +3,8 @@
 
 {
   buildPythonApplication,
-  setuptools,
-  wheel,
+  hatchling,
+  uv,
   gtk4,
   gobject-introspection,
   wrapGAppsHook,
@@ -14,13 +14,16 @@
 
 buildPythonApplication {
   pname = "usb_passthrough_manager";
-  version = "0.0.1";
+  version = "1.0.0";
   src = ./usb_passthrough_manager;
   pyproject = true;
 
+  build-system = [
+    hatchling
+    uv
+  ];
+
   nativeBuildInputs = [
-    setuptools
-    wheel
     gobject-introspection
     wrapGAppsHook
   ];
@@ -33,4 +36,13 @@ buildPythonApplication {
     gtk4
     gsettings-desktop-schemas
   ];
+
+  meta = {
+    description = "Host ↔ guest VM with real user, USB passthrough management over vsock with a GTK4 (PyGObject) UI";
+    platforms = [
+      "x86_64-linux"
+      "aarch64-linux"
+    ];
+    mainProgram = "usb_device_map";
+  };
 }
