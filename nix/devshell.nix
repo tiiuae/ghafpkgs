@@ -33,10 +33,14 @@
 
             config.treefmt.build.wrapper
           ]
+          ++ config.pre-commit.settings.enabledPackages
           ++ lib.attrValues config.treefmt.build.programs; # make all the trefmt packages available
+
+          startup.hook.text = config.pre-commit.installationScript;
 
           packagesFrom = builtins.attrValues self'.packages ++ self'.packages.ghaf-audio-control.buildInputs;
         };
+        # TODO: what is using the below?
         env = [
           {
             name = "PKG_CONFIG_PATH";

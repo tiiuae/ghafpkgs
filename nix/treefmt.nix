@@ -5,20 +5,19 @@
   imports = [
     inputs.flake-root.flakeModule
     inputs.treefmt-nix.flakeModule
-    inputs.pre-commit-hooks-nix.flakeModule
   ];
+
   perSystem =
     { config, pkgs, ... }:
     {
-      treefmt.config = {
-        package = pkgs.treefmt;
+      treefmt = {
         inherit (config.flake-root) projectRootFile;
 
         programs = {
           # Nix
           # nix standard formatter according to rfc 166 (https://github.com/NixOS/rfcs/pull/166)
           nixfmt.enable = true;
-          nixfmt.package = pkgs.nixfmt-rfc-style;
+          nixfmt.package = pkgs.nixfmt;
 
           deadnix.enable = true; # removes dead nix code https://github.com/astro/deadnix
           statix.enable = true; # prevents use of nix anti-patterns https://github.com/nerdypepper/statix
@@ -32,12 +31,16 @@
           shellcheck.enable = true; # lints shell scripts https://github.com/koalaman/shellcheck
 
           yamlfmt.enable = true; # YAML formatter
+          prettier.enable = true; # JavaScript formatter
 
           # C++
           clang-format.enable = true;
 
           # Rust
           rustfmt.enable = true;
+
+          #golang
+          gofmt.enable = true;
         };
 
         settings.global.excludes = [
