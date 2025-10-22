@@ -5,17 +5,31 @@ let
   ghafpkgs =
     pkgs:
     let
-      inherit (pkgs) callPackage;
-      artPackages = callPackage ./art { inherit pkgs; };
-      pythonPackages = callPackage ./python { inherit pkgs; };
-      goPackages = callPackage ./go { inherit pkgs; };
-      rustPackages = callPackage ./rust {
-        inherit pkgs;
-        inherit (inputs) crane;
-      };
-      cppPackages = callPackage ./cpp { inherit pkgs; };
+      inherit (pkgs) callPackage lib;
+
+      # Filter function to remove override attributes from package sets
+      filterPackages =
+        packageSet:
+        lib.filterAttrs (
+          name: _value:
+          !(lib.elem name [
+            "override"
+            "overrideDerivation"
+          ])
+        ) packageSet;
+
+      artPackages = filterPackages (callPackage ./art { inherit pkgs; });
+      pythonPackages = filterPackages (callPackage ./python { inherit pkgs; });
+      goPackages = filterPackages (callPackage ./go { inherit pkgs; });
+      rustPackages = filterPackages (
+        callPackage ./rust {
+          inherit pkgs;
+          inherit (inputs) crane;
+        }
+      );
+      cppPackages = filterPackages (callPackage ./cpp { inherit pkgs; });
     in
-    { } // artPackages // pythonPackages // goPackages // rustPackages // cppPackages;
+    artPackages // pythonPackages // goPackages // rustPackages // cppPackages;
 in
 {
   perSystem =

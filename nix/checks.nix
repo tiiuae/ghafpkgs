@@ -19,7 +19,19 @@
           touch $out
         '';
       }
-      // (lib.mapAttrs' (n: lib.nameValuePair "package-${n}") self'.packages);
+      // (
+        let
+          # Filter out function attributes like 'override' and 'overrideDerivation'
+          isPackage =
+            name: _value:
+            !(lib.elem name [
+              "override"
+              "overrideDerivation"
+            ]);
+          packageAttrs = lib.filterAttrs isPackage self'.packages;
+        in
+        lib.mapAttrs' (n: lib.nameValuePair "package-${n}") packageAttrs
+      );
 
       pre-commit = {
         settings = {
