@@ -22,10 +22,7 @@ ScopeExit ConnectionContainer::blockGuarded()
 {
     block();
 
-    return {[this]()
-            {
-                unblock();
-            }};
+    return {[this]() { unblock(); }};
 }
 
 void ConnectionContainer::block()

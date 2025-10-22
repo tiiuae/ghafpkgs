@@ -100,10 +100,7 @@ constexpr pa_subscription_mask SubscriptionMask = GetSubscriptionMask(pa_subscri
                 if (mainloop = pa_glib_mainloop_new(Glib::MainContext::get_default().get()->gobj()); mainloop == nullptr)
                     throw std::runtime_error("pa_glib_mainloop_new() failed.");
             },
-            [](pa_glib_mainloop*& mainloop)
-            {
-                pa_glib_mainloop_free(mainloop);
-            }};
+            [](pa_glib_mainloop*& mainloop) { pa_glib_mainloop_free(mainloop); }};
 }
 
 [[nodiscard]] RaiiWrap<pa_mainloop_api*> InitApi(pa_glib_mainloop& mainloop)
