@@ -3,11 +3,13 @@
 {
   buildPythonApplication,
   inotify-simple,
-  setuptools,
+  hatchling,
+  uv,
+  lib,
 }:
 buildPythonApplication {
   pname = "vinotify";
-  version = "0.1";
+  version = "1.0.0";
   pyproject = true;
 
   propagatedBuildInputs = [
@@ -17,5 +19,19 @@ buildPythonApplication {
   doCheck = false;
 
   src = ./vinotify;
-  build-system = [ setuptools ];
+
+  build-system = [
+    hatchling
+    uv
+  ];
+
+  meta = {
+    description = "Virtual machine file system notification service using inotify";
+    license = lib.licenses.asl20;
+    platforms = [
+      "x86_64-linux"
+      "aarch64-linux"
+    ];
+    mainProgram = "vinotify";
+  };
 }
