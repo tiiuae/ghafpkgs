@@ -11,15 +11,31 @@ let
   # Note: changes here will rebuild all dependency crates
   commonArgs = {
     src = ./.;
-
     strictDeps = true;
+
+    buildInputs = with pkgs; [
+      openssl
+    ];
+
+    nativeBuildInputs = with pkgs; [
+      pkg-config
+    ];
   };
 
   nw-packet-forwarder = craneLib.buildPackage (
     commonArgs
     // {
+      pname = "nw-pckt-fwd";
+      version = "0.1.0";
+
       outputs = [ "out" ];
       cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+
+      meta = with pkgs.lib; {
+        description = "Network packet forwarder for Ghaf";
+        license = licenses.asl20;
+        platforms = platforms.linux;
+      };
     }
   );
 in
