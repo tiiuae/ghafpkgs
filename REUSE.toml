@@ -12,21 +12,21 @@ SPDX-License-Identifier = "Apache-2.0"
 SPDX-FileCopyrightText = "2022-2025 TII (SSRC) and the Ghaf contributors"
 precedence = "closest"
 path = [
-  "flake.lock",
-  "SECURITY.md",
-  "packages/ghaf-audio-control/src/.gitignore",
-  "packages/ghaf-mem-manager/Cargo.lock",
-  "packages/ghaf-artwork/**/*.png",
-  "packages/ghaf-artwork/**/*.jpg",
-  "packages/ghaf-artwork/**/*.svg",
-  "packages/ghaf-theme/**/*.svg",
-  "packages/ghaf-nw-packet-forwarder/Cargo.lock",
-  "packages/ghaf-nw-packet-forwarder/flake.lock",
-  "packages/swtpm-proxy-shim/go.sum",
   ".github/dependabot.yml",
   ".github/workflows/codeql.yml",
   ".github/workflows/dependency-review.yml",
-  ".github/workflows/scorecards.yml"
+  ".github/workflows/scorecards.yml",
+  "flake.lock",
+  "packages/art/ghaf-artwork/**/*.png",
+  "packages/art/ghaf-artwork/**/*.jpg",
+  "packages/art/ghaf-artwork/**/*.svg",
+  "packages/art/ghaf-theme/**/*.svg",
+  "packages/cpp/ghaf-audio-control/src/.gitignore",
+  "packages/go/swtpm-proxy-shim/go.sum",
+  "packages/rust/ghaf-mem-manager/Cargo.lock",
+  "packages/rust/ghaf-nw-packet-forwarder/Cargo.lock",
+  "packages/rust/ghaf-nw-packet-forwarder/flake.lock",
+  "SECURITY.md"
 ]
 
 [[annotations]]
@@ -34,7 +34,7 @@ SPDX-License-Identifier = "LicenseRef-Unsplash"
 SPDX-FileCopyrightText = "Unsplash"
 precedence = "closest"
 path = [
-  "packages/ghaf-wallpapers/**/*.jpg"
+  "packages/art/ghaf-wallpapers/**/*.jpg"
 ]
 
 [[annotations]]
