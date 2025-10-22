@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "Methods.hpp"
+#include <ghaf-audio-control-app/dbus/Methods.hpp>
 
 #include <expected>
 #include <string>

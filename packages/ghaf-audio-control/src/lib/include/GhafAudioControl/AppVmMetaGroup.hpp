@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "GhafAudioControl/utils/ConnectionContainer.hpp"
+#include <GhafAudioControl/utils/ConnectionContainer.hpp>
 #include <GhafAudioControl/IAudioControlBackend.hpp>
 
 #include <GhafAudioControl/MetaDevice.hpp>

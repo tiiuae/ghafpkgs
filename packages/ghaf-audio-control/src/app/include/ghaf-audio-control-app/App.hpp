@@ -12,7 +12,7 @@
 
 #include <GhafAudioControl/AppVmMetaGroup.hpp>
 
-#include "dbus/Service.hpp"
+#include <ghaf-audio-control-app/dbus/Service.hpp>
 
 #include <gtkmm/application.h>
 #include <gtkmm/applicationwindow.h>

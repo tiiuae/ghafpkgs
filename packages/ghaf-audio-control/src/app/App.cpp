@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "App.hpp"
+#include <ghaf-audio-control-app/App.hpp>
 
-#include "dbus/Interface.hpp"
+#include <ghaf-audio-control-app/dbus/Interface.hpp>
 
 #include <gtkmm/icontheme.h>
 
