@@ -5,20 +5,18 @@ let
   ghafpkgs =
     pkgs:
     let
-      inherit (pkgs) callPackage python3Packages;
+      inherit (pkgs) callPackage;
       artPackages = callPackage ./art { inherit pkgs; };
+      pythonPackages = callPackage ./python { inherit pkgs; };
     in
     {
       ghaf-audio-control = callPackage ./ghaf-audio-control { };
       ghaf-mem-manager = callPackage ./ghaf-mem-manager { inherit (inputs) crane; };
       ghaf-nw-packet-forwarder = callPackage ./ghaf-nw-packet-forwarder { inherit (inputs) crane; };
       swtpm-proxy-shim = callPackage ./swtpm-proxy-shim { };
-      hotplug = python3Packages.callPackage ./hotplug/package.nix { };
-      ldap-query = python3Packages.callPackage ./ldap-query/package.nix { };
-      vhotplug = python3Packages.callPackage ./vhotplug/package.nix { };
-      vinotify = python3Packages.callPackage ./vinotify/package.nix { };
-      usb-passthrough-manager = python3Packages.callPackage ./usb-passthrough-manager/package.nix { };
-    } // artPackages;
+    }
+    // artPackages
+    // pythonPackages;
 in
 {
   perSystem =
