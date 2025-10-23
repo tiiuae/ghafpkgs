@@ -43,5 +43,34 @@ in
       packages = ghafpkgs pkgs;
     };
 
-  flake.overlays.default = _final: ghafpkgs;
+  flake.overlays.default = _final: prev: {
+    # Art packages
+    ghaf-artwork = prev.callPackage ./art/ghaf-artwork { };
+    ghaf-theme = prev.callPackage ./art/ghaf-theme { };
+    ghaf-wallpapers = prev.callPackage ./art/ghaf-wallpapers { };
+
+    # Python packages
+    hotplug = prev.python3Packages.callPackage ./python/hotplug/package.nix { };
+    ldap-query = prev.python3Packages.callPackage ./python/ldap-query/package.nix { };
+    usb-passthrough-manager =
+      prev.python3Packages.callPackage ./python/usb-passthrough-manager/package.nix
+        { };
+    vhotplug = prev.python3Packages.callPackage ./python/vhotplug/package.nix { };
+    vinotify = prev.python3Packages.callPackage ./python/vinotify/package.nix { };
+
+    # Rust packages (these are actually in rust directory)
+    ghaf-mem-manager = prev.callPackage ./rust/ghaf-mem-manager { inherit (inputs) crane; };
+    ghaf-nw-packet-forwarder = prev.callPackage ./rust/ghaf-nw-packet-forwarder {
+      inherit (inputs) crane;
+    };
+
+    # Go packages (this is actually in go directory)
+    swtpm-proxy-shim = prev.callPackage ./go/swtpm-proxy-shim { };
+
+    # C++ packages
+    ghaf-audio-control = prev.callPackage ./cpp/ghaf-audio-control { };
+
+    # Utility packages
+    update-deps = prev.callPackage ./update-deps { };
+  };
 }
