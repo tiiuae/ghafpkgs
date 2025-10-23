@@ -20,3 +20,18 @@ updates:
     directory: /packages/vinotify/vinotify
     schedule:
       interval: weekly
+
+  - package-ecosystem: gomod
+    directory: /packages/go/swtpm-proxy-shim
+    schedule:
+      interval: daily
+
+  - package-ecosystem: cargo
+    directory: /packages/rust/ghaf-mem-manager
+    schedule:
+      interval: daily
+
+  - package-ecosystem: cargo
+    directory: /packages/rust/ghaf-nw-packet-forwarder
+    schedule:
+      interval: daily
