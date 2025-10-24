@@ -28,6 +28,8 @@ path = [
   "packages/python/ldap-query/ldap-query/uv.lock",
   "packages/python/vinotify/vinotify/README.md",
   "packages/python/vinotify/vinotify/uv.lock",
+  "packages/python/ghaf-usb-applet/ghaf_usb_applet/README.md",
+  "packages/python/ghaf-usb-applet/ghaf_usb_applet/uv.lock",
   "packages/rust/ghaf-mem-manager/Cargo.lock",
   "packages/rust/ghaf-nw-packet-forwarder/Cargo.lock",
   "packages/rust/ghaf-nw-packet-forwarder/flake.lock",

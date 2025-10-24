@@ -3,7 +3,9 @@
 
 {
   buildPythonApplication,
-  setuptools,
+  lib,
+  hatchling,
+  uv,
   gtk3,
   gtk4,
   gobject-introspection,
@@ -15,11 +17,16 @@
 buildPythonApplication {
   pname = "ghaf-usb-applet";
   version = "0.1.0";
-  src = ./ghaf_usb_applet;
   pyproject = true;
 
+  src = ./ghaf_usb_applet;
+
+  build-system = [
+    hatchling
+    uv
+  ];
+
   nativeBuildInputs = [
-    setuptools
     wrapGAppsHook
     gobject-introspection
   ];
@@ -29,7 +36,20 @@ buildPythonApplication {
     gtk3
     gtk4
   ];
-  propagatedBuildInputs = [
+
+  dependencies = [
     pygobject3
   ];
+
+  doCheck = false;
+  meta = {
+    description = "USB panel applet for COSMIC (GTK4)";
+    homepage = "https://github.com/tiiuae/ghafpkgs";
+    license = lib.licenses.asl20;
+    platforms = [
+      "x86_64-linux"
+      "aarch64-linux"
+    ];
+    mainProgram = "usb_applet";
+  };
 }

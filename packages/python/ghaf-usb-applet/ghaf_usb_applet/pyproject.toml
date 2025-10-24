@@ -2,18 +2,18 @@
 # SPDX-License-Identifier: Apache-2.0
 
 [build-system]
-requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "ghaf_usb_applet"
 version = "0.1.0"
 description = "USB panel applet for COSMIC (GTK4)"
 authors = [
-  { name = "Ganga Ram", email = "Ganga.Ram@tii.ae" }
+  {name = "Ganga Ram", email = "Ganga.Ram@tii.ae"},
+  {name = "TII (SSRC) and the Ghaf contributors"},
 ]
-license = "Apache-2.0"
-readme = "README.md"
+license = {text = "Apache-2.0"}
 requires-python = ">=3.8"
 dependencies = [
   "pygobject>=3.44",
@@ -32,7 +32,8 @@ usb_applet = "bin.usb_applet:main"
 usb_settings = "bin.usb_settings:main"
 usb_device = "bin.usb_device:main"
 
-[tool.setuptools.packages.find]
-where = ["src"]
-
+[tool.hatch.build.targets.wheel]
+packages = ["src/ghaf_usb_applet", "src/bin"]
+[tool.uv]
+dev-dependencies = []
 
