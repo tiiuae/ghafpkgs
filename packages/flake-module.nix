@@ -52,8 +52,8 @@ in
     # Python packages
     hotplug = prev.python3Packages.callPackage ./python/hotplug/package.nix { };
     ldap-query = prev.python3Packages.callPackage ./python/ldap-query/package.nix { };
-    usb-passthrough-manager =
-      prev.python3Packages.callPackage ./python/usb-passthrough-manager/package.nix
+    ghaf-usb-applet =
+      prev.python3Packages.callPackage ./python/ghaf-usb-applet/package.nix
         { };
     vhotplug = prev.python3Packages.callPackage ./python/vhotplug/package.nix { };
     vinotify = prev.python3Packages.callPackage ./python/vinotify/package.nix { };

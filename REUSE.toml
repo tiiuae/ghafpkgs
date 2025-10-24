@@ -26,7 +26,6 @@ path = [
   "packages/python/hotplug/hotplug/README.md",
   "packages/python/ldap-query/ldap-query/README.md",
   "packages/python/ldap-query/ldap-query/uv.lock",
-  "packages/python/usb-passthrough-manager/usb_passthrough_manager/uv.lock",
   "packages/python/vinotify/vinotify/README.md",
   "packages/python/vinotify/vinotify/uv.lock",
   "packages/rust/ghaf-mem-manager/Cargo.lock",
