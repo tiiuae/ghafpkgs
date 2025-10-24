@@ -12,18 +12,18 @@ buildPythonApplication {
   version = "1.0.0";
   pyproject = true;
 
-  propagatedBuildInputs = [
-    inotify-simple
-  ];
-
-  doCheck = false;
-
   src = ./vinotify;
 
   build-system = [
     hatchling
     uv
   ];
+
+  dependencies = [
+    inotify-simple
+  ];
+
+  doCheck = false;
 
   meta = {
     description = "Virtual machine file system notification service using inotify";

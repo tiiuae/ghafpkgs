@@ -15,8 +15,9 @@
 buildPythonApplication {
   pname = "usb_passthrough_manager";
   version = "1.0.0";
-  src = ./usb_passthrough_manager;
   pyproject = true;
+
+  src = ./usb_passthrough_manager;
 
   build-system = [
     hatchling
@@ -28,7 +29,7 @@ buildPythonApplication {
     wrapGAppsHook
   ];
 
-  propagatedBuildInputs = [
+  dependencies = [
     pygobject3
   ];
 
