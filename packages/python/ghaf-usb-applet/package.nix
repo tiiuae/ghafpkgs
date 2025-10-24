@@ -13,7 +13,7 @@
 }:
 
 buildPythonApplication {
-  pname = "ghaf_usb_applet";
+  pname = "ghaf-usb-applet";
   version = "0.1.0";
   src = ./ghaf_usb_applet;
   pyproject = true;
