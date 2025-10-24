@@ -1,0 +1,38 @@
+# Copyright 2022-2025 TII (SSRC) and the Ghaf contributors
+# SPDX-License-Identifier: Apache-2.0
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ghaf_usb_applet"
+version = "0.1.0"
+description = "USB panel applet for COSMIC (GTK4)"
+authors = [
+  { name = "Ganga Ram", email = "Ganga.Ram@tii.ae" }
+]
+license = "Apache-2.0"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+  "pygobject>=3.44",
+]
+
+# Ignore formatting error "E402 Module level import not at top of file"
+# Ordering is required to select gtk version
+[tool.ruff]
+ignore = ["E402"]
+
+[project.urls]
+Homepage = "https://github.com/tiiuae/ghafpkgs"
+
+[project.scripts]
+usb_applet = "bin.usb_applet:main"
+usb_settings = "bin.usb_settings:main"
+usb_device = "bin.usb_device:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+

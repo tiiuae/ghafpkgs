@@ -10,4 +10,5 @@ in
   vhotplug = python3Packages.callPackage ./vhotplug/package.nix { };
   vinotify = python3Packages.callPackage ./vinotify/package.nix { };
   usb-passthrough-manager = python3Packages.callPackage ./usb-passthrough-manager/package.nix { };
+  ghaf-usb-applet = python3Packages.callPackage ./ghaf-usb-applet/package.nix { };
 }
