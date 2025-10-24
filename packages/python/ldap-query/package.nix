@@ -11,16 +11,16 @@
 buildPythonApplication {
   pname = "ldap-query";
   version = "1.0.0";
-
   pyproject = true;
+
+  src = ./ldap-query;
+
   build-system = [
     hatchling
     uv
   ];
 
-  src = ./ldap-query;
-
-  propagatedBuildInputs = [
+  dependencies = [
     ldap3
     gssapi
   ];

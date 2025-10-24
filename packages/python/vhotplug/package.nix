@@ -17,15 +17,6 @@ buildPythonApplication {
   version = "1.0.0";
   pyproject = true;
 
-  propagatedBuildInputs = [
-    pyudev
-    psutil
-    inotify-simple
-    qemu-qmp
-  ];
-
-  doCheck = false;
-
   src = fetchFromGitHub {
     owner = "tiiuae";
     repo = "vhotplug";
@@ -38,6 +29,15 @@ buildPythonApplication {
     hatchling
     uv
   ];
+
+  dependencies = [
+    pyudev
+    psutil
+    inotify-simple
+    qemu-qmp
+  ];
+
+  doCheck = false;
 
   meta = {
     description = "Virtio Hotplug - Virtual device hotplug management for QEMU";
