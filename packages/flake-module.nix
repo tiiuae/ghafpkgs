@@ -68,6 +68,7 @@ in
 
     # C++ packages
     ghaf-audio-control = prev.callPackage ./cpp/ghaf-audio-control { };
+    vsockproxy = prev.callPackage ./cpp/vsockproxy { };
 
     # Utility packages
     update-deps = prev.callPackage ./update-deps { };

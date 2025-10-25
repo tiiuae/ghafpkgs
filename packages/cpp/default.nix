@@ -6,4 +6,5 @@ let
 in
 {
   ghaf-audio-control = callPackage ./ghaf-audio-control { };
+  vsockproxy = callPackage ./vsockproxy { };
 }

@@ -61,6 +61,7 @@ Go-based system services and utilities.
 C++ applications with desktop integration.
 
 - **`ghaf-audio-control`** - Audio control application with Qt6 GUI
+- **`vsockproxy`** - VM Sockets proxy for guest-to-guest communication
 
 ### 🛠️ Development Tools (`packages/update-deps/`)
 Repository maintenance and development utilities.
@@ -93,6 +94,7 @@ nix build .#ghaf-usb-applet
 nix build .#gps-websock
 nix build .#hotplug
 nix build .#ghaf-mem-manager
+nix build .#vsockproxy
 
 # Build all packages
 nix flake check
