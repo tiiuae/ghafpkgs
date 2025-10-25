@@ -1,4 +1,4 @@
-# Copyright 2022-2024 TII (SSRC) and the Ghaf contributors
+# SPDX-FileCopyrightText: 2022-2026 TII (SSRC) and the Ghaf contributors
 # SPDX-License-Identifier: Apache-2.0
 
 version = 1
@@ -9,7 +9,7 @@ SPDX-PackageDownloadLocation = "https://github.com/tiiuae/ghaf"
 
 [[annotations]]
 SPDX-License-Identifier = "Apache-2.0"
-SPDX-FileCopyrightText = "2022-2025 TII (SSRC) and the Ghaf contributors"
+SPDX-FileCopyrightText = "2022-2026 TII (SSRC) and the Ghaf contributors"
 precedence = "closest"
 path = [
   ".github/dependabot.yml",
@@ -49,7 +49,7 @@ path = [
 
 [[annotations]]
 SPDX-License-Identifier = "CC-BY-SA-4.0"
-SPDX-FileCopyrightText = "2022-2024 TII (SSRC) and the Ghaf contributors"
+SPDX-FileCopyrightText = "2022-2026 TII (SSRC) and the Ghaf contributors"
 precedence = "closest"
 path = [
   "docs/**/*.svg", "docs/**/*.png",

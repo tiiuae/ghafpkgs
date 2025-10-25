@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2023 Technology Innovation Institute (TII)
+# SPDX-FileCopyrightText: 2022-2026 TII (SSRC) and the Ghaf contributors
 # SPDX-FileCopyrightText: 2020-2023 Eelco Dolstra and the flake-compat contributors
 #
 # SPDX-License-Identifier: MIT
