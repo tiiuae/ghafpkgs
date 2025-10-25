@@ -44,4 +44,3 @@ AyatanaAppIndicator3, GTK3: For system tray integration, and applet primary  men
 ## License
 
 Apache-2.0
-
