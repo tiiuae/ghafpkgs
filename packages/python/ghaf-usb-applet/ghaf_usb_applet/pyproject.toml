@@ -36,4 +36,3 @@ usb_device = "bin.usb_device:main"
 packages = ["src/ghaf_usb_applet", "src/bin"]
 [tool.uv]
 dev-dependencies = []
-
