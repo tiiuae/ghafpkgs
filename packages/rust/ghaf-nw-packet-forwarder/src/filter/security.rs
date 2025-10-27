@@ -150,7 +150,7 @@ impl RateLimiter {
     /// * `dest_port` - The destination port of the request.
     ///
     /// # Returns
-    /// A `bool` indicating whether the request is allowed based on rate-limiting rules.   
+    /// A `bool` indicating whether the request is allowed based on rate-limiting rules.
     fn is_allowed(
         &mut self,
         src_ip: Ipv4Addr,

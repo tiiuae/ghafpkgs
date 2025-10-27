@@ -29,7 +29,7 @@ DBus info:
 4. The client can send to the service commands to manipulate devices:
   - SetDeviceMute;
   - SetDeviceVolume;
-  - MakeDeviceDefault. 
+  - MakeDeviceDefault.
 5. When the client wants to disconnect (taskbar reboot, shutting down or something) from the service, it should send UnsubscribeFromDeviceUpdatedSignal -- to free resources.
 
 ### Data types

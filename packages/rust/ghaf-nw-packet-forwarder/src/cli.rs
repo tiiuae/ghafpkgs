@@ -74,7 +74,7 @@ struct Args {
     #[arg(long)]
     ccastvm_ip: Option<IpNetwork>,
 
-    /// Chromecast VM Mac address   
+    /// Chromecast VM Mac address
     #[arg(long)]
     ccastvm_mac: Option<MacAddr>,
 

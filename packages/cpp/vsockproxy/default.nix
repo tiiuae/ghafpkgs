@@ -32,8 +32,8 @@ stdenv.mkDerivation {
     description = "VM Sockets proxy for guest-to-guest communication";
     longDescription = ''
       VM Sockets (vsock) is a communication mechanism between guest virtual machines and the host.
-      This tool makes it possible to use vsock for guest to guest communication by listening for 
-      incoming connections on host, connecting to the guest virtual machine and forwarding data 
+      This tool makes it possible to use vsock for guest to guest communication by listening for
+      incoming connections on host, connecting to the guest virtual machine and forwarding data
       in both directions.
     '';
     homepage = "https://github.com/tiiuae/ghafpkgs";

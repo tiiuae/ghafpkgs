@@ -51,11 +51,11 @@ target_sources(${LIBRARY_NAME}
             include/GhafAudioControl/Backends/PulseAudio/Source.hpp
             include/GhafAudioControl/Backends/PulseAudio/SourceOutput.hpp
             include/GhafAudioControl/Backends/PulseAudio/Volume.hpp
-            
+
             # Model headers
             include/GhafAudioControl/models/DeviceListModel.hpp
             include/GhafAudioControl/models/DeviceModel.hpp
-            
+
             # Utility headers
             include/GhafAudioControl/utils/Check.hpp
             include/GhafAudioControl/utils/ConnectionContainer.hpp
@@ -63,14 +63,14 @@ target_sources(${LIBRARY_NAME}
             include/GhafAudioControl/utils/Logger.hpp
             include/GhafAudioControl/utils/RaiiWrap.hpp
             include/GhafAudioControl/utils/ScopeExit.hpp
-            
+
             # Widget headers
             include/GhafAudioControl/widgets/AppList.hpp
             include/GhafAudioControl/widgets/AudioControl.hpp
             include/GhafAudioControl/widgets/DeviceListWidget.hpp
             include/GhafAudioControl/widgets/DeviceWidget.hpp
             include/GhafAudioControl/widgets/SinkWidget.hpp
-            
+
             # Core headers
             include/GhafAudioControl/AppVmMetaGroup.hpp
             include/GhafAudioControl/IAudioControlBackend.hpp
