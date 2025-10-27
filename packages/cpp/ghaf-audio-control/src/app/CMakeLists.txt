@@ -48,7 +48,7 @@ target_link_libraries(${EXECUTABLE_NAME}
         ${AYATANA_LIBRARIES}
 )
 
-# Link directories 
+# Link directories
 target_link_directories(${EXECUTABLE_NAME}
     PRIVATE
         ${AYATANA_LIBRARY_DIRS}

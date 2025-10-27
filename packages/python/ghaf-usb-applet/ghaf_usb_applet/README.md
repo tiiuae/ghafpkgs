@@ -19,7 +19,7 @@ The applet receives notifications from the vhotplug server running on the host s
 
 ### USB applet
 
-The main system tray applet that provides the core USB monitoring functionality. 
+The main system tray applet that provides the core USB monitoring functionality.
 
 **Usage:**
 
