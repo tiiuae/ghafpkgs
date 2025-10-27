@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: 2022-2026 TII (SSRC) and the Ghaf contributors
+# SPDX-License-Identifier: Apache-2.0
+# CodeQL configuration file for ghafpkgs
+name: "ghafpkgs-codeql-config"
+# Configure queries to run
+queries:
+  - uses: security-extended
+  - uses: security-and-quality
+# Configure paths to analyze
+paths:
+  - packages/cpp/
+  - packages/python/
+  - packages/rust/
+  - packages/go/
+  - nix/
+  - .github/workflows/
+# Configure paths to ignore
+paths-ignore:
+  - "**/*.md"
+  - "**/*.txt"
+  - "**/LICENSE*"
+  - "**/*.png"
+  - "**/*.jpg"
+  - "**/*.jpeg"
+  - "**/*.gif"
+  - "**/*.svg"
+  - "**/wallpapers/"
+  - "**/*.lock"
+  - "**/target/"
+  - "**/node_modules/"
+  - "**/.git/"
+  - "**/build/"
+  - "**/dist/"
+  - "**/__pycache__/"
+  - "**/*.pyc"
