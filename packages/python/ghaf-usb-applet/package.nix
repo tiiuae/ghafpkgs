@@ -10,7 +10,7 @@
   gtk4,
   gobject-introspection,
   libayatana-appindicator,
-  wrapGAppsHook,
+  wrapGAppsHook4,
   pygobject3,
 }:
 
@@ -27,7 +27,7 @@ buildPythonApplication {
   ];
 
   nativeBuildInputs = [
-    wrapGAppsHook
+    wrapGAppsHook4
     gobject-introspection
   ];
 
