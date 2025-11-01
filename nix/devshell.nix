@@ -29,7 +29,12 @@
 
             pkgs.stdenv.cc
             pkgs.clippy
+            pkgs.cargo-edit
             pkgs.cmake-language-server
+
+            # Required for Python packages with native dependencies (e.g., systemd-python)
+            pkgs.systemd
+            pkgs.pkg-config
 
             # Development utilities (includes all package managers as dependencies)
             self'.packages.update-deps

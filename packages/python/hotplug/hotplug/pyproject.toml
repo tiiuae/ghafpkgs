@@ -26,8 +26,8 @@ classifiers = [
 ]
 requires-python = ">=3.11"
 dependencies = [
-    "qemu.qmp==0.0.5",
-    "systemd-python==235",
+    "qemu.qmp>=0.0.5",
+    "systemd-python>=235",
 ]
 
 [project.scripts]
@@ -36,5 +36,5 @@ hotplug = "hotplug.main:main"
 [tool.hatch.build.targets.wheel]
 packages = ["hotplug/hotplug"]
 
-[tool.uv]
-dev-dependencies = []
+[dependency-groups]
+dev = []
