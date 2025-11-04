@@ -132,8 +132,8 @@ writeShellApplication {
             log "$PURPLE" "UPGRADE MODE: Updating source dependencies in Cargo.toml"
 
             if command -v cargo-upgrade >/dev/null 2>&1; then
-              log "$YELLOW" "Running cargo upgrade --workspace..."
-              cargo upgrade --workspace
+              log "$YELLOW" "Running cargo upgrade..."
+              cargo upgrade
             else
               log "$RED" "cargo-upgrade not available, falling back to manual upgrade"
               log "$YELLOW" "Consider installing cargo-edit: cargo install cargo-edit"
