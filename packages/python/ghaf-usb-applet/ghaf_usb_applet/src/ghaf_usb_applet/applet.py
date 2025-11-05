@@ -26,7 +26,7 @@ class USBApplet:
 
         self.indicator = AppIndicator3.Indicator.new(
             "usb-applet",
-            "drive-removable-media",
+            "drive-removable-media-usb",
             AppIndicator3.IndicatorCategory.APPLICATION_STATUS,
         )
         self.indicator.set_status(AppIndicator3.IndicatorStatus.ACTIVE)
