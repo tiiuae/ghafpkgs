@@ -33,6 +33,7 @@ path = [
   "packages/python/ghaf-usb-applet/ghaf_usb_applet/uv.lock",
   "packages/python/gps-websock/gps-websock/uv.lock",
   "packages/python/gps-websock/gps-websock/README.md",
+  "packages/rust/ghaf-kill-switch-app/Cargo.lock",
   "packages/rust/ghaf-mem-manager/Cargo.lock",
   "packages/rust/ghaf-nw-packet-forwarder/Cargo.lock",
   "packages/rust/ghaf-nw-packet-forwarder/flake.lock",
