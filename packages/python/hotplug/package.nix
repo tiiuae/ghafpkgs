@@ -3,7 +3,7 @@
 {
   buildPythonApplication,
   qemu-qmp,
-  systemd,
+  systemd-python,
   hatchling,
   uv,
 }:
@@ -22,7 +22,7 @@ buildPythonApplication {
 
   dependencies = [
     qemu-qmp
-    systemd
+    systemd-python
   ];
 
   doCheck = false;

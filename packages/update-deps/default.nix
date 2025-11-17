@@ -19,6 +19,9 @@
   gnugrep,
   gnused,
   coreutils,
+  # Nix tools
+  nix,
+  nix-prefetch,
 }:
 
 writeShellApplication {
@@ -43,6 +46,9 @@ writeShellApplication {
     # Node.js ecosystem (for future packages)
     nodejs
     nodePackages.npm
+    # Nix tools
+    nix
+    nix-prefetch
     # System tools
     git
     findutils
@@ -172,12 +178,83 @@ writeShellApplication {
           log "$YELLOW" "Running go mod tidy..."
           go mod tidy
 
+          # Update vendorHash in default.nix if it exists
+          if [[ -f "default.nix" ]]; then
+            update_go_vendor_hash "$dir"
+          fi
+
           log "$GREEN" "Go dependencies updated successfully"
         else
           log "$RED" "No go.mod found in $dir"
           return 1
         fi
       )
+    }
+
+    # Function to update vendorHash in Go package default.nix
+    update_go_vendor_hash() {
+      local dir=$1
+      local nix_file="$dir/default.nix"
+
+      if [[ ! -f "$nix_file" ]]; then
+        return 0
+      fi
+
+      # Check if the file contains vendorHash
+      if ! grep -q "vendorHash" "$nix_file"; then
+        log "$YELLOW" "No vendorHash found in $nix_file, skipping..."
+        return 0
+      fi
+
+      log "$YELLOW" "Updating vendorHash in $nix_file..."
+
+      # First, set vendorHash to lib.fakeHash to trigger a rebuild
+      sed -i 's/vendorHash = ".*";/vendorHash = lib.fakeHash;/' "$nix_file"
+
+      # Try to build and capture the correct hash
+      local build_output
+      local correct_hash
+
+      # Get pname from the nix file
+      local pkg_pname
+      pkg_pname=$(grep -oP 'pname\s*=\s*"\K[^"]+' "$nix_file" | head -1)
+
+      # Get directory name
+      local dir_name
+      dir_name=$(basename "$dir")
+
+      # Try to find the repo root
+      local repo_root
+      repo_root=$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")
+
+      # Try multiple package names: directory name first, then pname
+      local pkg_names=("$dir_name")
+      if [[ -n "$pkg_pname" && "$pkg_pname" != "$dir_name" ]]; then
+        pkg_names+=("$pkg_pname")
+      fi
+
+      for pkg_name in "''${pkg_names[@]}"; do
+        log "$YELLOW" "Computing correct vendorHash for $pkg_name..."
+
+        # Try to build and extract the hash from error message
+        build_output=$(cd "$repo_root" && nix build ".#$pkg_name" 2>&1 || true)
+
+        # Extract the "got:" hash from the error message
+        correct_hash=$(echo "$build_output" | grep -oP "got:\s+\K(sha256-[A-Za-z0-9+/=]+)" | head -1)
+
+        if [[ -n "$correct_hash" ]]; then
+          log "$GREEN" "Found correct vendorHash: $correct_hash"
+          # Update the vendorHash with the correct value
+          sed -i "s/vendorHash = lib.fakeHash;/vendorHash = \"$correct_hash\";/" "$nix_file"
+          log "$GREEN" "Updated vendorHash in $nix_file"
+          return 0
+        fi
+      done
+
+      log "$RED" "Failed to determine correct vendorHash"
+      log "$YELLOW" "Please manually update vendorHash in $nix_file"
+      # Restore the original if we couldn't get the hash
+      sed -i 's/vendorHash = lib.fakeHash;/vendorHash = ""; # TODO: Update this hash/' "$nix_file"
     }
 
     # Function to update Python dependencies (modern pyproject.toml)
