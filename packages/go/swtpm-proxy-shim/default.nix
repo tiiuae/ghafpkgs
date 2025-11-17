@@ -8,7 +8,7 @@ buildGoModule {
   pname = "swtpm-proxy";
   version = "0.0.1";
   src = ./.;
-  vendorHash = "sha256-DRiuTUuSpTxclvHn25+NDlriIe5PpNRF4N3EUQgv1bI=";
+  vendorHash = "sha256-rQF9XHF6+ApoQlJJ6vJywO5guklK4h4UwWa4oGgadTw=";
   subPackages = [ "cmd/swtpm-proxy" ];
 
   overrideModAttrs = _old: {
