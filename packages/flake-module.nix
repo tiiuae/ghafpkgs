@@ -58,6 +58,7 @@ in
     vinotify = prev.python3Packages.callPackage ./python/vinotify/package.nix { };
 
     # Rust packages (these are actually in rust directory)
+    ghaf-kill-switch-app = prev.callPackage ./rust/ghaf-kill-switch-app { inherit (inputs) crane; };
     ghaf-mem-manager = prev.callPackage ./rust/ghaf-mem-manager { inherit (inputs) crane; };
     ghaf-nw-packet-forwarder = prev.callPackage ./rust/ghaf-nw-packet-forwarder {
       inherit (inputs) crane;
