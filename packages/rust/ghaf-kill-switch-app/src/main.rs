@@ -129,19 +129,19 @@ impl Application for KillSwitch {
             Message::ToggleMicrophone(enabled) => {
                 self.config.microphone_enabled = enabled;
                 tracing::info!("Microphone toggled: {}", enabled);
-                // TODO: Implement actual microphone control via system APIs
+                self.run_killswitch_command("mic", enabled);
                 cosmic::Task::none()
             }
             Message::ToggleCamera(enabled) => {
                 self.config.camera_enabled = enabled;
                 tracing::info!("Camera toggled: {}", enabled);
-                // TODO: Implement actual camera control via system APIs
+                self.run_killswitch_command("cam", enabled);
                 cosmic::Task::none()
             }
             Message::ToggleWiFi(enabled) => {
                 self.config.wifi_enabled = enabled;
                 tracing::info!("WiFi toggled: {}", enabled);
-                // TODO: Implement actual wifi control via system APIs
+                self.run_killswitch_command("net", enabled);
                 cosmic::Task::none()
             }
             Message::TogglePopup => {
@@ -181,6 +181,25 @@ impl Application for KillSwitch {
 }
 
 impl KillSwitch {
+    fn run_killswitch_command(&self, device: &str, enabled: bool) {
+        let arg = if enabled { "unblock" } else { "block" };
+        let output = Command::new("ghaf-killswitch")
+            .arg(arg)
+            .arg(device)
+            .output()
+            .expect("Failed to execute ghaf-killswitch command");
+
+        if output.status.success() {
+            tracing::info!("ghaf-killswitch {} {} successful", arg, device);
+        } else {
+            tracing::error!(
+                "ghaf-killswitch {} {} failed: {}",
+                arg,
+                device,
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+    }
     fn create_control_row<'a>(
         &self,
         icon_name: &'a str,
