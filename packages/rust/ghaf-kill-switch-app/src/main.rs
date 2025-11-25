@@ -19,6 +19,8 @@ pub enum Message {
     ToggleMicrophone(bool),
     ToggleCamera(bool),
     ToggleWiFi(bool),
+    ToggleBT(bool),
+    ToggleAll(bool),
     TogglePopup,
 }
 
@@ -27,6 +29,7 @@ pub struct Config {
     microphone_enabled: bool,
     camera_enabled: bool,
     wifi_enabled: bool,
+    bt_enabled: bool,
 }
 
 impl Default for Config {
@@ -35,6 +38,7 @@ impl Default for Config {
             microphone_enabled: true,
             camera_enabled: true,
             wifi_enabled: true,
+            bt_enabled: true,
         }
     }
 }
@@ -89,8 +93,12 @@ impl Application for KillSwitch {
         // Check if this is our popup window
         if self.popup == Some(id) {
             let spacing = self.core.system_theme().cosmic().spacing;
+            let all_enabled = self.config.microphone_enabled
+                && self.config.camera_enabled
+                && self.config.wifi_enabled
+                && self.config.bt_enabled;
 
-            let content = widget::column::with_capacity(4)
+            let content = widget::column::with_capacity(5)
                 .push(
                     widget::container(widget::text("Privacy Controls").size(14))
                         .width(Length::Fixed(280.0))
@@ -113,6 +121,18 @@ impl Application for KillSwitch {
                     "Wi-Fi",
                     self.config.wifi_enabled,
                     Message::ToggleWiFi,
+                ))
+                .push(self.create_control_row(
+                    "bluetooth-symbolic",
+                    "Bluetooth",
+                    self.config.bt_enabled,
+                    Message::ToggleBT,
+                ))
+                .push(self.create_control_row(
+                    "security-high-symbolic",
+                    "All Devices",
+                    all_enabled,
+                    Message::ToggleAll,
                 ))
                 .spacing(1);
 
@@ -144,6 +164,21 @@ impl Application for KillSwitch {
                 self.run_killswitch_command("net", enabled);
                 cosmic::Task::none()
             }
+            Message::ToggleBT(enabled) => {
+                self.config.bt_enabled = enabled;
+                tracing::info!("Bluetooth toggled: {}", enabled);
+                self.run_killswitch_command("bluetooth", enabled);
+                cosmic::Task::none()
+            }
+            Message::ToggleAll(enabled) => {
+                self.config.microphone_enabled = enabled;
+                self.config.camera_enabled = enabled;
+                self.config.wifi_enabled = enabled;
+                self.config.bt_enabled = enabled;
+                tracing::info!("All devices toggled: {}", enabled);
+                self.run_killswitch_command_all(enabled);
+                cosmic::Task::none()
+            }
             Message::TogglePopup => {
                 tracing::info!("!!! Toggle popup clicked !!!");
 
@@ -165,9 +200,9 @@ impl Application for KillSwitch {
 
                     popup_settings.positioner.size_limits = Limits::NONE
                         .min_width(180.0)
-                        .min_height(200.0)
+                        .min_height(250.0)
                         .max_width(180.0)
-                        .max_height(200.0);
+                        .max_height(300.0);
 
                     return get_popup(popup_settings);
                 }
@@ -181,6 +216,24 @@ impl Application for KillSwitch {
 }
 
 impl KillSwitch {
+    fn run_killswitch_command_all(&self, enabled: bool) {
+        let arg = if enabled { "unblock" } else { "block" };
+        let output = Command::new("ghaf-killswitch")
+            .arg(arg)
+            .arg("--all")
+            .output()
+            .expect("Failed to execute ghaf-killswitch command");
+
+        if output.status.success() {
+            tracing::info!("ghaf-killswitch {} --all successful", arg);
+        } else {
+            tracing::error!(
+                "ghaf-killswitch {} --all failed: {}",
+                arg,
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+    }
     fn get_initial_config() -> Config {
         let output = Command::new("ghaf-killswitch").arg("status").output();
 
@@ -202,6 +255,7 @@ impl KillSwitch {
                                 "mic" => config.microphone_enabled = enabled,
                                 "cam" => config.camera_enabled = enabled,
                                 "net" => config.wifi_enabled = enabled,
+                                "bluetooth" => config.bt_enabled = enabled,
                                 _ => tracing::warn!(
                                     "Unknown device in ghaf-killswitch status output: {}",
                                     device
@@ -280,7 +334,7 @@ impl KillSwitch {
 
         widget::tooltip(
             content,
-            widget::text(format!("Control the {} device", label)),
+            widget::text(format!("Control {} functionality", label)),
             widget::tooltip::Position::Bottom,
         )
         .into()
