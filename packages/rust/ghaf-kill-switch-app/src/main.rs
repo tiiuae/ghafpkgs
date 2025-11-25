@@ -65,7 +65,7 @@ impl Application for KillSwitch {
     ) -> (Self, cosmic::Task<cosmic::Action<Self::Message>>) {
         let app = Self {
             core,
-            config: Config::default(),
+            config: Self::get_initial_config(),
             popup: None,
         };
         (app, cosmic::Task::none())
@@ -181,6 +181,50 @@ impl Application for KillSwitch {
 }
 
 impl KillSwitch {
+    fn get_initial_config() -> Config {
+        let output = Command::new("ghaf-killswitch").arg("status").output();
+
+        match output {
+            Ok(output) => {
+                if output.status.success() {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    let mut config = Config::default();
+
+                    for line in stdout.lines() {
+                        let parts: Vec<&str> = line.split(':').collect();
+                        if parts.len() == 2 {
+                            let device = parts[0].trim();
+                            let status = parts[1].trim();
+
+                            let enabled = status == "unblocked";
+
+                            match device {
+                                "mic" => config.microphone_enabled = enabled,
+                                "cam" => config.camera_enabled = enabled,
+                                "net" => config.wifi_enabled = enabled,
+                                _ => tracing::warn!(
+                                    "Unknown device in ghaf-killswitch status output: {}",
+                                    device
+                                ),
+                            }
+                        }
+                    }
+                    config
+                } else {
+                    tracing::error!(
+                        "ghaf-killswitch status command failed: {}",
+                        String::from_utf8_lossy(&output.stderr)
+                    );
+                    Config::default()
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to execute ghaf-killswitch status command: {}", e);
+                Config::default()
+            }
+        }
+    }
+
     fn run_killswitch_command(&self, device: &str, enabled: bool) {
         let arg = if enabled { "unblock" } else { "block" };
         let output = Command::new("ghaf-killswitch")
