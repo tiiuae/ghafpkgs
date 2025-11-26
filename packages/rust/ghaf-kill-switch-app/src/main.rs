@@ -11,6 +11,7 @@ use cosmic::widget::{self, icon, toggler};
 use cosmic::{Application, Element};
 use serde::{Deserialize, Serialize};
 use std::process::Command;
+use systemd_journal_logger::JournalLog;
 
 const ID: &str = "ae.tii.CosmicAppletKillSwitch";
 
@@ -25,6 +26,7 @@ pub enum Message {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct Config {
     microphone_enabled: bool,
     camera_enabled: bool,
@@ -76,7 +78,7 @@ impl Application for KillSwitch {
     }
 
     fn view(&self) -> Element<'_, Self::Message> {
-        tracing::info!("Rendering view");
+        log::debug!("Rendering view");
         widget::button::icon(icon::from_name("security-high-symbolic"))
             .on_press(Message::TogglePopup)
             .padding(8)
@@ -84,7 +86,7 @@ impl Application for KillSwitch {
     }
 
     fn view_window(&self, id: cosmic::iced::window::Id) -> Element<'_, Self::Message> {
-        tracing::info!(
+        log::debug!(
             "=== view_window called for id: {:?}, popup: {:?} ===",
             id,
             self.popup
@@ -93,46 +95,55 @@ impl Application for KillSwitch {
         // Check if this is our popup window
         if self.popup == Some(id) {
             let spacing = self.core.system_theme().cosmic().spacing;
-            let all_enabled = self.config.microphone_enabled
-                && self.config.camera_enabled
-                && self.config.wifi_enabled
-                && self.config.bt_enabled;
+            let all_disabled = !self.config.microphone_enabled
+                && !self.config.camera_enabled
+                && !self.config.wifi_enabled
+                && !self.config.bt_enabled;
 
-            let content = widget::column::with_capacity(5)
+            let content = widget::column::with_capacity(6)
                 .push(
                     widget::container(widget::text("Privacy Controls").size(14))
                         .width(Length::Fixed(280.0))
                         .padding([spacing.space_xs, spacing.space_m]),
                 )
                 .push(self.create_control_row(
+                    "security-high-symbolic",
+                    "Block All",
+                    all_disabled,
+                    Message::ToggleAll,
+                    false,
+                ))
+                .push(
+                    cosmic::iced::widget::container(cosmic::iced::widget::Rule::horizontal(1))
+                        .width(Length::Fixed(280.0)),
+                )
+                .push(self.create_control_row(
                     "microphone-sensitivity-medium-symbolic",
                     "Microphone",
                     self.config.microphone_enabled,
                     Message::ToggleMicrophone,
+                    true,
                 ))
                 .push(self.create_control_row(
                     "camera-photo-symbolic",
                     "Camera",
                     self.config.camera_enabled,
                     Message::ToggleCamera,
+                    true,
                 ))
                 .push(self.create_control_row(
                     "network-wireless-symbolic",
                     "Wi-Fi",
                     self.config.wifi_enabled,
                     Message::ToggleWiFi,
+                    true,
                 ))
                 .push(self.create_control_row(
                     "bluetooth-symbolic",
                     "Bluetooth",
                     self.config.bt_enabled,
                     Message::ToggleBT,
-                ))
-                .push(self.create_control_row(
-                    "security-high-symbolic",
-                    "All Devices",
-                    all_enabled,
-                    Message::ToggleAll,
+                    true,
                 ))
                 .spacing(1);
 
@@ -144,49 +155,75 @@ impl Application for KillSwitch {
     }
 
     fn update(&mut self, message: Self::Message) -> cosmic::Task<cosmic::Action<Self::Message>> {
-        tracing::info!("Update called with message: {:?}", message);
+        log::debug!("Update called with message: {message:?}");
         match message {
             Message::ToggleMicrophone(enabled) => {
                 self.config.microphone_enabled = enabled;
-                tracing::info!("Microphone toggled: {}", enabled);
-                self.run_killswitch_command("mic", enabled);
-                cosmic::Task::none()
+                log::debug!("Microphone toggled: {enabled}");
+                cosmic::Task::future(async move {
+                    let _ = tokio::task::spawn_blocking(move || {
+                        Self::run_killswitch_command("mic", enabled);
+                    })
+                    .await;
+                    cosmic::Action::None
+                })
             }
             Message::ToggleCamera(enabled) => {
                 self.config.camera_enabled = enabled;
-                tracing::info!("Camera toggled: {}", enabled);
-                self.run_killswitch_command("cam", enabled);
-                cosmic::Task::none()
+                log::debug!("Camera toggled: {enabled}");
+                cosmic::Task::future(async move {
+                    let _ = tokio::task::spawn_blocking(move || {
+                        Self::run_killswitch_command("cam", enabled);
+                    })
+                    .await;
+                    cosmic::Action::None
+                })
             }
             Message::ToggleWiFi(enabled) => {
                 self.config.wifi_enabled = enabled;
-                tracing::info!("WiFi toggled: {}", enabled);
-                self.run_killswitch_command("net", enabled);
-                cosmic::Task::none()
+                log::debug!("WiFi toggled: {enabled}");
+                cosmic::Task::future(async move {
+                    let _ = tokio::task::spawn_blocking(move || {
+                        Self::run_killswitch_command("net", enabled);
+                    })
+                    .await;
+                    cosmic::Action::None
+                })
             }
             Message::ToggleBT(enabled) => {
                 self.config.bt_enabled = enabled;
-                tracing::info!("Bluetooth toggled: {}", enabled);
-                self.run_killswitch_command("bluetooth", enabled);
-                cosmic::Task::none()
+                log::debug!("Bluetooth toggled: {enabled}");
+                cosmic::Task::future(async move {
+                    let _ = tokio::task::spawn_blocking(move || {
+                        Self::run_killswitch_command("bluetooth", enabled);
+                    })
+                    .await;
+                    cosmic::Action::None
+                })
             }
-            Message::ToggleAll(enabled) => {
+            Message::ToggleAll(enabled_from_toggler) => {
+                let enabled = !enabled_from_toggler;
                 self.config.microphone_enabled = enabled;
                 self.config.camera_enabled = enabled;
                 self.config.wifi_enabled = enabled;
                 self.config.bt_enabled = enabled;
-                tracing::info!("All devices toggled: {}", enabled);
-                self.run_killswitch_command_all(enabled);
-                cosmic::Task::none()
+                log::debug!("All devices toggled: {enabled}");
+                cosmic::Task::future(async move {
+                    let _ = tokio::task::spawn_blocking(move || {
+                        Self::run_killswitch_command_all(enabled);
+                    })
+                    .await;
+                    cosmic::Action::None
+                })
             }
             Message::TogglePopup => {
-                tracing::info!("!!! Toggle popup clicked !!!");
+                log::debug!("!!! Toggle popup clicked !!!");
 
                 if let Some(p) = self.popup.take() {
-                    tracing::info!("Destroying popup");
-                    return destroy_popup(p);
+                    log::debug!("Destroying popup");
+                    destroy_popup(p)
                 } else {
-                    tracing::info!("Creating popup");
+                    log::debug!("Creating popup");
                     let new_id = window::Id::unique();
                     self.popup = Some(new_id);
 
@@ -204,7 +241,7 @@ impl Application for KillSwitch {
                         .max_width(180.0)
                         .max_height(300.0);
 
-                    return get_popup(popup_settings);
+                    get_popup(popup_settings)
                 }
             }
         }
@@ -216,7 +253,7 @@ impl Application for KillSwitch {
 }
 
 impl KillSwitch {
-    fn run_killswitch_command_all(&self, enabled: bool) {
+    fn run_killswitch_command_all(enabled: bool) {
         let arg = if enabled { "unblock" } else { "block" };
         let output = Command::new("ghaf-killswitch")
             .arg(arg)
@@ -225,9 +262,9 @@ impl KillSwitch {
             .expect("Failed to execute ghaf-killswitch command");
 
         if output.status.success() {
-            tracing::info!("ghaf-killswitch {} --all successful", arg);
+            log::info!("ghaf-killswitch {arg} --all successful");
         } else {
-            tracing::error!(
+            log::error!(
                 "ghaf-killswitch {} --all failed: {}",
                 arg,
                 String::from_utf8_lossy(&output.stderr)
@@ -244,28 +281,26 @@ impl KillSwitch {
                     let mut config = Config::default();
 
                     for line in stdout.lines() {
-                        let parts: Vec<&str> = line.split(':').collect();
-                        if parts.len() == 2 {
-                            let device = parts[0].trim();
-                            let status = parts[1].trim();
+                        let Some((device, status)) = line.split_once(':') else {
+                            continue;
+                        };
 
-                            let enabled = status == "unblocked";
+                        let device = device.trim();
+                        let enabled = status.trim() == "unblocked";
 
-                            match device {
-                                "mic" => config.microphone_enabled = enabled,
-                                "cam" => config.camera_enabled = enabled,
-                                "net" => config.wifi_enabled = enabled,
-                                "bluetooth" => config.bt_enabled = enabled,
-                                _ => tracing::warn!(
-                                    "Unknown device in ghaf-killswitch status output: {}",
-                                    device
-                                ),
-                            }
+                        match device {
+                            "mic" => config.microphone_enabled = enabled,
+                            "cam" => config.camera_enabled = enabled,
+                            "net" => config.wifi_enabled = enabled,
+                            "bluetooth" => config.bt_enabled = enabled,
+                            _ => log::warn!(
+                                "Unknown device in ghaf-killswitch status output: {device}"
+                            ),
                         }
                     }
                     config
                 } else {
-                    tracing::error!(
+                    log::error!(
                         "ghaf-killswitch status command failed: {}",
                         String::from_utf8_lossy(&output.stderr)
                     );
@@ -273,13 +308,13 @@ impl KillSwitch {
                 }
             }
             Err(e) => {
-                tracing::error!("Failed to execute ghaf-killswitch status command: {}", e);
+                log::error!("Failed to execute ghaf-killswitch status command: {e}");
                 Config::default()
             }
         }
     }
 
-    fn run_killswitch_command(&self, device: &str, enabled: bool) {
+    fn run_killswitch_command(device: &str, enabled: bool) {
         let arg = if enabled { "unblock" } else { "block" };
         let output = Command::new("ghaf-killswitch")
             .arg(arg)
@@ -288,9 +323,9 @@ impl KillSwitch {
             .expect("Failed to execute ghaf-killswitch command");
 
         if output.status.success() {
-            tracing::info!("ghaf-killswitch {} {} successful", arg, device);
+            log::info!("ghaf-killswitch {arg} {device} successful");
         } else {
-            tracing::error!(
+            log::error!(
                 "ghaf-killswitch {} {} failed: {}",
                 arg,
                 device,
@@ -298,13 +333,14 @@ impl KillSwitch {
             );
         }
     }
-    fn create_control_row<'a>(
+    fn create_control_row(
         &self,
-        icon_name: &'a str,
-        label: &'a str,
+        icon_name: &'static str,
+        label: &'static str,
         enabled: bool,
         on_toggle: fn(bool) -> Message,
-    ) -> Element<'a, Message> {
+        show_status_text: bool,
+    ) -> Element<'static, Message> {
         let spacing = self.core.system_theme().cosmic().spacing;
         let status_text = if enabled { "Enabled" } else { "Disabled" };
 
@@ -316,7 +352,7 @@ impl KillSwitch {
 
         let text_column = widget::column::with_capacity(2)
             .push(widget::text(label).size(14))
-            .push(widget::text(status_text).size(12))
+            .push_maybe(show_status_text.then(|| widget::text(status_text).size(12)))
             .spacing(2);
 
         let toggle = toggler(enabled).on_toggle(on_toggle);
@@ -334,7 +370,7 @@ impl KillSwitch {
 
         widget::tooltip(
             content,
-            widget::text(format!("Control {} functionality", label)),
+            widget::text(format!("Control {label} functionality")),
             widget::tooltip::Position::Bottom,
         )
         .into()
@@ -342,8 +378,8 @@ impl KillSwitch {
 }
 
 fn main() -> cosmic::iced::Result {
-    // Initialize tracing for debugging
-    tracing_subscriber::fmt::init();
-
+    // Initialize systemd journal logger
+    log::set_max_level(log::LevelFilter::Info);
+    JournalLog::new().unwrap().install().unwrap();
     cosmic::applet::run::<KillSwitch>(())
 }
