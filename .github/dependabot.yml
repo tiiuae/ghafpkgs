@@ -13,10 +13,6 @@ updates:
     schedule:
       interval: weekly
   - package-ecosystem: pip
-    directory: /packages/hotplug/hotplug
-    schedule:
-      interval: weekly
-  - package-ecosystem: pip
     directory: /packages/vinotify/vinotify
     schedule:
       interval: weekly
