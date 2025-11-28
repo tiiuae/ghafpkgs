@@ -4,33 +4,6 @@
 */
 
 // forward.rs
-use crate::filter::Security;
-use lazy_static::lazy_static;
-use log::{debug, error, info, trace};
-use pnet::datalink;
-use pnet::datalink::NetworkInterface;
-use pnet::ipnetwork::IpNetwork;
-use pnet::packet::MutablePacket;
-use pnet::packet::Packet;
-use pnet::packet::arp::ArpPacket;
-use pnet::packet::ethernet::EtherTypes;
-use pnet::packet::ethernet::MutableEthernetPacket;
-use pnet::packet::icmp::IcmpPacket;
-use pnet::packet::ip::IpNextHeaderProtocols;
-use pnet::packet::ipv4::Ipv4Packet;
-use pnet::packet::ipv4::MutableIpv4Packet;
-use pnet::packet::ipv6::Ipv6Packet;
-use pnet::packet::tcp;
-use pnet::packet::tcp::{MutableTcpPacket, TcpPacket};
-use pnet::packet::udp;
-use pnet::packet::udp::{MutableUdpPacket, UdpPacket};
-use pnet::util::MacAddr;
-use std::error::Error;
-use std::net::IpAddr;
-use std::sync::Arc;
-use std::sync::RwLock;
-use tokio::sync::Mutex;
-use tokio_util::sync::CancellationToken;
 pub mod forward {
 
     const MAX_PACKET_SIZE: usize = 1522;
@@ -42,7 +15,34 @@ pub mod forward {
 
     use crate::filter::security::RateLimiter;
 
-    use super::*;
+    use crate::filter::Security;
+    use lazy_static::lazy_static;
+    use log::{debug, error, info, trace};
+    use pnet::datalink;
+    use pnet::datalink::NetworkInterface;
+    use pnet::ipnetwork::IpNetwork;
+    use pnet::packet::MutablePacket;
+    use pnet::packet::Packet;
+    use pnet::packet::arp::ArpPacket;
+    use pnet::packet::ethernet::EtherTypes;
+    use pnet::packet::ethernet::MutableEthernetPacket;
+    use pnet::packet::icmp::IcmpPacket;
+    use pnet::packet::ip::IpNextHeaderProtocols;
+    use pnet::packet::ipv4::Ipv4Packet;
+    use pnet::packet::ipv4::MutableIpv4Packet;
+    use pnet::packet::ipv6::Ipv6Packet;
+    use pnet::packet::tcp;
+    use pnet::packet::tcp::{MutableTcpPacket, TcpPacket};
+    use pnet::packet::udp;
+    use pnet::packet::udp::{MutableUdpPacket, UdpPacket};
+    use pnet::util::MacAddr;
+    use std::error::Error;
+    use std::net::IpAddr;
+    use std::sync::Arc;
+    use std::sync::RwLock;
+    use tokio::sync::Mutex;
+    use tokio_util::sync::CancellationToken;
+
     /// Holds the network interface details, including external and internal IPs and MAC addresses.
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub struct Ifaces {
@@ -798,14 +798,16 @@ pub mod forward {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::forward;
-    use pnet::datalink::Channel::Ethernet;
-    use pnet::datalink::Config;
-    use pnet::packet::ethernet::{EthernetPacket, MutableEthernetPacket};
+    use pnet::datalink::NetworkInterface;
+    use pnet::ipnetwork::IpNetwork;
+    use pnet::packet::ethernet::{EtherTypes, MutableEthernetPacket};
+    use pnet::packet::ip::IpNextHeaderProtocols;
     use pnet::packet::ipv4::MutableIpv4Packet;
     use pnet::packet::ipv6::MutableIpv6Packet;
-    use std::net::{IpAddr, Ipv4Addr}; // Import the `forward` module
+    use pnet::packet::udp::MutableUdpPacket;
+    use pnet::packet::{MutablePacket, Packet};
+    use std::net::Ipv4Addr; // Import the `forward` module
 
     #[test]
     fn test_is_it_own_packet_ipv4() {
