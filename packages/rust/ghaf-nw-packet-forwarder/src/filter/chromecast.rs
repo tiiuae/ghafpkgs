@@ -122,7 +122,7 @@ impl SharedData {
         }
         ports_lock.push_back((port, SystemTime::now()));
 
-        info!("SSDP Port map: {:?}", ports_lock);
+        info!("SSDP Port map: {ports_lock:?}");
     }
 
     async fn is_ssdp_port_available(&self, port: u16) -> bool {
@@ -194,16 +194,12 @@ impl ExternalOps {
             let dest_ip = ipv4_packet.get_destination();
             let src_ip = ipv4_packet.get_source();
             if self.shared_data.is_ssdp_port_available(dest_port).await {
-                info!(
-                    "Ext to Int - Chromecast udp packet detected,port num: {}",
-                    dest_port
-                );
+                info!("Ext to Int - Chromecast udp packet detected,port num: {dest_port}");
                 return Some((mac, ip));
             } else if mdns_enabled && dest_port == MDNS_PORT && dest_ip == MDNS_IP {
                 let is_mdns_response = self.is_mdns_response(udp_packet.payload());
                 debug!(
-                    "Ext to Int - mdns packet detected,src ip: {}, response: {}",
-                    src_ip, is_mdns_response
+                    "Ext to Int - mdns packet detected,src ip: {src_ip}, response: {is_mdns_response}"
                 );
                 if is_mdns_response {
                     return Some((
@@ -294,7 +290,7 @@ impl InternalOps {
                 if dest_ip == SSDP_MULTICAST_ADDR && dest_port == SSDP_PORT {
                     let src_port = udp_packet.get_source();
                     self.shared_data.add_ssdp_port(src_port).await;
-                    debug!("Added SSDP port {} to the list of ports", src_port);
+                    debug!("Added SSDP port {src_port} to the list of ports");
                     return ssdp_enabled;
                 } else if mdns_enabled
                     && src_ip == chrome_vm_ip.ip()
@@ -303,8 +299,7 @@ impl InternalOps {
                 {
                     let is_mdns_query = self.is_mdns_query(udp_packet.payload());
                     debug!(
-                        "Int to Ext - mdns packet detected, src ip: {}, query:{}",
-                        src_ip, is_mdns_query
+                        "Int to Ext - mdns packet detected, src ip: {src_ip}, query:{is_mdns_query}"
                     );
                     return is_mdns_query;
                 }

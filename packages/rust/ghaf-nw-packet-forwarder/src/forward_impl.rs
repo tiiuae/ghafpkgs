@@ -203,15 +203,15 @@ pub mod forward {
             //     forwarded_packet.as_slice()
             // );
             match tx.send_to(eth_packet.packet(), None) {
-                Some(Ok(_)) => {
+                Some(Ok(())) => {
                     info!(
                         "Ext to Int - Forwarded packet: {}",
                         parse_packet(eth_packet)
                     );
-                    trace!("Ext to Int - Forwarded packet: {:?}", eth_packet);
+                    trace!("Ext to Int - Forwarded packet: {eth_packet:?}");
                 }
                 Some(Err(e)) => {
-                    error!("Error sending packet: {}", e);
+                    error!("Error sending packet: {e}");
                 }
                 None => error!("Error: Send failed, no destination address."),
             }
@@ -275,7 +275,7 @@ pub mod forward {
     /// * `dest_ip` - The destination IP address.
     ///
     /// # Returns
-    /// A `bool` representing the whether modified eth_packet to be sent to the internal network.
+    /// A `bool` representing the whether modified `eth_packet` to be sent to the internal network.
     fn modify_ext_to_int_packet(
         eth_packet: &mut MutableEthernetPacket,
         src_mac: MacAddr,
@@ -337,13 +337,10 @@ pub mod forward {
                 match calculate_ipv4_checksum(ipv4_packet.packet()) {
                     Ok(checksum) => {
                         ipv4_packet.set_checksum(checksum);
-                        debug!(
-                            "Ext to Int - ipv4_packet: {:?}, checksum:{:?}",
-                            ipv4_packet, checksum
-                        );
+                        debug!("Ext to Int - ipv4_packet: {ipv4_packet:?}, checksum:{checksum:?}");
                     }
                     Err(e) => {
-                        error!("{}", e);
+                        error!("{e}");
                         return false;
                     }
                 }
@@ -353,7 +350,7 @@ pub mod forward {
             return false;
         }
 
-        trace!("Ext to Int-modified_packet:{:?}", eth_packet);
+        trace!("Ext to Int-modified_packet:{eth_packet:?}");
 
         true
     }
@@ -405,8 +402,7 @@ pub mod forward {
                                 let src_port = tcp_packet.get_source();
                                 let dest_port = tcp_packet.get_destination();
                                 return format!(
-                                    "TCP Packet - Src IP: {}, Src Port: {}, Dest IP: {}, Dest Port: {}",
-                                    src_ip, src_port, dest_ip, dest_port
+                                    "TCP Packet - Src IP: {src_ip}, Src Port: {src_port}, Dest IP: {dest_ip}, Dest Port: {dest_port}"
                                 );
                             }
                         }
@@ -415,8 +411,7 @@ pub mod forward {
                                 let src_port = udp_packet.get_source();
                                 let dest_port = udp_packet.get_destination();
                                 return format!(
-                                    "UDP Packet - Src MAC: {}, Src IP: {}, Src Port: {}, Dest MAC: {}, Dest IP: {}, Dest Port: {}",
-                                    src_mac, src_ip, src_port, dest_mac, dest_ip, dest_port
+                                    "UDP Packet - Src MAC: {src_mac}, Src IP: {src_ip}, Src Port: {src_port}, Dest MAC: {dest_mac}, Dest IP: {dest_ip}, Dest Port: {dest_port}"
                                 );
                             }
                         }
@@ -432,8 +427,7 @@ pub mod forward {
                         }
                         _ => {
                             return format!(
-                                "Unknown IPv4 Protocol - Src IP: {}, Dest IP: {}, Protocol: {:?}",
-                                src_ip, dest_ip, protocol
+                                "Unknown IPv4 Protocol - Src IP: {src_ip}, Dest IP: {dest_ip}, Protocol: {protocol:?}"
                             );
                         }
                     }
@@ -498,15 +492,15 @@ pub mod forward {
             debug!("Int to Ext - packet dropped {}", parse_packet(eth_packet));
         } else if modify_int_to_ext_packet(eth_packet, &ext_mac, &ext_ip) {
             match tx.send_to(eth_packet.packet(), None) {
-                Some(Ok(_)) => {
+                Some(Ok(())) => {
                     info!(
                         "Int to Ext - Forwarded packet: {}",
                         parse_packet(eth_packet)
                     );
-                    trace!("Int to ext - Forwarded packet(raw): {:?}", eth_packet);
+                    trace!("Int to ext - Forwarded packet(raw): {eth_packet:?}");
                 }
                 Some(Err(e)) => {
-                    error!("Int to Ext - Error sending packet: {}", e);
+                    error!("Int to Ext - Error sending packet: {e}");
                 }
                 None => error!("Int to Ext - Send failed, no destination address."),
             }
@@ -566,7 +560,7 @@ pub mod forward {
     /// * `ext_iface_ip` - The IP address of the external interface.
     ///
     /// # Returns
-    /// A `bool` representing the whether modified eth_packet to be sent to the external network.
+    /// A `bool` representing the whether modified `eth_packet` to be sent to the external network.
     fn modify_int_to_ext_packet(
         eth_packet: &mut MutableEthernetPacket,
         ext_iface_mac: &MacAddr,
@@ -621,13 +615,10 @@ pub mod forward {
                 match calculate_ipv4_checksum(ipv4_packet.packet()) {
                     Ok(checksum) => {
                         ipv4_packet.set_checksum(checksum);
-                        debug!(
-                            "Int to Ext - ipv4_packet: {:?}, checksum:{:?}",
-                            ipv4_packet, checksum
-                        );
+                        debug!("Int to Ext - ipv4_packet: {ipv4_packet:?}, checksum:{checksum:?}");
                     }
                     Err(e) => {
-                        error!("{}", e);
+                        error!("{e}");
                         return false;
                     }
                 }
@@ -636,7 +627,7 @@ pub mod forward {
             trace!("Int to Ext- it is not ipv4");
             return false;
         }
-        trace!("Int to Ext-modified_packet:{:?}", eth_packet);
+        trace!("Int to Ext-modified_packet:{eth_packet:?}");
 
         true
     }
@@ -672,10 +663,7 @@ pub mod forward {
 
                 if !ipv4_packet.is_checksum_correct(&src_ip, &dest_ip) || 0 == ipv4_packet.get_ttl()
                 {
-                    debug!(
-                        "ext to int - ipv4 checksum is not correct:{:?}",
-                        ipv4_packet
-                    );
+                    debug!("ext to int - ipv4 checksum is not correct:{ipv4_packet:?}");
                     return false;
                 }
 
@@ -689,10 +677,7 @@ pub mod forward {
                             MutableUdpPacket::new(ipv4_packet.payload_mut())
                         {
                             if !udp_packet.is_checksum_correct(&src_ip, &dest_ip) {
-                                debug!(
-                                    "ext to int - udp checksum is not correct:{:?}",
-                                    ipv4_packet
-                                );
+                                debug!("ext to int - udp checksum is not correct:{ipv4_packet:?}");
                                 return false;
                             }
 
@@ -746,8 +731,7 @@ pub mod forward {
 
             if current_checksum != expected_checksum {
                 warn!(
-                    "Wrong udp checksum, current:{}, expected:{}",
-                    current_checksum, expected_checksum
+                    "Wrong udp checksum, current:{current_checksum}, expected:{expected_checksum}"
                 );
                 return false;
             }
@@ -769,15 +753,14 @@ pub mod forward {
                 Ok(checksum) => {
                     if current_ipv4_packet_checksum != checksum {
                         warn!(
-                            "Wrong ipv4 checksum, current:{}, expected:{}",
-                            current_ipv4_packet_checksum, checksum
+                            "Wrong ipv4 checksum, current:{current_ipv4_packet_checksum}, expected:{checksum}"
                         );
                         return false;
                     }
                     self.set_checksum(checksum);
                 }
                 Err(e) => {
-                    error!("{}", e);
+                    error!("{e}");
                     return false;
                 }
             }
