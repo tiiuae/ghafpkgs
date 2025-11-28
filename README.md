@@ -41,9 +41,7 @@ Python applications and utilities, all modernized with `pyproject.toml` + `uv`.
 
 - **`ghaf-usb-applet`** - USB panel applet for COSMIC (GTK4) with system tray integration
 - **`gps-websock`** - GPS endpoint exposed over WebSocket for real-time location data
-- **`hotplug`** - QEMU hotplug helper for PCI and USB devices
 - **`ldap-query`** - LDAP/Active Directory query tool with GSSAPI auth
-- **`vhotplug`** - Virtio hotplug management (external dependency)
 - **`vinotify`** - VM file system notification service using inotify
 
 ### 🦀 Rust (`packages/rust/`)
@@ -93,7 +91,6 @@ nix develop
 nix build .#ghaf-audio-control
 nix build .#ghaf-usb-applet
 nix build .#gps-websock
-nix build .#hotplug
 nix build .#ghaf-mem-manager
 nix build .#vsockproxy
 

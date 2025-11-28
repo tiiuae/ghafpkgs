@@ -23,8 +23,6 @@ path = [
   "packages/art/ghaf-theme/**/*.svg",
   "packages/cpp/ghaf-audio-control/src/.gitignore",
   "packages/go/swtpm-proxy-shim/go.sum",
-  "packages/python/hotplug/hotplug/README.md",
-  "packages/python/hotplug/hotplug/uv.lock",
   "packages/python/ldap-query/ldap-query/README.md",
   "packages/python/ldap-query/ldap-query/uv.lock",
   "packages/python/vinotify/vinotify/README.md",
