@@ -23,7 +23,7 @@ pub struct Security {
     rate_limiter: Mutex<RateLimiter>,
 }
 
-/// Represents a rate limiter for (src_ip, protocol, dest_port) tuples.
+/// Represents a rate limiter for (`src_ip`, protocol, `dest_port`) tuples.
 #[derive(Debug, Clone)]
 pub struct RateLimiter {
     pub enabled: bool, // Flag to enable or disable rate limiting
@@ -61,12 +61,12 @@ impl Security {
             };
             tokio::select! {
                       // Check the cancellation token
-                      _ = cancel_token.cancelled() => {
+                      () = cancel_token.cancelled() => {
                         // Token was cancelled, clean up and exit task
                         warn!("Cancellation token triggered, shutting down security background task");
                         break;
                     }
-                _ = async {
+                () = async {
                     interval.tick().await;
                     let mut rate_limiter_lock = self.rate_limiter.lock().await;
                     rate_limiter_cnt = (rate_limiter_cnt + 1) % (rate_limiter_lock.cleanup_interval.as_secs()/interval.period().as_secs());
