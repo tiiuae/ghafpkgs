@@ -92,16 +92,16 @@ pub mod forward {
         iface: &NetworkInterface,
         iface_ip: Option<IpNetwork>,
     ) -> Result<IpNetwork, String> {
-        if iface.ips.iter().filter(|ip| ip.is_ipv4()).count() > 1 {
-            if let Some(ip) = iface_ip {
-                if !iface.ips.iter().any(|iface_ip| iface_ip.ip() == ip.ip()) {
-                    return Err(format!(
-                        "Provided IP {} does not match any IPs in interface {}",
-                        ip, iface.name
-                    ));
-                }
-                return Ok(ip);
+        if iface.ips.iter().filter(|ip| ip.is_ipv4()).count() > 1
+            && let Some(ip) = iface_ip
+        {
+            if !iface.ips.iter().any(|iface_ip| iface_ip.ip() == ip.ip()) {
+                return Err(format!(
+                    "Provided IP {} does not match any IPs in interface {}",
+                    ip, iface.name
+                ));
             }
+            return Ok(ip);
         }
 
         iface

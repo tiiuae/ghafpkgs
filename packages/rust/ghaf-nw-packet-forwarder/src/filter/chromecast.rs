@@ -130,10 +130,10 @@ impl SharedData {
         let now = SystemTime::now();
 
         for &(stored_port, timestamp) in ports_lock.iter() {
-            if stored_port == port {
-                if let Ok(duration) = now.duration_since(timestamp) {
-                    return duration <= MAX_DURATION;
-                }
+            if stored_port == port
+                && let Ok(duration) = now.duration_since(timestamp)
+            {
+                return duration <= MAX_DURATION;
             }
         }
 
@@ -186,41 +186,37 @@ impl ExternalOps {
 
         let ssdp_enabled = self.shared_data.ssdp_enabled;
         let mdns_enabled = self.shared_data.mdns_enabled;
-        if let Some(ipv4_packet) = Ipv4Packet::new(eth_packet.payload()) {
-            if ipv4_packet.get_next_level_protocol() == IpNextHeaderProtocols::Udp {
-                if let Some(udp_packet) = UdpPacket::new(ipv4_packet.payload()) {
-                    let dest_port = udp_packet.get_destination();
-                    let dest_ip = ipv4_packet.get_destination();
-                    let src_ip = ipv4_packet.get_source();
-                    if self.shared_data.is_ssdp_port_available(dest_port).await {
-                        info!(
-                            "Ext to Int - Chromecast udp packet detected,port num: {}",
-                            dest_port
-                        );
-                        return Some((mac, ip));
-                    } else if mdns_enabled && dest_port == MDNS_PORT && dest_ip == MDNS_IP {
-                        let is_mdns_response = self.is_mdns_response(udp_packet.payload());
-                        debug!(
-                            "Ext to Int - mdns packet detected,src ip: {}, response: {}",
-                            src_ip, is_mdns_response
-                        );
-                        if is_mdns_response {
-                            return Some((
-                                MDNS_MAC,
-                                IpNetwork::new(std::net::IpAddr::V4(MDNS_IP), 32).unwrap(),
-                            ));
-                        }
-                    } else if ssdp_enabled
-                        && dest_ip == SSDP_MULTICAST_ADDR
-                        && dest_port == SSDP_PORT
-                    {
-                        info!("Ext to Int - ssdp packet fowarded to internal interface");
-                        return Some((
-                            SSDP_MAC,
-                            IpNetwork::new(std::net::IpAddr::V4(SSDP_MULTICAST_ADDR), 32).unwrap(),
-                        ));
-                    }
+        if let Some(ipv4_packet) = Ipv4Packet::new(eth_packet.payload())
+            && ipv4_packet.get_next_level_protocol() == IpNextHeaderProtocols::Udp
+            && let Some(udp_packet) = UdpPacket::new(ipv4_packet.payload())
+        {
+            let dest_port = udp_packet.get_destination();
+            let dest_ip = ipv4_packet.get_destination();
+            let src_ip = ipv4_packet.get_source();
+            if self.shared_data.is_ssdp_port_available(dest_port).await {
+                info!(
+                    "Ext to Int - Chromecast udp packet detected,port num: {}",
+                    dest_port
+                );
+                return Some((mac, ip));
+            } else if mdns_enabled && dest_port == MDNS_PORT && dest_ip == MDNS_IP {
+                let is_mdns_response = self.is_mdns_response(udp_packet.payload());
+                debug!(
+                    "Ext to Int - mdns packet detected,src ip: {}, response: {}",
+                    src_ip, is_mdns_response
+                );
+                if is_mdns_response {
+                    return Some((
+                        MDNS_MAC,
+                        IpNetwork::new(std::net::IpAddr::V4(MDNS_IP), 32).unwrap(),
+                    ));
                 }
+            } else if ssdp_enabled && dest_ip == SSDP_MULTICAST_ADDR && dest_port == SSDP_PORT {
+                info!("Ext to Int - ssdp packet fowarded to internal interface");
+                return Some((
+                    SSDP_MAC,
+                    IpNetwork::new(std::net::IpAddr::V4(SSDP_MULTICAST_ADDR), 32).unwrap(),
+                ));
             }
         }
 
@@ -290,27 +286,27 @@ impl InternalOps {
             if src_ip != self.shared_data.get_ip().ip() {
                 return false;
             }
-            if ipv4_packet.get_next_level_protocol() == IpNextHeaderProtocols::Udp {
-                if let Some(udp_packet) = UdpPacket::new(ipv4_packet.payload()) {
-                    let dest_ip = ipv4_packet.get_destination();
-                    let dest_port = udp_packet.get_destination();
-                    if dest_ip == SSDP_MULTICAST_ADDR && dest_port == SSDP_PORT {
-                        let src_port = udp_packet.get_source();
-                        self.shared_data.add_ssdp_port(src_port).await;
-                        debug!("Added SSDP port {} to the list of ports", src_port);
-                        return ssdp_enabled;
-                    } else if mdns_enabled
-                        && src_ip == chrome_vm_ip.ip()
-                        && dest_port == MDNS_PORT
-                        && dest_ip == MDNS_IP
-                    {
-                        let is_mdns_query = self.is_mdns_query(udp_packet.payload());
-                        debug!(
-                            "Int to Ext - mdns packet detected, src ip: {}, query:{}",
-                            src_ip, is_mdns_query
-                        );
-                        return is_mdns_query;
-                    }
+            if ipv4_packet.get_next_level_protocol() == IpNextHeaderProtocols::Udp
+                && let Some(udp_packet) = UdpPacket::new(ipv4_packet.payload())
+            {
+                let dest_ip = ipv4_packet.get_destination();
+                let dest_port = udp_packet.get_destination();
+                if dest_ip == SSDP_MULTICAST_ADDR && dest_port == SSDP_PORT {
+                    let src_port = udp_packet.get_source();
+                    self.shared_data.add_ssdp_port(src_port).await;
+                    debug!("Added SSDP port {} to the list of ports", src_port);
+                    return ssdp_enabled;
+                } else if mdns_enabled
+                    && src_ip == chrome_vm_ip.ip()
+                    && dest_port == MDNS_PORT
+                    && dest_ip == MDNS_IP
+                {
+                    let is_mdns_query = self.is_mdns_query(udp_packet.payload());
+                    debug!(
+                        "Int to Ext - mdns packet detected, src ip: {}, query:{}",
+                        src_ip, is_mdns_query
+                    );
+                    return is_mdns_query;
                 }
             }
         }
