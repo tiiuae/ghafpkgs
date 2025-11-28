@@ -55,7 +55,7 @@ async fn main() {
         cli::get_ext_ip(),
         cli::get_int_ip(),
     ) {
-        error!("Failed to assign interfaces: {}", e);
+        error!("Failed to assign interfaces: {e}");
         std::process::exit(1); // Optional: Exit with a specific non-zero code
     }
 
@@ -105,7 +105,7 @@ async fn main() {
         let cancel_token = token.clone();
         let internal_iface = internal_iface.clone();
         let ifaces = get_ifaces();
-        let mut last_err = String::from("");
+        let mut last_err = String::new();
 
         async move {
             info!("Starting packet capture on {}...", internal_iface.name);
@@ -114,12 +114,12 @@ async fn main() {
             loop {
                 tokio::select! {
                     // Check the cancellation token
-                    _ = cancel_token.cancelled() => {
+                    () = cancel_token.cancelled() => {
                         // Token was cancelled, clean up and exit task
                         warn!("Cancellation token triggered, shutting down capture on {}...", internal_iface.name);
                         break;
                     }
-                    _ = async {
+                    () = async {
                         if forward::is_iface_running_up(&internal_iface.name) {
                             match capture_next_packet(&internal_rx_ch).await {
                                 Ok(mut frame) => {
@@ -148,7 +148,7 @@ async fn main() {
     let external_task = tokio::task::spawn({
         let internal_iface = internal_iface.clone();
         let cancel_token = token.clone();
-        let mut last_err = String::from("");
+        let mut last_err = String::new();
         async move {
             info!("Starting packet capture on {}...", external_iface.name);
             let chromecast_external = chromecast_external.clone(); // Clone Arc to give external task access
@@ -156,12 +156,12 @@ async fn main() {
             loop {
                 tokio::select! {
                     // Check the cancellation token
-                    _ = cancel_token.cancelled() => {
+                    () = cancel_token.cancelled() => {
                         // Token was cancelled, clean up and exit task
                         warn!("Cancellation token triggered, shutting down capture on {}...", external_iface.name);
                         break;
                     }
-                    _ = async {
+                    () = async {
                         if forward::is_iface_running_up(&external_iface.name) {
                             match capture_next_packet(&external_rx_ch).await {
                                 Ok(mut frame) => {
@@ -189,7 +189,7 @@ async fn main() {
     // Gracefully handle shutdown (e.g., on SIGINT)
     let shutdown = signal::ctrl_c().await;
     if let Err(e) = shutdown {
-        error!("Error while waiting for shutdown signal: {}", e);
+        error!("Error while waiting for shutdown signal: {e}");
     }
     info!("Shutting down gracefully...");
     // Send a cancellation signal
@@ -230,7 +230,7 @@ fn initialize_logger() {
             };
             let logger = match syslog::unix(formatter) {
                 Err(e) => {
-                    println!("impossible to connect to syslog: {:?}", e);
+                    println!("impossible to connect to syslog: {e:?}");
                     return;
                 }
                 Ok(logger) => logger,
@@ -257,11 +257,11 @@ async fn capture_next_packet(
         }
     })
     .await
-    .map_err(|e| format!("Error in spawn_blocking: {}", e));
+    .map_err(|e| format!("Error in spawn_blocking: {e}"));
 
     match join_handle {
         Ok(Ok(frame)) => Ok(frame),
-        Ok(Err(e)) => Err(format!("Error receiving packet: {}", e)),
+        Ok(Err(e)) => Err(format!("Error receiving packet: {e}")),
         Err(e) => Err(e.to_string()),
     }
 }
