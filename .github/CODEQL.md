@@ -75,9 +75,7 @@ CodeQL runs comprehensive security analysis:
 ### Python Packages
 - `ghaf-usb-applet` - USB device management
 - `gps-websock` - GPS WebSocket service
-- `hotplug` - Device hotplug handling
 - `ldap-query` - LDAP query utility
-- `vhotplug` - Virtual hotplug handler
 - `vinotify` - Notification service
 
 ### Rust Packages
