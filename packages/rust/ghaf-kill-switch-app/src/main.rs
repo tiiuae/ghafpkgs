@@ -11,6 +11,7 @@ use cosmic::widget::{self, icon, toggler};
 use cosmic::{Application, Element};
 use serde::{Deserialize, Serialize};
 use std::process::Command;
+use std::time::Duration;
 use systemd_journal_logger::JournalLog;
 
 const ID: &str = "ae.tii.CosmicAppletKillSwitch";
@@ -23,6 +24,8 @@ pub enum Message {
     ToggleBT(bool),
     ToggleAll(bool),
     TogglePopup,
+    RefreshStatus,
+    ConfigLoaded(Config),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,7 +74,7 @@ impl Application for KillSwitch {
     ) -> (Self, cosmic::Task<cosmic::Action<Self::Message>>) {
         let app = Self {
             core,
-            config: Self::get_initial_config(),
+            config: Self::get_config(),
             popup: None,
         };
         (app, cosmic::Task::none())
@@ -244,11 +247,35 @@ impl Application for KillSwitch {
                     get_popup(popup_settings)
                 }
             }
+            Message::RefreshStatus => {
+                log::debug!("Request to get_config");
+
+                cosmic::Task::perform(
+                    tokio::task::spawn_blocking(Self::get_config),
+                    |res| match res {
+                        Ok(config) => Message::ConfigLoaded(config).into(),
+                        Err(_) => {
+                            log::error!("Failed to get config from background task");
+                            cosmic::Action::None
+                        }
+                    },
+                )
+            }
+
+            Message::ConfigLoaded(config) => {
+                self.config = config;
+                cosmic::Task::none()
+            }
         }
     }
 
     fn subscription(&self) -> Subscription<Self::Message> {
-        Subscription::none()
+        // Refresh status every 2 seconds when popup is open
+        if self.popup.is_some() {
+            cosmic::iced::time::every(Duration::from_secs(2)).map(|_| Message::RefreshStatus)
+        } else {
+            Subscription::none()
+        }
     }
 }
 
@@ -271,7 +298,7 @@ impl KillSwitch {
             );
         }
     }
-    fn get_initial_config() -> Config {
+    fn get_config() -> Config {
         let output = Command::new("ghaf-killswitch").arg("status").output();
 
         match output {
