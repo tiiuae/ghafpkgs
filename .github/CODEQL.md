@@ -79,6 +79,7 @@ CodeQL runs comprehensive security analysis:
 - `vinotify` - Notification service
 
 ### Rust Packages
+- `ghaf-kill-switch-app` - GUI Application for kill switch
 - `ghaf-mem-manager` - Memory management service
 - `ghaf-nw-packet-forwarder` - Network packet forwarding
 
