@@ -5,6 +5,7 @@
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
 pub use anyhow::Error;
+use anyhow::Result;
 use tokio::sync::RwLock;
 use tracing::debug;
 
@@ -25,15 +26,23 @@ impl MemoryStats {
         mem_info: &qmp::MemoryInfo,
         guest_info: &qmp::GuestMemoryInfo,
         bal_info: &qmp::BalloonInfo,
-    ) -> Self {
-        Self {
+    ) -> Result<Self> {
+        if guest_info.stats.stat_available_memory == 0
+            || bal_info.actual == 0
+            || bal_info.actual < guest_info.stats.stat_available_memory
+            || guest_info.stats.stat_available_memory < guest_info.stats.stat_free_memory
+        {
+            anyhow::bail!("Invalid data received from VM");
+        }
+
+        Ok(Self {
             balloon_size: bal_info.actual,
             base_memory: mem_info.base_memory,
             plugged_memory: mem_info.plugged_memory,
             total_memory: mem_info.base_memory + mem_info.plugged_memory,
             free_memory: guest_info.stats.stat_free_memory,
             available_memory: guest_info.stats.stat_available_memory,
-        }
+        })
     }
 
     #[allow(clippy::cast_possible_truncation)]
@@ -63,6 +72,7 @@ impl MemoryStats {
 
 impl std::fmt::Display for MemoryStats {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        const BYTES_IN_MIB: usize = 1024 * 1024;
         write!(
             f,
             "Memory stats:\n\
@@ -72,12 +82,12 @@ impl std::fmt::Display for MemoryStats {
              Total memory: {} MiB\n\
              Free memory: {} MiB\n\
              Available memory: {} MiB",
-            self.balloon_size / 1024 / 1024,
-            self.base_memory / 1024 / 1024,
-            self.plugged_memory / 1024 / 1024,
-            self.total_memory / 1024 / 1024,
-            self.free_memory / 1024 / 1024,
-            self.available_memory / 1024 / 1024
+            self.balloon_size / BYTES_IN_MIB,
+            self.base_memory / BYTES_IN_MIB,
+            self.plugged_memory / BYTES_IN_MIB,
+            self.total_memory / BYTES_IN_MIB,
+            self.free_memory / BYTES_IN_MIB,
+            self.available_memory / BYTES_IN_MIB,
         )
     }
 }
@@ -140,6 +150,8 @@ impl VM {
         let memory = conn.query_memory().await?;
         let guest_stats = conn.query_stats().await?;
 
+        let stats = MemoryStats::new(&memory, &guest_stats, &balloon)?;
+
         let last = self
             .last_update
             .write()
@@ -151,8 +163,6 @@ impl VM {
                 preferred: prev,
             }),
             _ => {
-                let stats = MemoryStats::new(&memory, &guest_stats, &balloon);
-
                 debug!(
                     "Stats for {}: {stats}, pressure: {}%",
                     self.endpoint,
