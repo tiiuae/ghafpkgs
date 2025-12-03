@@ -80,11 +80,13 @@ impl Application for KillSwitch {
         (app, cosmic::Task::none())
     }
 
-    fn view(&self) -> Element<'_, Self::Message> {
+    fn view(&self) -> Element<'_, Message> {
         log::debug!("Rendering view");
-        widget::button::icon(icon::from_name("security-high-symbolic"))
+
+        self.core
+            .applet
+            .icon_button("security-high-symbolic")
             .on_press(Message::TogglePopup)
-            .padding(8)
             .into()
     }
 
