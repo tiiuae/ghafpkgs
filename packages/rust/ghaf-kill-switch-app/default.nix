@@ -72,7 +72,7 @@ let
       '';
 
       # Metadata for the final package
-      meta = with lib; {
+      meta = {
         description = "Kill Switch app for Ghaf virtualization platform";
         longDescription = ''
           A simple graphical user interface (GUI) application built using Iced
@@ -81,8 +81,8 @@ let
           and WiFi via toggler controls.
         '';
         homepage = "https://ghaf.dev";
-        license = licenses.asl20;
-        platforms = platforms.linux;
+        license = lib.licenses.asl20;
+        platforms = lib.platforms.linux;
         mainProgram = "ghaf-kill-switch-app";
       };
     }

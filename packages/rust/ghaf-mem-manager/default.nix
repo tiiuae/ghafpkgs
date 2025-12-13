@@ -37,7 +37,7 @@ let
       inherit cargoArtifacts;
 
       # Metadata for the final package
-      meta = with lib; {
+      meta = {
         description = "Memory management utilities for Ghaf virtualization platform";
         longDescription = ''
           A memory management service for the Ghaf framework that provides
@@ -46,8 +46,8 @@ let
           QEMU integration, and resource optimization.
         '';
         homepage = "https://ghaf.dev";
-        license = licenses.asl20;
-        platforms = platforms.linux;
+        license = lib.licenses.asl20;
+        platforms = lib.platforms.linux;
         mainProgram = "ghaf-mem-manager";
       };
     }

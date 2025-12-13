@@ -45,7 +45,7 @@ let
     // {
       inherit cargoArtifacts;
 
-      meta = with lib; {
+      meta = {
         description = "Network packet forwarder for Ghaf virtualization platform";
         longDescription = ''
           A high-performance network packet forwarding service for the Ghaf framework.
@@ -53,8 +53,8 @@ let
           integration with QEMU network backends for secure virtualized networking.
         '';
         homepage = "https://ghaf.dev";
-        license = licenses.asl20;
-        platforms = platforms.linux;
+        license = lib.licenses.asl20;
+        platforms = lib.platforms.linux;
         mainProgram = "nw-pckt-fwd";
       };
     }

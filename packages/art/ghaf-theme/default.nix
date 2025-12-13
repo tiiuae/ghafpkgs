@@ -4,14 +4,14 @@
 runCommand "ghaf-theme"
   {
     version = "0.1.0";
-    meta = with lib; {
+    meta = {
       description = "Ghaf Theme";
       longDescription = ''
         The Ghaf theme is currently intended for labwc (Wayland compositor), and
         to be used with the Ghaf platform.
       '';
-      license = licenses.asl20;
-      platforms = platforms.linux;
+      license = lib.licenses.asl20;
+      platforms = lib.platforms.linux;
     };
   }
   ''

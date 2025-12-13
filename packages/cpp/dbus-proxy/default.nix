@@ -2,31 +2,29 @@
 # SPDX-License-Identifier: Apache-2.0
 {
   stdenv,
-  pkgs,
+  pkg-config,
+  glib,
   lib,
-  ...
 }:
 stdenv.mkDerivation {
-  name = "dbus-proxy";
+  pname = "dbus-proxy";
+  version = "0.1.0";
 
   src = ./dbus-proxy;
 
-  nativeBuildInputs = [ pkgs.pkg-config ];
-  buildInputs = [ pkgs.glib ];
-
-  sourceRoot = "./dbus-proxy";
+  nativeBuildInputs = [ pkg-config ];
+  buildInputs = [ glib ];
 
   installPhase = ''
     mkdir -p $out/bin
     install -Dm755 dbus-proxy $out/bin/dbus-proxy
   '';
+
   meta = {
-    description = "DBus proxy";
-    platforms = [
-      "x86_64-linux"
-      "aarch64-linux"
-    ];
+    description = "Cross-bus D-Bus proxy for Ghaf framework";
+    homepage = "https://github.com/tiiuae/ghafpkgs";
     license = lib.licenses.asl20;
+    platforms = lib.platforms.linux;
     mainProgram = "dbus-proxy";
   };
 }
