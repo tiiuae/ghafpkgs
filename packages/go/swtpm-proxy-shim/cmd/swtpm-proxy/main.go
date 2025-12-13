@@ -65,6 +65,10 @@ func main() {
 		if err != nil {
 			log.Fatalf("Invalid CID: %v", err)
 		}
+		// Validate CID fits in uint32 range
+		if cid < 0 || cid > 0xFFFFFFFF {
+			log.Fatalf("CID out of range: %d (must be 0-4294967295)", cid)
+		}
 		options.BackendCid = uint32(cid)
 	case swtpmproxy.BackendIP:
 		options.BackendAddress = args[1]
