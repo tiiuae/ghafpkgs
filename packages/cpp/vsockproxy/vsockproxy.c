@@ -201,11 +201,11 @@ int main(int argc, char **argv) {
     return ret;
   }
 
-  struct client *data = malloc(sizeof(struct client));
-  data->sock = listen_sock;
+  struct client *listen_data = malloc(sizeof(struct client));
+  listen_data->sock = listen_sock;
   struct epoll_event listen_ev;
   listen_ev.events = EPOLLIN | EPOLLOUT;
-  listen_ev.data.ptr = data;
+  listen_ev.data.ptr = listen_data;
   if (epoll_ctl(epfd, EPOLL_CTL_ADD, listen_sock, &listen_ev) == -1) {
     printf("Failed to add to epoll: %s\n", strerror(errno));
     return ret;
@@ -334,25 +334,25 @@ int main(int argc, char **argv) {
           if (data->buf_size)
             continue;
 
-          int res = read(data->sock, data->buf + data->buf_size,
-                         RECV_BUF_SIZE - data->buf_size);
-          if (res == 0) {
-            // printf("End of file on %d\n", data->sock);
+          int bytes_read = read(data->sock, data->buf + data->buf_size,
+                                RECV_BUF_SIZE - data->buf_size);
+          if (bytes_read == 0) {
             close_connections(data);
             break;
-          } else if (res < 0) {
+          } else if (bytes_read < 0) {
             if (errno != EAGAIN && errno != EWOULDBLOCK) {
               printf("Read failed: %s\n", strerror(errno));
               close_connections(data);
             }
             continue;
           } else {
-            data->buf_size += res;
-            data->rxbytes += res;
-            data->rxbytes_total += res;
+            data->buf_size += bytes_read;
+            data->rxbytes += bytes_read;
+            data->rxbytes_total += bytes_read;
 
-            int res = send(data->sibling->sock, data->buf, data->buf_size, 0);
-            if (res <= 0) {
+            int bytes_sent =
+                send(data->sibling->sock, data->buf, data->buf_size, 0);
+            if (bytes_sent <= 0) {
               if (errno != EAGAIN && errno != EWOULDBLOCK) {
                 printf("Failed to send from epollin (%d): %s\n", errno,
                        strerror(errno));
@@ -360,10 +360,10 @@ int main(int argc, char **argv) {
                 break;
               }
             } else {
-              data->buf_size -= res;
-              memmove(data->buf, data->buf + res, data->buf_size);
-              data->sibling->txbytes += res;
-              data->sibling->txbytes_total += res;
+              data->buf_size -= bytes_sent;
+              memmove(data->buf, data->buf + bytes_sent, data->buf_size);
+              data->sibling->txbytes += bytes_sent;
+              data->sibling->txbytes_total += bytes_sent;
             }
 
             if (data->buf_size) {
@@ -406,9 +406,9 @@ int main(int argc, char **argv) {
             }
           } else {
             if (data->sibling->buf_size > 0) {
-              int res = send(data->sock, data->sibling->buf,
-                             data->sibling->buf_size, 0);
-              if (res <= 0) {
+              int bytes_sent = send(data->sock, data->sibling->buf,
+                                    data->sibling->buf_size, 0);
+              if (bytes_sent <= 0) {
                 if (errno != EAGAIN && errno != EWOULDBLOCK) {
                   printf("Failed to send from epollout (%d): %s\n", errno,
                          strerror(errno));
@@ -416,11 +416,11 @@ int main(int argc, char **argv) {
                 }
                 continue;
               } else {
-                data->sibling->buf_size -= res;
-                memmove(data->sibling->buf, data->sibling->buf + res,
+                data->sibling->buf_size -= bytes_sent;
+                memmove(data->sibling->buf, data->sibling->buf + bytes_sent,
                         data->sibling->buf_size);
-                data->txbytes += res;
-                data->txbytes_total += res;
+                data->txbytes += bytes_sent;
+                data->txbytes_total += bytes_sent;
               }
             }
 
@@ -434,7 +434,6 @@ int main(int argc, char **argv) {
           }
         }
         if (events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {
-          // printf("Сonnection %d closed\n", data->sock);
           show_stat(data, 1);
           show_stat(data->sibling, 1);
           close_connections(data);
