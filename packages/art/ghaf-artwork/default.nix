@@ -5,10 +5,10 @@ stdenvNoCC.mkDerivation {
   pname = "ghaf-artwork";
   src = ./.;
   version = "0.1.0";
-  meta = with lib; {
+  meta = {
     description = "Ghaf Artwork";
-    license = licenses.asl20;
-    platforms = platforms.linux;
+    license = lib.licenses.asl20;
+    platforms = lib.platforms.linux;
   };
   installPhase = ''
     mkdir -p $out

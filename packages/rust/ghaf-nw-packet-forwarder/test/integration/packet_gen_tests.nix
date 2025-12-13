@@ -29,15 +29,23 @@ let
         2
         1
       ];
-      networking.firewall.enable = false;
-      networking.firewall.filterForward = false;
-      networking.nftables.enable = false;
-      networking.nat.internalIPs = [ "192.168.1.0/24" ];
-      networking.nat.externalInterface = "eth1";
-      networking.useDHCP = false;
-      networking.interfaces."eth1".macAddress = pkgs.lib.mkForce "02:AD:00:00:00:01";
-      networking.interfaces."eth2".macAddress = pkgs.lib.mkForce "DE:AD:BE:EF:00:01";
-      networking.enableIPv6 = false;
+      networking = {
+        firewall = {
+          enable = false;
+          filterForward = false;
+        };
+        nftables.enable = false;
+        nat = {
+          internalIPs = [ "192.168.1.0/24" ];
+          externalInterface = "eth1";
+        };
+        useDHCP = false;
+        interfaces = {
+          "eth1".macAddress = pkgs.lib.mkForce "02:AD:00:00:00:01";
+          "eth2".macAddress = pkgs.lib.mkForce "DE:AD:BE:EF:00:01";
+        };
+        enableIPv6 = false;
+      };
     }
   ];
 in
@@ -50,15 +58,17 @@ in
       pkgs.lib.mkMerge [
         {
           inherit users security;
-          networking.firewall.enable = false;
-          networking.useDHCP = false;
 
           virtualisation.vlans = [ 1 ];
-          networking.defaultGateway =
-            (pkgs.lib.head nodes.netVM.networking.interfaces.eth2.ipv4.addresses).address;
-          networking.nftables.enable = false;
-          networking.interfaces."eth1".macAddress = pkgs.lib.mkForce internalVMMac;
-          networking.enableIPv6 = false;
+
+          networking = {
+            firewall.enable = false;
+            useDHCP = false;
+            defaultGateway = (pkgs.lib.head nodes.netVM.networking.interfaces.eth2.ipv4.addresses).address;
+            nftables.enable = false;
+            interfaces."eth1".macAddress = pkgs.lib.mkForce internalVMMac;
+            enableIPv6 = false;
+          };
 
           environment.systemPackages = [
             pkgs.tshark
@@ -86,9 +96,12 @@ in
       inherit users security;
 
       virtualisation.vlans = [ 2 ];
-      networking.firewall.enable = false;
-      networking.useDHCP = false;
-      networking.enableIPv6 = false;
+
+      networking = {
+        firewall.enable = false;
+        useDHCP = false;
+        enableIPv6 = false;
+      };
       environment.systemPackages = [
         packet-gener
         pkgs.tshark

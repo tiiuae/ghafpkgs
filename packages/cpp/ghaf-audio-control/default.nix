@@ -47,7 +47,7 @@ stdenv.mkDerivation rec {
     test -f $out/lib/libGhafAudioControl.a
   '';
 
-  meta = with lib; {
+  meta = {
     description = "Ghaf Audio Control Panel";
     longDescription = ''
       A GTK-based audio control panel for the Ghaf platform that provides
@@ -56,9 +56,9 @@ stdenv.mkDerivation rec {
       integration.
     '';
     homepage = "https://github.com/tiiuae/ghafpkgs";
-    license = licenses.asl20;
-    maintainers = with maintainers; [ ];
-    platforms = platforms.linux;
+    license = lib.licenses.asl20;
+    maintainers = [ ];
+    platforms = lib.platforms.linux;
     mainProgram = "GhafAudioControlStandalone";
   };
 }

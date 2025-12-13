@@ -13,7 +13,7 @@ stdenv.mkDerivation {
     install -D -m 0644 -t "$out/share/backgrounds/ghaf" $src/*
   '';
 
-  meta = with lib; {
+  meta = {
     description = "Wallpaper backgrounds for Ghaf";
 
     license = {
@@ -22,6 +22,6 @@ stdenv.mkDerivation {
       free = true;
     };
 
-    platforms = platforms.linux;
+    platforms = lib.platforms.linux;
   };
 }

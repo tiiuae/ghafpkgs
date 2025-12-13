@@ -8,7 +8,13 @@ buildGoModule {
   pname = "swtpm-proxy";
   version = "0.0.1";
   src = ./.;
+
+  # To update vendorHash after go.mod changes:
+  # 1. Set to lib.fakeHash
+  # 2. Run: nix build .#swtpm-proxy-shim
+  # 3. Copy the correct hash from the error message
   vendorHash = "sha256-4KdCSDuirHPsLjyQBgqvBQ3BdZGuVNkW2tLIviM7Sak=";
+
   subPackages = [ "cmd/swtpm-proxy" ];
 
   overrideModAttrs = _old: {
