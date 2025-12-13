@@ -129,9 +129,6 @@ DBusService::DBusService()
                         sigc::mem_fun(*this, &DBusService::onPropertySet))
     , m_introspectionData(Gio::DBus::NodeInfo::create_for_xml(IntrospectionXml))
 {
-    // m_statusNotifierItemMethodHandlers = {
-    //     {StatusNotifierItem::MethodName::Activate, sigc::mem_fun(*this, &DBusService::onActivateMethod)},
-    // };
 }
 
 DBusService::~DBusService()
