@@ -117,18 +117,18 @@ static gboolean signal_handler(void *user_data);
 
 // Free function for ProxiedObject
 static void free_proxied_object(gpointer data) {
-  ProxiedObject *obj = static_cast<ProxiedObject *>(data);
-  if (!obj)
+  ProxiedObject *obj_to_free = static_cast<ProxiedObject *>(data);
+  if (!obj_to_free)
     return;
 
-  g_free(obj->object_path);
-  if (obj->node_info) {
-    g_dbus_node_info_unref(obj->node_info);
+  g_free(obj_to_free->object_path);
+  if (obj_to_free->node_info) {
+    g_dbus_node_info_unref(obj_to_free->node_info);
   }
-  if (obj->registration_ids) {
-    g_hash_table_destroy(obj->registration_ids);
+  if (obj_to_free->registration_ids) {
+    g_hash_table_destroy(obj_to_free->registration_ids);
   }
-  g_free(obj);
+  g_free(obj_to_free);
 }
 
 // Recursively discover and proxy all objects starting from a base path
@@ -257,7 +257,7 @@ struct MethodCallContext {
 
 static void method_call_reply_callback(GObject *source, GAsyncResult *res,
                                        gpointer user_data) {
-  MethodCallContext *ctx = static_cast<MethodCallContext *>(user_data);
+  MethodCallContext *context = static_cast<MethodCallContext *>(user_data);
   GError *error = nullptr;
 
   GVariant *result =
@@ -265,18 +265,18 @@ static void method_call_reply_callback(GObject *source, GAsyncResult *res,
 
   if (result) {
     log_verbose("Method call successful, returning result");
-    g_dbus_method_invocation_return_value(ctx->invocation, result);
+    g_dbus_method_invocation_return_value(context->invocation, result);
     g_variant_unref(result);
   } else {
     log_error("Method call failed: %s",
               error ? error->message : "Unknown error");
-    g_dbus_method_invocation_return_gerror(ctx->invocation, error);
+    g_dbus_method_invocation_return_gerror(context->invocation, error);
     g_clear_error(&error);
   }
 
-  g_object_unref(ctx->invocation);
-  g_free(ctx->forward_bus_name);
-  g_free(ctx);
+  g_object_unref(context->invocation);
+  g_free(context->forward_bus_name);
+  g_free(context);
 }
 
 static void handle_method_call_generic(
@@ -332,16 +332,16 @@ static void handle_method_call_generic(
     return;
   }
 
-  MethodCallContext *ctx = g_new0(MethodCallContext, 1);
-  ctx->invocation = invocation;
-  ctx->forward_bus_name = forward_bus_name;
+  MethodCallContext *context = g_new0(MethodCallContext, 1);
+  context->invocation = invocation;
+  context->forward_bus_name = forward_bus_name;
 
   g_object_ref(invocation);
 
   g_dbus_connection_call(forward_bus, forward_bus_name, target_object_path,
                          interface_name, method_name, parameters, nullptr,
                          G_DBUS_CALL_FLAGS_NONE, -1, nullptr,
-                         method_call_reply_callback, ctx);
+                         method_call_reply_callback, context);
 }
 
 // Generic property handlers that work for any object path
