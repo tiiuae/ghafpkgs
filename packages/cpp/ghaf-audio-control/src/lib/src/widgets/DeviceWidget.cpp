@@ -73,12 +73,10 @@ DeviceWidget::DeviceWidget(DeviceModel::Ptr model)
     set_homogeneous(true);
     set_spacing(DeviceWidgetSpacing);
 
-    // setup(*m_defaultButton);
     setup(*m_nameLabel);
     setup(*m_switch);
     setup(*m_scale);
 
-    // pack_start(*m_defaultButton);
     pack_start(*m_nameLabel);
     pack_start(*m_switch);
     pack_start(*m_scale);

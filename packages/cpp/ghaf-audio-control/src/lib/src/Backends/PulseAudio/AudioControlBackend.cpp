@@ -365,7 +365,6 @@ void AudioControlBackend::onServerInfo(const pa_server_info& info)
         Logger::info("AudioControlBackend::onServerInfo: default sink set to: {}", info.default_sink_name);
 
         m_defaultSinkName = info.default_sink_name;
-        // m_sinks.forEach(updateSinkFunction);
     }
 
     if (m_defaultSourceName != info.default_source_name)
@@ -373,7 +372,6 @@ void AudioControlBackend::onServerInfo(const pa_server_info& info)
         Logger::info("AudioControlBackend::onServerInfo: default source set to: {}", info.default_source_name);
 
         m_defaultSourceName = info.default_source_name;
-        // m_sources.forEach(updateSourceFunction);
     }
 }
 

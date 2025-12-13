@@ -124,24 +124,6 @@ App::App(int argc, char** argv)
     m_indicator = createAppIndicator();
     app_indicator_set_icon(m_indicator->get(), appArgs.indicatorIconName.c_str());
 
-    // if (!appArgs.indicatorIconName.empty())
-    // {
-    //     Glib::signal_idle().connect(
-    //         [this, iconName = appArgs.indicatorIconName]() -> bool
-    //         {
-    //             Logger::info("Setting up an indicator icon: {}", iconName.c_str());
-    //             m_dbusService.registerSystemTrayIcon(iconName);
-
-    //             return false;
-    //         });
-    // }
-    // else
-    // {
-    //     Logger::info("No indicator icon was specified");
-    // }
-
-    const std::weak_ptr weakBackend = m_audioControlBackend;
-
     m_audioControl = std::make_unique<AudioControl>(GetAppVmsList(appArgs.appVms), appArgs.allowMultipleStreamsPerVm == "true");
 
     const auto onDevice = [this](const IAudioControlBackend::OnSignalMapChangeSignalInfo& info)
@@ -163,7 +145,6 @@ App::App(int argc, char** argv)
     m_connections += m_audioControlBackend->onSinksChanged().connect(onDevice);
     m_connections += m_audioControlBackend->onSourcesChanged().connect(onDevice);
     m_connections += m_audioControlBackend->onSinkInputsChanged().connect(onDevice);
-    // m_connections += m_audioControlBackend->onSourceOutputsChanged().connect(onDevice); // We don't need it now
     m_connections += m_audioControlBackend->onError().connect(onError);
     m_connections += m_metaDeviceManager.onDeviceUpdateSignal().connect(onDevice);
 
