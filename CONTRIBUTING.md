@@ -36,6 +36,215 @@ Pull requests should be created from personal forks. We follow a fork and rebase
 
 > The concept of a fork originated with GitHub, it is not a Git concept. If you are new to forks, see [About forks](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/working-with-forks/about-forks) and [Contributing Guide when you fork a repository](https://medium.com/@rishabhmittal200/contributing-guide-when-you-fork-a-repository-3b97657b01fb).
 
+
+### Code Review Process
+
+All code changes must go through our code review process before being merged. This ensures code quality, security, and maintainability.
+
+#### Pull Request Requirements
+
+Before submitting a pull request:
+
+1. **Run Local Checks:**
+   ```bash
+   # Format code
+   nix fmt
+
+   # Check formatting (should show no changes)
+   nix fmt -- --fail-on-change
+
+   # Build affected packages
+   nix build .#<package-name>
+
+   # Run all checks (recommended before PR)
+   nix flake check
+   ```
+
+2. **License Headers:**
+   - All source files must have SPDX license headers
+   - Run `reuse lint` to verify compliance
+   - Use Apache-2.0 for code, CC-BY-SA-4.0 for documentation
+
+3. **Code Quality:**
+   - No trailing whitespace
+   - Follow language-specific style guides
+   - Add comments for complex logic
+   - Update documentation if needed
+
+#### Submitting a Pull Request
+
+1. **Create a feature branch** from your fork:
+   ```bash
+   git checkout -b feature/my-feature
+   # or
+   git checkout -b fix/issue-description
+   ```
+
+2. **Make your changes** following our coding standards
+
+3. **Commit with clear messages** (see [Commit Message Guidelines](#commit-message-guidelines))
+
+4. **Push to your fork:**
+   ```bash
+   git push origin feature/my-feature
+   ```
+
+5. **Open a Pull Request** on GitHub:
+   - Use a descriptive title
+   - Reference any related issues
+   - Provide context in the description
+   - List what was changed and why
+
+#### PR Template
+
+Use this template for your pull request description:
+
+```markdown
+## Description
+Brief description of what this PR does
+
+## Related Issues
+Fixes #123
+Related to #456
+
+## Type of Change
+- [ ] Bug fix (non-breaking change which fixes an issue)
+- [ ] New feature (non-breaking change which adds functionality)
+- [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
+- [ ] Documentation update
+
+## Changes Made
+- List key changes
+- Be specific about what was modified
+- Explain any architectural decisions
+
+## Testing Done
+- [ ] Built locally with `nix build`
+- [ ] Ran `nix flake check`
+- [ ] Tested in Ghaf environment (if applicable)
+- [ ] Manual testing performed
+
+## Checklist
+- [ ] Code follows project style guidelines
+- [ ] SPDX headers added to new files
+- [ ] Documentation updated (if needed)
+- [ ] Tests pass locally
+- [ ] No trailing whitespace (`nix fmt` passed)
+```
+
+#### Review Process
+
+1. **Automated Checks:**
+   - CI/CD runs format checks, builds, and tests
+   - CodeQL security scanning
+   - All checks must pass before merge
+
+2. **Peer Review:**
+   - At least 1 approval required from maintainers
+   - Reviewers check:
+     - Code quality and correctness
+     - Security implications
+     - Test coverage
+     - Documentation accuracy
+     - Nix best practices
+
+3. **Review Timeline:**
+   - Small PRs (< 200 lines): 2-3 days
+   - Medium PRs (200-500 lines): 3-5 days
+   - Large PRs (> 500 lines): 5-7 days
+   - *Consider breaking large PRs into smaller ones*
+
+4. **Addressing Feedback:**
+   - Respond to all review comments
+   - Push additional commits to address issues
+   - Request re-review when ready
+   - Mark conversations as resolved when addressed
+
+#### What Reviewers Look For
+
+**Code Quality:**
+- Correct implementation
+- Error handling
+- Edge cases considered
+- No code duplication
+- Clear variable/function names
+
+**Security:**
+- Input validation
+- No hardcoded secrets
+- Proper authentication/authorization
+- Memory safety (for C/C++/Rust)
+- Integer overflow checks (for Go/C++)
+
+**Nix Best Practices:**
+- No `rec` usage
+- Explicit `lib.` prefixes (avoid `with lib`)
+- Proper `pname` and `version` attributes
+- Correct dependency declarations
+- Platform specifications
+
+**Documentation:**
+- Code comments for complex logic
+- Updated README if needed
+- API documentation for public interfaces
+- Examples for new features
+
+#### After Approval
+
+Once approved and all checks pass:
+
+1. **Squash commits** if requested
+2. **Maintainer merges** (or rebase)
+3. **Delete feature branch** after merge
+4. **Monitor** for any issues post-merge
+
+#### For Reviewers
+
+When reviewing a PR:
+
+1. **Check the basics:**
+   - Does it build? (`nix build`)
+   - Do tests pass? (`nix flake check`)
+   - Is it formatted? (`nix fmt -- --fail-on-change`)
+
+2. **Read the code:**
+   - Understand the changes
+   - Check for logic errors
+   - Verify error handling
+   - Look for security issues
+
+3. **Test locally** if possible:
+   ```bash
+   # Checkout the PR
+   gh pr checkout <number>
+
+   # Test the changes
+   nix build .#<affected-package>
+   ```
+
+4. **Provide constructive feedback:**
+   - Be specific about issues
+   - Suggest improvements
+   - Explain the reasoning
+   - Acknowledge good practices
+
+5. **Approve or request changes:**
+   - Approve if ready to merge
+   - Request changes if issues found
+   - Comment for minor suggestions
+
+#### Getting Help
+
+If you need assistance with the review process:
+
+- Ask questions in the PR comments
+- Tag maintainers with `@username`
+- Check the [Security Team](./SECURITY.md#security-team) for security-related questions
+- Review our [examples of good PRs](#) (coming soon)
+
+
+### License Headers
+
 Make sure the [license](https://github.com/tiiuae/ghaf#licensing) information is added on top of all your source files as in the example:
 
     # Copyright [year project started]-[current year], [project founder] and the [project name] contributors
