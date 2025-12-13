@@ -186,6 +186,7 @@ class DeviceSettings(Gtk.ApplicationWindow):
             try:
                 self._active_popover.popdown()
             except Exception:
+                # Ignore GTK errors when popover is already closed or invalid
                 pass
             self._active_popover = None
 
