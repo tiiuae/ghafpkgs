@@ -1,0 +1,50 @@
+# SPDX-FileCopyrightText: 2025-2026 TII (SSRC) and the Ghaf contributors
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "ghaf-virtiofs-tools"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0"
+bytes = "1.10"
+clap = { version = "4.5.55", features = ["derive"] }
+futures = "0.3"
+log = "0.4"
+inotify = { version = "0.11", default-features = false, features = ["stream"] }
+lru = "0.16.3"
+rustix = { version = "1.0", features = ["fs"] }
+tempfile = "3.10"
+sendfd = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+systemd-journal-logger = "2.1"
+thiserror = "2.0"
+tokio = { version = "1.48", features = ["full"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+tokio-vsock = "0.7.2"
+
+[dev-dependencies]
+assert_matches = "1.5"
+pretty_assertions = "1.4"
+
+[lib]
+name = "ghaf_virtiofs_tools"
+path = "src/lib.rs"
+
+[[bin]]
+name = "virtiofs-gate"
+path = "src/gate/main.rs"
+
+[[bin]]
+name = "clamd-vclient"
+path = "src/vclient/main.rs"
+
+[[bin]]
+name = "clamd-vproxy"
+path = "src/vproxy/main.rs"
+
+[[bin]]
+name = "virtiofs-notify"
+path = "src/notify/main.rs"

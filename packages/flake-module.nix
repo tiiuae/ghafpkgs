@@ -62,6 +62,7 @@ in
     ghaf-nw-packet-forwarder = prev.callPackage ./rust/ghaf-nw-packet-forwarder {
       inherit (inputs) crane;
     };
+    ghaf-virtiofs-tools = prev.callPackage ./rust/ghaf-virtiofs-tools { inherit (inputs) crane; };
 
     # Go packages (this is actually in go directory)
     swtpm-proxy-shim = prev.callPackage ./go/swtpm-proxy-shim { };
