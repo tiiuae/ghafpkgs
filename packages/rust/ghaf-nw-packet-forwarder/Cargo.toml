@@ -10,9 +10,9 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 pnet = "0.35"
-tokio = { version = "1.48.0", features = ["full", "tracing"] }
-tokio-util = "0.7.17"
-clap = { version = "4.5.53", features = ["derive"] }
+tokio = { version = "1.49.0", features = ["full", "tracing"] }
+tokio-util = "0.7.18"
+clap = { version = "4.5.54", features = ["derive"] }
 lazy_static = "1.5.0"
 
 # Logging
