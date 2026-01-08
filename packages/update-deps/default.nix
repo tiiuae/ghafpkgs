@@ -244,8 +244,8 @@ writeShellApplication {
 
         if [[ -n "$correct_hash" ]]; then
           log "$GREEN" "Found correct vendorHash: $correct_hash"
-          # Update the vendorHash with the correct value
-          sed -i "s/vendorHash = lib.fakeHash;/vendorHash = \"$correct_hash\";/" "$nix_file"
+          # Update the vendorHash with the correct value (use | as delimiter to avoid issues with /)
+          sed -i "s|vendorHash = lib.fakeHash;|vendorHash = \"$correct_hash\";|" "$nix_file"
           log "$GREEN" "Updated vendorHash in $nix_file"
           return 0
         fi
