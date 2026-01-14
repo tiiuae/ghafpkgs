@@ -54,6 +54,7 @@ in
     gps-websock = prev.python3Packages.callPackage ./python/gps-websock/package.nix { };
     ldap-query = prev.python3Packages.callPackage ./python/ldap-query/package.nix { };
     vinotify = prev.python3Packages.callPackage ./python/vinotify/package.nix { };
+    qubes-ctap = prev.python3Packages.callPackage ./python/qubes-ctap/package.nix { };
 
     # Rust packages (these are actually in rust directory)
     ghaf-kill-switch-app = prev.callPackage ./rust/ghaf-kill-switch-app { inherit (inputs) crane; };

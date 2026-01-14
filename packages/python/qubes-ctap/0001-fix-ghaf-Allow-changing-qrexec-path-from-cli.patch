@@ -1,0 +1,63 @@
+From 684b1f0975fdf53eb65bc10555cda35564c75fbd Mon Sep 17 00:00:00 2001
+From: Santtu Lakkala <santtu.lakkala@unikie.com>
+Date: Wed, 14 Jan 2026 11:55:00 +0200
+SPDX-FileCopyrightText: 2026 TII (SSRC) and the Ghaf contributors
+SPDX-License-Identifier: GPL-2.0-or-later
+Subject: [PATCH] fix(ghaf): Allow changing qrexec path from cli
+
+---
+ qubesctap/client/qctap_proxy.py | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/qubesctap/client/qctap_proxy.py b/qubesctap/client/qctap_proxy.py
+index b4b536d..74840b0 100644
+--- a/qubesctap/client/qctap_proxy.py
++++ b/qubesctap/client/qctap_proxy.py
+@@ -46,10 +46,9 @@ class ArgumentError(RuntimeError):
+ 
+ class CTAPHIDQrexecDevice(hidemu.CTAPHIDDevice):
+     """U2DHIDDevice proxied over qrexec"""
+-    qrexec_client = const.QREXEC_CLIENT
+     ctap_version = const.U2F_VERSION
+ 
+-    def __init__(self, vmname, *, name=None, **kwargs):
++    def __init__(self, vmname, *, name=None, qrexec_client = const.QREXEC_CLIENT, **kwargs):
+         if name is None:
+             name = f'Qubes OS CTAP proxy to {vmname}'
+         super().__init__(name=name, **kwargs)
+@@ -58,6 +57,7 @@ class CTAPHIDQrexecDevice(hidemu.CTAPHIDDevice):
+                 f"Can't proxy CTAP messages circularly {vmname}->{vmname}. "
+                 "Exiting.")
+         self.vmname = vmname
++        self.qrexec_client = qrexec_client
+ 
+ 
+     async def qrexec_transaction(self, request: RequestWrapper, rpcname: str):
+@@ -199,6 +199,9 @@ parser.add_argument('--quiet', '-q',
+     dest='loglevel',
+     action='append_const', const=+10,
+     help='decrease verbosity')
++parser.add_argument('--qrexec', '-Q',
++    metavar='QREXEC_CLIENT',
++    help='full path to qrexec-client-vm')
+ 
+ parser_hid = parser.add_argument_group('HID lowlevel configuration')
+ 
+@@ -252,6 +255,7 @@ parser_hid.add_argument('--hid-rdesc', '--hid-rd', metavar='REPORT-DESCRIPTOR',
+ parser.add_argument('vmname', metavar='VMNAME',
+     help='the name of the vm')
+ 
++
+ parser.set_defaults(loglevel=[logging.WARNING])
+ 
+ async def _sighandler(loop, device):
+@@ -276,6 +280,7 @@ def main(args=None):
+ 
+     device = CTAPHIDQrexecDevice(args.vmname,
+                                  name=args.hid_name,
++                                 qrexec_client=args.qrexec,
+                                  phys=args.hid_phys,
+                                  serial=args.hid_serial,
+                                  vendor=args.hid_vendor,
+-- 
+2.42.0
