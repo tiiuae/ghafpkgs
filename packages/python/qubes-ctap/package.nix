@@ -5,17 +5,19 @@
   fido2,
   buildPythonPackage,
   packaging,
+  setuptools,
   fetchFromGitHub,
 }:
 buildPythonPackage {
   pname = "qubes-ctap";
   version = "2.0.6";
-  format = "setuptools";
+  pyproject = true;
 
   dependencies = [
     yubico
     fido2
     packaging
+    setuptools
   ];
   src = fetchFromGitHub {
     owner = "QubesOS";
