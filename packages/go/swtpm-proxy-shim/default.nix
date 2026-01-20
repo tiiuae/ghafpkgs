@@ -13,7 +13,7 @@ buildGoModule {
   # 1. Set to lib.fakeHash
   # 2. Run: nix build .#swtpm-proxy-shim
   # 3. Copy the correct hash from the error message
-  vendorHash = "sha256-41FusR5UJ35qjuPXiVrCgQVHdA/lPGcL1mpBKVqu3qw=";
+  vendorHash = "sha256-xzEp2O9byt0qivp0hHmlJ6Dtwn6pNfgD1uquI72burc=";
 
   subPackages = [ "cmd/swtpm-proxy" ];
 
