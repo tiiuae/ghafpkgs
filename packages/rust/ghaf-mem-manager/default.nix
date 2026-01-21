@@ -50,6 +50,20 @@ let
         platforms = lib.platforms.linux;
         mainProgram = "ghaf-mem-manager";
       };
+
+      postInstall = ''
+                mkdir -p $out/etc/dbus-1/system.d
+                cp ghaf-mem-manager.conf $out/etc/dbus-1/system.d
+
+                mkdir -p $out/share/dbus-1/system-services
+                cat <<END >$out/share/dbus-1/system-services/ae.tii.MemManager.service
+        [D-BUS Service]
+        Name=ae.tii.MemManager
+        Exec=$out/bin/ghaf-mem-manager
+        User=root
+        SystemdService=ghaf-mem-manager.service
+        END
+      '';
     }
   );
 in
