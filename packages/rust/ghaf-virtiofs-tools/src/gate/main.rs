@@ -1,27 +1,20 @@
 // SPDX-FileCopyrightText: 2025-2026 TII (SSRC) and the Ghaf contributors
 // SPDX-License-Identifier: Apache-2.0
 
-//! Shared directories daemon for cross-VM file sharing with virus scanning.
-//!
-//! This daemon uses inotify to monitor inbound directories,
-//! scans files with `ClamAV`, and promotes clean files to export.
-
-#![warn(clippy::all, clippy::pedantic, clippy::nursery)]
-#![allow(clippy::missing_errors_doc)]
-
 mod config;
 mod daemon;
 mod notify;
 
-use config::{ChannelConfig, verify_config};
-use daemon::Daemon;
-use ghaf_virtiofs_tools::scanner::{ClamAVScanner, VirusScanner};
-use ghaf_virtiofs_tools::util::init_logger;
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use std::path::PathBuf;
-use std::sync::Arc;
+
+use config::{ChannelConfig, verify_config};
+use daemon::Daemon;
+use ghaf_virtiofs_tools::scanner::{ClamAVScanner, NoopScanner, VirusScanner};
+use ghaf_virtiofs_tools::util::init_logger;
 
 #[derive(Parser)]
 #[command(name = "virtiofs-gate")]
@@ -39,6 +32,9 @@ enum Commands {
         config: PathBuf,
         #[arg(short, long, default_value = "false")]
         debug: bool,
+        /// Disable virus scanning (treat all files as clean)
+        #[arg(long, default_value = "false")]
+        no_scan: bool,
     },
     /// Verify configuration file without starting daemon
     Verify {
@@ -54,19 +50,22 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Run { config, debug } => {
+        Commands::Run { config, debug, no_scan } => {
             init_logger(debug)?;
 
             let config = ChannelConfig::load_config(&config).with_context(|| {
                 format!("Failed to load configuration from {}", config.display())
             })?;
 
-            let scanner = Arc::new(ClamAVScanner);
-            if let Err(e) = scanner.validate_availability() {
-                log::warn!(
-                    "ClamAV unavailable: {e}. Only permissive channels will propagate files."
-                );
-            }
+            let scanner: Arc<dyn VirusScanner + Send + Sync> = if no_scan {
+                Arc::new(NoopScanner)
+            } else {
+                let scanner = Arc::new(ClamAVScanner);
+                if let Err(e) = scanner.validate_availability() {
+                    log::warn!("ClamAV unavailable: {e}. Only permissive channels will propagate files.");
+                }
+                scanner
+            };
 
             let daemon = Daemon::new(config, scanner);
             daemon

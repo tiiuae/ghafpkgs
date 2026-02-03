@@ -1,36 +1,18 @@
 // SPDX-FileCopyrightText: 2025-2026 TII (SSRC) and the Ghaf contributors
 // SPDX-License-Identifier: Apache-2.0
 
-//! Configuration for the shared directories daemon.
-//!
-//! Each channel defines:
-//! - `base_path`: Root directory containing staging/, share/, export/, quarantine/
-//! - `producers`: VMs that can write files (bidirectional - all receive scanned files)
-//! - `consumers`: VMs that only read files (via export-ro/)
-//! - `scanning`: Scanning configuration (quarantine, permissive, ignore patterns)
-//!
-//! Host directory structure:
-//! ```text
-//! base_path/
-//! ├── staging/              <- files awaiting scan
-//! ├── share/{producer}/     <- virtiofs rw mount per producer
-//! ├── export/               <- all scanned files (flat namespace)
-//! ├── export-ro/            <- ro bind mount of export/ for consumers
-//! └── quarantine/           <- infected files (if scanning.quarantine=true)
-//! ```
-//!
-//! Flow: producer writes -> staging -> scan -> reflink to other producers + export
-
-use anyhow::{Context, Result};
-use ghaf_virtiofs_tools::util::{InfectedAction, REFRESH_TRIGGER_FILE};
-use log::{error, info, warn};
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use anyhow::{Context, Result};
+use log::{debug, error, info, warn};
+use serde::{Deserialize, Serialize};
+
+use ghaf_virtiofs_tools::util::{InfectedAction, REFRESH_TRIGGER_FILE};
+
 /// Scanning configuration for a channel.
-#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ScanningConfig {
     /// Action to take on infected files: log, delete (default), or quarantine.
     #[serde(default, rename = "infectedAction")]
@@ -61,6 +43,18 @@ pub struct ScanningConfig {
 
 fn default_notify_socket() -> PathBuf {
     PathBuf::from("/run/clamav/notify.sock")
+}
+
+impl Default for ScanningConfig {
+    fn default() -> Self {
+        Self {
+            infected_action: InfectedAction::default(),
+            permissive: false,
+            ignore_file_patterns: Vec::new(),
+            ignore_path_patterns: Vec::new(),
+            notify_socket: default_notify_socket(),
+        }
+    }
 }
 
 /// Default vsock port for guest notifications
@@ -189,13 +183,13 @@ impl ChannelConfig {
             );
         }
         if !self.scanning.ignore_file_patterns.is_empty() {
-            info!(
+            debug!(
                 "Channel '{channel_name}': ignoring file patterns: {:?}",
                 self.scanning.ignore_file_patterns
             );
         }
         if !self.scanning.ignore_path_patterns.is_empty() {
-            info!(
+            debug!(
                 "Channel '{channel_name}': ignoring path patterns: {:?}",
                 self.scanning.ignore_path_patterns
             );
@@ -392,5 +386,128 @@ mod tests {
         assert!(!channel.scanning.permissive);
         assert!(channel.scanning.ignore_file_patterns.is_empty());
         assert!(channel.scanning.ignore_path_patterns.is_empty());
+    }
+
+    #[test]
+    fn test_default_values() {
+        let json = r#"{
+            "defaults": {
+                "basePath": "/tmp/defaults",
+                "producers": ["vm1"],
+                "consumers": []
+            }
+        }"#;
+
+        let config: Config = serde_json::from_str(json).unwrap();
+        let channel = config.get("defaults").unwrap();
+
+        assert_eq!(channel.debounce_ms, 1000);
+        assert_eq!(
+            channel.scanning.notify_socket,
+            PathBuf::from("/run/clamav/notify.sock")
+        );
+        assert!(channel.notify.is_none());
+    }
+
+    #[test]
+    fn test_notify_config() {
+        let json = r#"{
+            "with-notify": {
+                "basePath": "/tmp/notify",
+                "producers": ["vm1"],
+                "consumers": [],
+                "notify": {
+                    "guests": [3, 4, 5],
+                    "port": 9999
+                }
+            }
+        }"#;
+
+        let config: Config = serde_json::from_str(json).unwrap();
+        let channel = config.get("with-notify").unwrap();
+        let notify = channel.notify.as_ref().unwrap();
+
+        assert_eq!(notify.guests, vec![3, 4, 5]);
+        assert_eq!(notify.port, 9999);
+    }
+
+    #[test]
+    fn test_notify_config_defaults() {
+        let json = r#"{
+            "notify-defaults": {
+                "basePath": "/tmp/notify",
+                "producers": ["vm1"],
+                "consumers": [],
+                "notify": {
+                    "guests": [3]
+                }
+            }
+        }"#;
+
+        let config: Config = serde_json::from_str(json).unwrap();
+        let channel = config.get("notify-defaults").unwrap();
+        let notify = channel.notify.as_ref().unwrap();
+
+        assert_eq!(notify.port, 3401);
+    }
+
+    #[test]
+    fn test_unique_base_paths_ok() {
+        let mut config = Config::new();
+        config.insert(
+            "ch1".to_string(),
+            ChannelConfig {
+                base_path: PathBuf::from("/tmp/ch1"),
+                producers: vec!["vm1".to_string()],
+                consumers: vec![],
+                debounce_ms: 1000,
+                scanning: ScanningConfig::default(),
+                notify: None,
+            },
+        );
+        config.insert(
+            "ch2".to_string(),
+            ChannelConfig {
+                base_path: PathBuf::from("/tmp/ch2"),
+                producers: vec!["vm1".to_string()],
+                consumers: vec![],
+                debounce_ms: 1000,
+                scanning: ScanningConfig::default(),
+                notify: None,
+            },
+        );
+
+        assert!(validate_unique_base_paths(&config).is_ok());
+    }
+
+    #[test]
+    fn test_unique_base_paths_conflict() {
+        let mut config = Config::new();
+        config.insert(
+            "ch1".to_string(),
+            ChannelConfig {
+                base_path: PathBuf::from("/tmp/shared"),
+                producers: vec!["vm1".to_string()],
+                consumers: vec![],
+                debounce_ms: 1000,
+                scanning: ScanningConfig::default(),
+                notify: None,
+            },
+        );
+        config.insert(
+            "ch2".to_string(),
+            ChannelConfig {
+                base_path: PathBuf::from("/tmp/shared"),
+                producers: vec!["vm2".to_string()],
+                consumers: vec![],
+                debounce_ms: 1000,
+                scanning: ScanningConfig::default(),
+                notify: None,
+            },
+        );
+
+        let result = validate_unique_base_paths(&config);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("conflicting base_path"));
     }
 }

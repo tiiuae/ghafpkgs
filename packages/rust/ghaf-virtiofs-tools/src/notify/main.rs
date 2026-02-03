@@ -8,17 +8,17 @@
 //!
 //! Protocol: `channel\n`
 
-#![warn(clippy::all, clippy::pedantic, clippy::nursery)]
-#![allow(clippy::missing_errors_doc)]
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use ghaf_virtiofs_tools::util::{REFRESH_TRIGGER_FILE, init_logger, wait_for_shutdown};
 use log::{debug, error, info, warn};
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio_vsock::{VMADDR_CID_ANY, VsockAddr, VsockListener};
+
+use ghaf_virtiofs_tools::util::{init_logger, wait_for_shutdown, REFRESH_TRIGGER_FILE};
 
 /// Default vsock port for notifications
 const DEFAULT_NOTIFY_PORT: u32 = 3401;
@@ -72,18 +72,19 @@ async fn main() -> Result<()> {
                 path.display()
             ));
         }
-        info!("Channel '{}' mapped to {}", channel, path.display());
+        debug!("Channel '{}' mapped to {}", channel, path.display());
     }
 
-    info!("Starting notification receiver on vsock port {}", cli.port);
+    info!("virtiofs-notify: starting (port={}, channels={})", cli.port, mappings.len());
     run(cli.port, mappings).await
 }
 
 async fn run(port: u32, mappings: HashMap<String, PathBuf>) -> Result<()> {
     let addr = VsockAddr::new(VMADDR_CID_ANY, port);
     let listener = VsockListener::bind(addr).context("Failed to bind vsock listener")?;
+    let mappings = Arc::new(mappings);
 
-    info!("Listening for notifications on vsock port {port}");
+    info!("virtiofs-notify: ready");
 
     loop {
         tokio::select! {
@@ -91,7 +92,7 @@ async fn run(port: u32, mappings: HashMap<String, PathBuf>) -> Result<()> {
                 match accept_result {
                     Ok((stream, peer)) => {
                         debug!("Connection from CID {}", peer.cid());
-                        let mappings = mappings.clone();
+                        let mappings = Arc::clone(&mappings);
                         tokio::spawn(async move {
                             if let Err(e) = handle_connection(stream, &mappings).await {
                                 warn!("Connection error: {e}");
@@ -104,12 +105,12 @@ async fn run(port: u32, mappings: HashMap<String, PathBuf>) -> Result<()> {
                 }
             }
             _ = wait_for_shutdown() => {
-                info!("Shutting down");
                 break;
             }
         }
     }
 
+    info!("virtiofs-notify: stopped");
     Ok(())
 }
 
@@ -121,33 +122,19 @@ async fn handle_connection(
     let mut lines = reader.lines();
 
     while let Some(line) = lines.next_line().await? {
-        if line.is_empty() {
+        let channel = line.trim();
+        if channel.is_empty() {
             continue;
         }
-        if let Err(e) = process_notification(&line, mappings) {
-            warn!("Failed to process notification '{line}': {e}");
-        }
+
+        let Some(base_path) = mappings.get(channel) else {
+            debug!("Unknown channel '{channel}', ignoring");
+            continue;
+        };
+
+        trigger_refresh(base_path)?;
+        info!("Triggered refresh on {} for channel '{channel}'", base_path.display());
     }
-
-    Ok(())
-}
-
-fn process_notification(line: &str, mappings: &HashMap<String, PathBuf>) -> Result<()> {
-    let channel = line.trim();
-    if channel.is_empty() {
-        return Ok(());
-    }
-
-    let Some(base_path) = mappings.get(channel) else {
-        debug!("Unknown channel '{channel}', ignoring");
-        return Ok(());
-    };
-
-    trigger_refresh(base_path)?;
-    info!(
-        "Triggered refresh on {} for channel '{channel}'",
-        base_path.display()
-    );
 
     Ok(())
 }
@@ -171,4 +158,77 @@ fn trigger_refresh(dir: &Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_mapping_valid() {
+        let result = parse_mapping("documents=/mnt/share/documents");
+        assert!(result.is_ok());
+        let (channel, path) = result.unwrap();
+        assert_eq!(channel, "documents");
+        assert_eq!(path, PathBuf::from("/mnt/share/documents"));
+    }
+
+    #[test]
+    fn parse_mapping_with_equals_in_path() {
+        // Path contains '=' - should only split on first occurrence
+        let result = parse_mapping("channel=/path/with=equals");
+        assert!(result.is_ok());
+        let (channel, path) = result.unwrap();
+        assert_eq!(channel, "channel");
+        assert_eq!(path, PathBuf::from("/path/with=equals"));
+    }
+
+    #[test]
+    fn parse_mapping_empty_channel() {
+        let result = parse_mapping("=/mnt/share");
+        assert!(result.is_ok());
+        let (channel, path) = result.unwrap();
+        assert_eq!(channel, "");
+        assert_eq!(path, PathBuf::from("/mnt/share"));
+    }
+
+    #[test]
+    fn parse_mapping_empty_path() {
+        let result = parse_mapping("channel=");
+        assert!(result.is_ok());
+        let (channel, path) = result.unwrap();
+        assert_eq!(channel, "channel");
+        assert_eq!(path, PathBuf::from(""));
+    }
+
+    #[test]
+    fn parse_mapping_no_equals() {
+        let result = parse_mapping("no-equals-sign");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid mapping format"));
+    }
+
+    #[test]
+    fn parse_mapping_empty_string() {
+        let result = parse_mapping("");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_mapping_just_equals() {
+        let result = parse_mapping("=");
+        assert!(result.is_ok());
+        let (channel, path) = result.unwrap();
+        assert_eq!(channel, "");
+        assert_eq!(path, PathBuf::from(""));
+    }
+
+    #[test]
+    fn parse_mapping_spaces_preserved() {
+        let result = parse_mapping("my channel=/path/with spaces/dir");
+        assert!(result.is_ok());
+        let (channel, path) = result.unwrap();
+        assert_eq!(channel, "my channel");
+        assert_eq!(path, PathBuf::from("/path/with spaces/dir"));
+    }
 }

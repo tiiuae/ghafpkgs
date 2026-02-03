@@ -9,23 +9,22 @@
 //! This prevents guests from executing dangerous commands like SCAN (which
 //! could access host files) or SHUTDOWN (which would kill the scanner).
 
-#![warn(clippy::all, clippy::pedantic, clippy::nursery)]
-#![allow(clippy::missing_errors_doc)]
-
-use anyhow::{Context, Result};
-use bytes::{Buf, BytesMut};
-use clap::Parser;
-use ghaf_virtiofs_tools::util::{init_logger, wait_for_shutdown};
-use log::{debug, error, info, warn};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
+
+use anyhow::{Context, Result};
+use bytes::{Buf, BytesMut};
+use clap::Parser;
+use log::{debug, error, info, warn};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::UnixStream;
 use tokio::sync::Semaphore;
 use tokio::time::timeout;
 use tokio_vsock::{VsockAddr, VsockListener};
+
+use ghaf_virtiofs_tools::util::{init_logger, wait_for_shutdown};
 
 // =============================================================================
 // CLI
@@ -135,7 +134,7 @@ impl From<&Cli> for StreamLimits {
 // Command Filtering
 // =============================================================================
 
-/// Allowed `ClamAV` commands (must match exactly).
+/// Allowed `ClamAV` commands.
 ///
 /// All other commands are blocked, including:
 /// - SCAN/CONTSCAN/MULTISCAN: Could access host filesystem
@@ -149,29 +148,16 @@ enum Command {
 }
 
 impl Command {
-    /// Parse and validate a command buffer. Returns the command type and its exact byte length.
+    /// Parse and validate a command buffer. Returns the command type and its byte length.
     /// Only matches exact allowed commands - rejects everything else.
     fn parse(buf: &[u8]) -> Option<(Self, usize)> {
-        const ALLOWED: &[(Command, &[u8])] = &[
-            (Command::Instream, b"zINSTREAM\0"),
-            (Command::Instream, b"nINSTREAM\n"),
-            (Command::Ping, b"zPING\0"),
-            (Command::Ping, b"nPING\n"),
-            (Command::Version, b"zVERSION\0"),
-            (Command::Version, b"nVERSION\n"),
-        ];
-
-        // Frame the command token (up to and including delimiter)
-        let delim_pos = buf.iter().position(|&b| b == 0 || b == b'\n')?;
-        let token = &buf[..=delim_pos];
-
-        // Exact match against allowed commands
-        for (cmd, pattern) in ALLOWED {
-            if token == *pattern {
-                return Some((*cmd, pattern.len()));
-            }
+        let delim_pos = buf.iter().position(|&b| b == b'\0' || b == b'\n')?;
+        match &buf[..=delim_pos] {
+            b"zINSTREAM\0" | b"nINSTREAM\n" => Some((Self::Instream, 10)),
+            b"zPING\0" | b"nPING\n" => Some((Self::Ping, 6)),
+            b"zVERSION\0" | b"nVERSION\n" => Some((Self::Version, 9)),
+            _ => None,
         }
-        None
     }
 
     const fn name(self) -> &'static str {
@@ -192,7 +178,7 @@ impl Command {
 // =============================================================================
 
 /// Maximum command length (longest allowed is "zINSTREAM\0" = 10 bytes)
-const MAX_COMMAND_LEN: usize = 16;
+const MAX_COMMAND_LEN: usize = 10;
 
 async fn handle_connection<S>(
     mut client: S,
@@ -203,7 +189,6 @@ async fn handle_connection<S>(
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
-    // Read command with proper framing and timeout
     let mut cmd_buf = [0u8; MAX_COMMAND_LEN];
     let mut cmd_len = 0;
 
@@ -228,9 +213,9 @@ where
             let old_len = cmd_len;
             cmd_len += n;
 
-            // Check if we received a delimiter in the new bytes
+            // Check if we received a delimiter
             let new_bytes = &cmd_buf[old_len..cmd_len];
-            if new_bytes.contains(&0) || new_bytes.contains(&b'\n') {
+            if new_bytes.contains(&b'\0') || new_bytes.contains(&b'\n') {
                 return Ok(cmd_len);
             }
         }
@@ -277,8 +262,7 @@ where
         .context("Failed to connect to clamd")?;
 
     // Forward only the validated command bytes to clamd
-    clamd
-        .write_all(&buf[..command_len])
+    clamd.write_all(&buf[..command_len])
         .await
         .context("Failed to forward command to clamd")?;
 
@@ -331,9 +315,84 @@ async fn handle_instream<S>(
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
-    // Wrap entire INSTREAM operation in stream timeout
     timeout(limits.stream_timeout, async {
-        handle_instream_inner(client, clamd, conn_id, initial_data, limits).await
+        let mut total_bytes: u64 = 0;
+        let mut pending = BytesMut::from(initial_data.as_slice());
+
+        loop {
+            while pending.len() < 4 {
+                let mut buf = [0u8; 4];
+                let n = timeout(limits.read_timeout, client.read(&mut buf))
+                    .await
+                    .context("Timeout reading chunk header")?
+                    .context("Failed to read chunk size")?;
+                if n == 0 {
+                    return Err(anyhow::anyhow!("Client disconnected during chunk header"));
+                }
+                pending.extend_from_slice(&buf[..n]);
+            }
+
+            let chunk_size = pending.get_u32();
+
+            if chunk_size > limits.max_chunk_size {
+                warn!("[{conn_id}] Blocked: chunk size {} exceeds limit {}", chunk_size, limits.max_chunk_size);
+                return Err(anyhow::anyhow!("Chunk size exceeds limit"));
+            }
+
+            if total_bytes + u64::from(chunk_size) > limits.max_stream_size {
+                warn!("[{conn_id}] Blocked: stream size would exceed limit {}", limits.max_stream_size);
+                return Err(anyhow::anyhow!("Stream size exceeds limit"));
+            }
+
+            clamd.write_all(&chunk_size.to_be_bytes()).await?;
+
+            if chunk_size == 0 {
+                debug!("[{conn_id}] INSTREAM complete, {total_bytes} bytes");
+                break;
+            }
+
+            let chunk_size = chunk_size as usize;
+            total_bytes += chunk_size as u64;
+
+            let mut remaining = chunk_size;
+            if !pending.is_empty() {
+                let use_len = pending.len().min(remaining);
+                let chunk_data = pending.split_to(use_len);
+                clamd.write_all(&chunk_data).await.context("Failed to forward to clamd")?;
+                remaining -= use_len;
+            }
+
+            let mut buf = [0u8; CHUNK_READ_BUFFER_SIZE];
+            while remaining > 0 {
+                let to_read = buf.len().min(remaining);
+                let n = timeout(limits.read_timeout, client.read(&mut buf[..to_read]))
+                    .await
+                    .context("Timeout reading chunk data")?
+                    .context("Failed to read chunk data")?;
+                if n == 0 {
+                    return Err(anyhow::anyhow!("Client disconnected during transfer"));
+                }
+                clamd.write_all(&buf[..n]).await.context("Failed to forward to clamd")?;
+                remaining -= n;
+            }
+        }
+
+        let mut response = vec![0u8; RESPONSE_BUFFER_SIZE];
+        let n = timeout(limits.read_timeout, clamd.read(&mut response))
+            .await
+            .context("Timeout reading clamd response")?
+            .context("Failed to read clamd response")?;
+
+        // Log scan result
+        let response_str = String::from_utf8_lossy(&response[..n]);
+        if response_str.contains("FOUND") {
+            warn!("[{conn_id}] Scan result: INFECTED - {}", response_str.trim());
+        } else {
+            debug!("[{conn_id}] Scan result: {}", response_str.trim());
+        }
+
+        client.write_all(&response[..n]).await?;
+        Ok(())
     })
     .await
     .map_err(|_| {
@@ -342,129 +401,6 @@ where
             limits.stream_timeout.as_secs()
         )
     })?
-}
-
-async fn handle_instream_inner<S>(
-    client: &mut S,
-    clamd: &mut UnixStream,
-    conn_id: usize,
-    initial_data: Vec<u8>,
-    limits: StreamLimits,
-) -> Result<()>
-where
-    S: AsyncRead + AsyncWrite + Unpin,
-{
-    let mut total_bytes: u64 = 0;
-
-    // Use BytesMut for O(1) advance/split operations without reallocation
-    let mut pending = BytesMut::from(initial_data.as_slice());
-
-    // Forward chunks until we see size=0
-    loop {
-        // Read chunk size (4 bytes, big-endian) - may be partially in pending buffer
-        while pending.len() < 4 {
-            let mut buf = [0u8; 4];
-            let n = timeout(limits.read_timeout, client.read(&mut buf))
-                .await
-                .context("Timeout reading chunk header")?
-                .context("Failed to read chunk size")?;
-            if n == 0 {
-                return Err(anyhow::anyhow!("Client disconnected during chunk header"));
-            }
-            pending.extend_from_slice(&buf[..n]);
-        }
-
-        // O(1) split - no allocation
-        let chunk_size = pending.get_u32();
-
-        // Validate chunk size
-        if chunk_size > limits.max_chunk_size {
-            warn!(
-                "[{conn_id}] Blocked: chunk size {} exceeds limit {}",
-                chunk_size, limits.max_chunk_size
-            );
-            return Err(anyhow::anyhow!("Chunk size exceeds limit"));
-        }
-
-        // Check total stream size before accepting this chunk
-        if total_bytes + u64::from(chunk_size) > limits.max_stream_size {
-            warn!(
-                "[{conn_id}] Blocked: stream size would exceed limit {}",
-                limits.max_stream_size
-            );
-            return Err(anyhow::anyhow!("Stream size exceeds limit"));
-        }
-
-        // Forward size to clamd
-        clamd.write_all(&chunk_size.to_be_bytes()).await?;
-
-        // End marker
-        if chunk_size == 0 {
-            debug!("[{conn_id}] INSTREAM complete, {total_bytes} bytes");
-            break;
-        }
-
-        let chunk_size = chunk_size as usize;
-        total_bytes += chunk_size as u64;
-
-        // Forward chunk data - first drain pending buffer, then read more
-        let mut remaining = chunk_size;
-
-        // Use any data already in pending buffer (O(1) split)
-        if !pending.is_empty() {
-            let use_len = pending.len().min(remaining);
-            let chunk_data = pending.split_to(use_len);
-            clamd
-                .write_all(&chunk_data)
-                .await
-                .context("Failed to forward to clamd")?;
-            remaining -= use_len;
-        }
-
-        // Read remaining chunk data from client
-        let mut buf = [0u8; CHUNK_READ_BUFFER_SIZE];
-        while remaining > 0 {
-            let to_read = buf.len().min(remaining);
-            let n = timeout(limits.read_timeout, client.read(&mut buf[..to_read]))
-                .await
-                .context("Timeout reading chunk data")?
-                .context("Failed to read chunk data")?;
-
-            if n == 0 {
-                return Err(anyhow::anyhow!("Client disconnected during transfer"));
-            }
-
-            clamd
-                .write_all(&buf[..n])
-                .await
-                .context("Failed to forward to clamd")?;
-
-            remaining -= n;
-        }
-    }
-
-    // Read response from clamd with timeout
-    let mut response = vec![0u8; RESPONSE_BUFFER_SIZE];
-    let n = timeout(limits.read_timeout, clamd.read(&mut response))
-        .await
-        .context("Timeout reading clamd response")?
-        .context("Failed to read clamd response")?;
-
-    // Log scan result
-    let response_str = String::from_utf8_lossy(&response[..n]);
-    if response_str.contains("FOUND") {
-        warn!(
-            "[{conn_id}] Scan result: INFECTED - {}",
-            response_str.trim()
-        );
-    } else {
-        debug!("[{conn_id}] Scan result: {}", response_str.trim());
-    }
-
-    // Send response to client
-    client.write_all(&response[..n]).await?;
-
-    Ok(())
 }
 
 // =============================================================================
@@ -476,6 +412,8 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     init_logger(cli.debug)?;
+
+    info!("clamd-vproxy: starting");
 
     // Verify clamd socket exists
     if !cli.clamd.exists() {
@@ -491,16 +429,14 @@ async fn main() -> Result<()> {
 
     let limits = StreamLimits::from(&cli);
 
-    info!("Listening on vsock CID {} port {}", cli.cid, cli.port);
-    info!("Forwarding to clamd at {}", cli.clamd.display());
-    info!("Max concurrent connections: {}", cli.max_connections);
     info!(
-        "Limits: stream={}MB, chunk={}MB, timeouts: cmd={}s, read={}s, stream={}s",
+        "clamd-vproxy: ready (vsock={}:{}, clamd={}, max_conn={}, stream={}MB, chunk={}MB)",
+        cli.cid,
+        cli.port,
+        cli.clamd.display(),
+        cli.max_connections,
         limits.max_stream_size / 1024 / 1024,
         limits.max_chunk_size / 1024 / 1024,
-        limits.command_timeout.as_secs(),
-        limits.read_timeout.as_secs(),
-        limits.stream_timeout.as_secs()
     );
 
     let semaphore = Arc::new(Semaphore::new(cli.max_connections));
@@ -536,6 +472,150 @@ async fn main() -> Result<()> {
         }
     }
 
-    info!("Proxy stopped");
+    info!("clamd-vproxy: stopped");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Valid INSTREAM commands
+    #[test]
+    fn parse_instream_z() {
+        let result = Command::parse(b"zINSTREAM\0");
+        assert_eq!(result, Some((Command::Instream, 10)));
+    }
+
+    #[test]
+    fn parse_instream_n() {
+        let result = Command::parse(b"nINSTREAM\n");
+        assert_eq!(result, Some((Command::Instream, 10)));
+    }
+
+    #[test]
+    fn parse_instream_with_trailing_data() {
+        // INSTREAM followed by chunk data - should still parse command
+        let result = Command::parse(b"zINSTREAM\0\x00\x00\x00\x05hello");
+        assert_eq!(result, Some((Command::Instream, 10)));
+    }
+
+    // Valid PING commands
+    #[test]
+    fn parse_ping_z() {
+        let result = Command::parse(b"zPING\0");
+        assert_eq!(result, Some((Command::Ping, 6)));
+    }
+
+    #[test]
+    fn parse_ping_n() {
+        let result = Command::parse(b"nPING\n");
+        assert_eq!(result, Some((Command::Ping, 6)));
+    }
+
+    // Valid VERSION commands
+    #[test]
+    fn parse_version_z() {
+        let result = Command::parse(b"zVERSION\0");
+        assert_eq!(result, Some((Command::Version, 9)));
+    }
+
+    #[test]
+    fn parse_version_n() {
+        let result = Command::parse(b"nVERSION\n");
+        assert_eq!(result, Some((Command::Version, 9)));
+    }
+
+    // Blocked commands
+    #[test]
+    fn parse_scan_blocked() {
+        assert_eq!(Command::parse(b"zSCAN\0/etc/passwd"), None);
+        assert_eq!(Command::parse(b"nSCAN\n/etc/passwd"), None);
+    }
+
+    #[test]
+    fn parse_contscan_blocked() {
+        assert_eq!(Command::parse(b"zCONTSCAN\0/home"), None);
+        assert_eq!(Command::parse(b"nCONTSCAN\n/home"), None);
+    }
+
+    #[test]
+    fn parse_multiscan_blocked() {
+        assert_eq!(Command::parse(b"zMULTISCAN\0/"), None);
+        assert_eq!(Command::parse(b"nMULTISCAN\n/"), None);
+    }
+
+    #[test]
+    fn parse_shutdown_blocked() {
+        assert_eq!(Command::parse(b"zSHUTDOWN\0"), None);
+        assert_eq!(Command::parse(b"nSHUTDOWN\n"), None);
+    }
+
+    #[test]
+    fn parse_reload_blocked() {
+        assert_eq!(Command::parse(b"zRELOAD\0"), None);
+        assert_eq!(Command::parse(b"nRELOAD\n"), None);
+    }
+
+    // Invalid inputs
+    #[test]
+    fn parse_no_delimiter() {
+        assert_eq!(Command::parse(b"zPING"), None);
+        assert_eq!(Command::parse(b"zINSTREAM"), None);
+    }
+
+    #[test]
+    fn parse_empty() {
+        assert_eq!(Command::parse(b""), None);
+    }
+
+    #[test]
+    fn parse_just_delimiter() {
+        assert_eq!(Command::parse(b"\0"), None);
+        assert_eq!(Command::parse(b"\n"), None);
+    }
+
+    #[test]
+    fn parse_wrong_prefix() {
+        // Must be 'z' or 'n' prefix
+        assert_eq!(Command::parse(b"xPING\0"), None);
+        assert_eq!(Command::parse(b"PING\0"), None);
+        assert_eq!(Command::parse(b"aPING\n"), None);
+    }
+
+    #[test]
+    fn parse_wrong_delimiter() {
+        // z commands need \0, n commands need \n
+        assert_eq!(Command::parse(b"zPING\n"), None);
+        assert_eq!(Command::parse(b"nPING\0"), None);
+    }
+
+    #[test]
+    fn parse_case_sensitive() {
+        assert_eq!(Command::parse(b"zping\0"), None);
+        assert_eq!(Command::parse(b"zPing\0"), None);
+        assert_eq!(Command::parse(b"zinstream\0"), None);
+    }
+
+    #[test]
+    fn parse_extra_whitespace() {
+        assert_eq!(Command::parse(b"zPING \0"), None);
+        assert_eq!(Command::parse(b" zPING\0"), None);
+        assert_eq!(Command::parse(b"z PING\0"), None);
+    }
+
+    // Command helpers
+    #[test]
+    fn command_name() {
+        assert_eq!(Command::Instream.name(), "INSTREAM");
+        assert_eq!(Command::Ping.name(), "PING");
+        assert_eq!(Command::Version.name(), "VERSION");
+    }
+
+    #[test]
+    fn command_is_instream() {
+        assert!(Command::Instream.is_instream());
+        assert!(!Command::Ping.is_instream());
+        assert!(!Command::Version.is_instream());
+    }
 }

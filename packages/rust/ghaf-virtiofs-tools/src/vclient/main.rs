@@ -6,23 +6,22 @@
 //! Watches directories and streams modified files to the host proxy
 //! via virtio-vsock using the `ClamAV` INSTREAM protocol.
 
-#![warn(clippy::all, clippy::pedantic, clippy::nursery)]
-#![allow(clippy::missing_errors_doc)]
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use clap::Parser;
+use log::{debug, error, info, warn};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::sync::mpsc;
+use tokio_vsock::{VsockAddr, VsockStream};
+
 use ghaf_virtiofs_tools::scanner::{ClamAVScanner, ScanResult, VirusScanner};
 use ghaf_virtiofs_tools::util::{
     DEFAULT_NOTIFY_SOCKET, InfectedAction, init_logger, notify_error, notify_infected,
     wait_for_shutdown,
 };
 use ghaf_virtiofs_tools::watcher::{EventHandler, FileId, Watcher};
-use log::{debug, error, info, warn};
-use std::fs;
-use std::path::{Path, PathBuf};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::sync::mpsc;
-use tokio_vsock::{VsockAddr, VsockStream};
 
 /// Host CID (always 2 for guest-to-host communication)
 const VMADDR_CID_HOST: u32 = 2;
@@ -114,22 +113,15 @@ async fn main() -> Result<()> {
             .context("Failed to connect to host proxy")?;
     }
 
-    info!("Starting guest daemon");
-    if cli.socket {
-        info!("Using local ClamAV socket");
+    let scanner_info = if cli.socket {
+        "local socket".to_string()
     } else {
-        info!(
-            "Connecting to host proxy via vsock CID {} port {}",
-            cli.cid, cli.port
-        );
-    }
-    for dir in &cli.watch {
-        info!("Watching: {}", dir.display());
-    }
-    for dir in &cli.exclude {
-        info!("Excluding: {}", dir.display());
-    }
-    info!("Action on infected: {:?}", cli.action);
+        format!("vsock {}:{}", cli.cid, cli.port)
+    };
+    info!(
+        "clamd-vclient: starting (scanner={}, action={:?}, watch={:?})",
+        scanner_info, cli.action, cli.watch
+    );
 
     run(cli).await
 }
@@ -191,10 +183,10 @@ async fn run(cli: Cli) -> Result<()> {
             };
 
             match result {
-                Ok(ref scan_result) => {
+                Ok(scan_result) => {
                     handle_scan_result(
                         &path,
-                        scan_result,
+                        &scan_result,
                         action,
                         quarantine_dir.as_deref(),
                         &notify_socket,
@@ -208,11 +200,11 @@ async fn run(cli: Cli) -> Result<()> {
         }
     });
 
-    info!("Guest daemon running. Press Ctrl+C to stop.");
+    info!("clamd-vclient: ready");
 
     tokio::select! {
         () = watcher.run(&mut handler) => {
-            info!("Watcher stream ended");
+            debug!("Watcher stream ended");
         }
         _ = wait_for_shutdown() => {}
     }
@@ -220,7 +212,7 @@ async fn run(cli: Cli) -> Result<()> {
     drop(handler);
     let _ = scanner_task.await;
 
-    info!("Guest daemon stopped");
+    info!("clamd-vclient: stopped");
     Ok(())
 }
 
@@ -230,7 +222,7 @@ async fn run(cli: Cli) -> Result<()> {
 
 /// Scan a file using local `ClamAV` socket
 fn scan_file_socket(path: &Path) -> Result<ScanResult> {
-    info!("Scanning: {}", path.display());
+    debug!("Scanning: {}", path.display());
     ClamAVScanner.scan_path(path)
 }
 
@@ -249,7 +241,7 @@ async fn scan_file_vsock(path: &Path, cid: u32, port: u32) -> Result<ScanResult>
         return Ok(ScanResult::Clean);
     }
 
-    info!("Scanning: {} ({} bytes)", path.display(), data.len());
+    debug!("Scanning: {} ({} bytes)", path.display(), data.len());
 
     let addr = VsockAddr::new(cid, port);
     let mut stream = VsockStream::connect(addr)
@@ -290,9 +282,9 @@ fn handle_scan_result(
 ) {
     match result {
         ScanResult::Clean => {
-            info!("Clean: {}", path.display());
+            debug!("Clean: {}", path.display());
         }
-        ScanResult::Infected(ref virus_name) => {
+        ScanResult::Infected(virus_name) => {
             warn!("INFECTED: {} ({})", path.display(), virus_name);
             notify_infected(notify_socket, path, virus_name);
             handle_infected(path, action, quarantine_dir);
@@ -379,5 +371,105 @@ impl EventHandler for GuestHandler {
     fn on_renamed(&mut self, _path: &Path, _old_path: &Path, _source: &str) -> Vec<(FileId, i64)> {
         // Guest daemon ignores rename events - same content, already scanned
         vec![]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn quarantine_path_with_extension() {
+        let qdir = Path::new("/quarantine");
+        let source = Path::new("/downloads/malware.exe");
+        let result = unique_quarantine_path(qdir, source);
+
+        let result_str = result.to_string_lossy();
+        assert!(result_str.starts_with("/quarantine/malware_"));
+        assert!(result_str.ends_with(".exe"));
+    }
+
+    #[test]
+    fn quarantine_path_without_extension() {
+        let qdir = Path::new("/quarantine");
+        let source = Path::new("/downloads/malware");
+        let result = unique_quarantine_path(qdir, source);
+
+        let result_str = result.to_string_lossy();
+        assert!(result_str.starts_with("/quarantine/malware_"));
+        // No extension, so should end with timestamp digits
+        assert!(!result_str.contains('.'));
+    }
+
+    #[test]
+    fn quarantine_path_double_extension() {
+        let qdir = Path::new("/quarantine");
+        let source = Path::new("/downloads/archive.tar.gz");
+        let result = unique_quarantine_path(qdir, source);
+
+        let result_str = result.to_string_lossy();
+        // stem is "archive.tar", extension is "gz"
+        assert!(result_str.starts_with("/quarantine/archive.tar_"));
+        assert!(result_str.ends_with(".gz"));
+    }
+
+    #[test]
+    fn quarantine_path_hidden_file() {
+        let qdir = Path::new("/quarantine");
+        let source = Path::new("/downloads/.hidden");
+        let result = unique_quarantine_path(qdir, source);
+
+        let result_str = result.to_string_lossy();
+        // .hidden has no extension, stem is ".hidden"
+        assert!(result_str.starts_with("/quarantine/.hidden_"));
+    }
+
+    #[test]
+    fn quarantine_path_hidden_with_extension() {
+        let qdir = Path::new("/quarantine");
+        let source = Path::new("/downloads/.config.json");
+        let result = unique_quarantine_path(qdir, source);
+
+        let result_str = result.to_string_lossy();
+        assert!(result_str.starts_with("/quarantine/.config_"));
+        assert!(result_str.ends_with(".json"));
+    }
+
+    #[test]
+    fn quarantine_path_uniqueness() {
+        let qdir = Path::new("/quarantine");
+        let source = Path::new("/downloads/file.txt");
+
+        let result1 = unique_quarantine_path(qdir, source);
+        // Small sleep to ensure different timestamp
+        std::thread::sleep(std::time::Duration::from_nanos(1));
+        let result2 = unique_quarantine_path(qdir, source);
+
+        // Should generate different paths due to timestamp
+        assert_ne!(result1, result2);
+    }
+
+    #[test]
+    fn quarantine_path_nested_source() {
+        let qdir = Path::new("/quarantine");
+        let source = Path::new("/downloads/subdir/deep/file.pdf");
+        let result = unique_quarantine_path(qdir, source);
+
+        let result_str = result.to_string_lossy();
+        // Should flatten - only filename used
+        assert!(result_str.starts_with("/quarantine/file_"));
+        assert!(result_str.ends_with(".pdf"));
+        assert!(!result_str.contains("subdir"));
+    }
+
+    #[test]
+    fn quarantine_path_spaces_in_name() {
+        let qdir = Path::new("/quarantine");
+        let source = Path::new("/downloads/my document.docx");
+        let result = unique_quarantine_path(qdir, source);
+
+        let result_str = result.to_string_lossy();
+        assert!(result_str.starts_with("/quarantine/my document_"));
+        assert!(result_str.ends_with(".docx"));
     }
 }

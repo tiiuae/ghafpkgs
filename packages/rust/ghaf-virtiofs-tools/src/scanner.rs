@@ -1,27 +1,15 @@
 // SPDX-FileCopyrightText: 2025-2026 TII (SSRC) and the Ghaf contributors
 // SPDX-License-Identifier: Apache-2.0
 
-//! Virus scanning functionality for the shared directories daemon.
-//!
-//! This module provides a pluggable interface for virus scanning.
-//! Supports both path-based and fd-based scanning for TOCTOU safety.
-//!
-//! Scan results distinguish between:
-//! - `Clean`: File passed virus scan
-//! - `Infected`: Virus/malware detected
-//! - `Error`: Scan failed (permission, corrupted file, scanner unavailable)
-//! - `NotFound`: File disappeared before scan
-//!
-//! The daemon handles `Error` based on `permissive` config (fail-safe or permissive).
-
-use anyhow::Result;
-use log::{debug, error, info, warn};
-use sendfd::SendWithFd;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
+
+use anyhow::Result;
+use log::{debug, error, info, warn};
+use sendfd::SendWithFd;
 
 const CLAMAV_SOCKET_PATH: &str = "/var/run/clamav/clamd.ctl";
 
@@ -38,51 +26,46 @@ pub enum ScanResult {
     NotFound,
 }
 
-/// Input for scanning - either a path or a file descriptor.
-pub enum ScanInput<'a> {
-    /// Scan by file path (will open the file)
-    Path(&'a Path),
-    /// Scan by file descriptor (TOCTOU-safe)
-    Fd(BorrowedFd<'a>),
-}
-
-impl<'a> From<&'a Path> for ScanInput<'a> {
-    fn from(path: &'a Path) -> Self {
-        ScanInput::Path(path)
-    }
-}
-
-impl<'a, F: AsFd> From<&'a F> for ScanInput<'a> {
-    fn from(fd: &'a F) -> Self {
-        ScanInput::Fd(fd.as_fd())
-    }
-}
-
 /// Virus scanner interface.
 pub trait VirusScanner: Send + Sync {
     /// Validate that the scanner is available and functional.
+    ///
+    /// # Errors
+    /// Returns an error if the scanner daemon is unavailable or returns an unexpected response.
     fn validate_availability(&self) -> Result<()>;
 
     /// Scan a file by path.
-    /// Returns `ScanResult::Error` for scan failures (daemon decides handling).
+    /// Returns `ScanResult::Error` for scan failures (caller decides handling).
+    ///
+    /// # Errors
+    /// Returns an error if communication with the scanner daemon fails.
     fn scan_path(&self, file_path: &Path) -> Result<ScanResult>;
 
     /// Scan a file by file descriptor (TOCTOU-safe).
     /// The path is used only for logging.
-    /// Returns `ScanResult::Error` for scan failures (daemon decides handling).
+    /// Returns `ScanResult::Error` for scan failures (caller decides handling).
+    ///
+    /// # Errors
+    /// Returns an error if communication with the scanner daemon fails.
     fn scan_fd(&self, fd: BorrowedFd<'_>, path_for_logging: &Path) -> Result<ScanResult>;
+}
 
-    /// Scan file content from a byte stream.
-    /// Used for remote scanning over network/vsock (INSTREAM protocol).
-    /// The name is used only for logging.
-    fn scan_stream(&self, data: &[u8], name_for_logging: &str) -> Result<ScanResult>;
+/// No-op scanner that treats all files as clean.
+/// Use when virus scanning is disabled.
+pub struct NoopScanner;
 
-    /// Scan using either path or fd.
-    fn scan(&self, input: ScanInput<'_>, path_for_logging: &Path) -> Result<ScanResult> {
-        match input {
-            ScanInput::Path(path) => self.scan_path(path),
-            ScanInput::Fd(fd) => self.scan_fd(fd, path_for_logging),
-        }
+impl VirusScanner for NoopScanner {
+    fn validate_availability(&self) -> Result<()> {
+        info!("Virus scanning disabled");
+        Ok(())
+    }
+
+    fn scan_path(&self, _file_path: &Path) -> Result<ScanResult> {
+        Ok(ScanResult::Clean)
+    }
+
+    fn scan_fd(&self, _fd: BorrowedFd<'_>, _path_for_logging: &Path) -> Result<ScanResult> {
+        Ok(ScanResult::Clean)
     }
 }
 
@@ -106,27 +89,6 @@ impl ClamAVScanner {
         let mut stream = UnixStream::connect(CLAMAV_SOCKET_PATH)?;
         stream.write_all(b"nFILDES\n")?;
         stream.send_with_fd(&[0], &[fd.as_raw_fd()])?;
-        let mut buf = [0u8; 4096];
-        let n = stream.read(&mut buf)?;
-        Ok(String::from_utf8_lossy(&buf[..n])
-            .trim_matches('\0')
-            .trim()
-            .to_string())
-    }
-
-    fn send_stream_for_scan(data: &[u8]) -> std::io::Result<String> {
-        let mut stream = UnixStream::connect(CLAMAV_SOCKET_PATH)?;
-        stream.write_all(b"nINSTREAM\n")?;
-
-        // Send size (big-endian u32) + data
-        let len = u32::try_from(data.len()).unwrap_or(u32::MAX);
-        stream.write_all(&len.to_be_bytes())?;
-        stream.write_all(data)?;
-
-        // End marker (4 zero bytes)
-        stream.write_all(&[0, 0, 0, 0])?;
-
-        // Read response
         let mut buf = [0u8; 4096];
         let n = stream.read(&mut buf)?;
         Ok(String::from_utf8_lossy(&buf[..n])
@@ -211,21 +173,81 @@ impl VirusScanner for ClamAVScanner {
             &path_for_logging.display().to_string(),
         ))
     }
+}
 
-    fn scan_stream(&self, data: &[u8], name_for_logging: &str) -> Result<ScanResult> {
-        debug!(
-            "ClamAV scanning stream: {name_for_logging} ({} bytes)",
-            data.len()
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_response_clean() {
+        let result = ClamAVScanner::parse_response("fd[0]: OK", "test.txt");
+        assert_eq!(result, ScanResult::Clean);
+    }
+
+    #[test]
+    fn parse_response_clean_stream() {
+        let result = ClamAVScanner::parse_response("stream: OK", "stream");
+        assert_eq!(result, ScanResult::Clean);
+    }
+
+    #[test]
+    fn parse_response_infected_simple() {
+        let result = ClamAVScanner::parse_response("fd[0]: Eicar-Test-Signature FOUND", "test.txt");
+        assert_eq!(result, ScanResult::Infected("Eicar-Test-Signature".to_string()));
+    }
+
+    #[test]
+    fn parse_response_infected_complex_signature() {
+        let result = ClamAVScanner::parse_response(
+            "stream: Win.Trojan.Agent-123456 FOUND",
+            "malware.exe",
         );
+        assert_eq!(result, ScanResult::Infected("Win.Trojan.Agent-123456".to_string()));
+    }
 
-        let response = match Self::send_stream_for_scan(data) {
-            Ok(r) => r,
-            Err(e) => {
-                error!("ClamAV connection error: {e}");
-                return Ok(ScanResult::Error);
-            }
-        };
+    #[test]
+    fn parse_response_infected_no_colon() {
+        // Malformed response without colon - falls back to "unknown"
+        let result = ClamAVScanner::parse_response("SomeVirus FOUND", "test.txt");
+        assert_eq!(result, ScanResult::Infected("unknown".to_string()));
+    }
 
-        Ok(Self::parse_response(&response, name_for_logging))
+    #[test]
+    fn parse_response_error() {
+        let result = ClamAVScanner::parse_response("fd[0]: Access denied. ERROR", "test.txt");
+        assert_eq!(result, ScanResult::Error);
+    }
+
+    #[test]
+    fn parse_response_error_lstat() {
+        let result = ClamAVScanner::parse_response("fd[0]: lstat() failed: No such file or directory. ERROR", "test.txt");
+        assert_eq!(result, ScanResult::Error);
+    }
+
+    #[test]
+    fn parse_response_unexpected() {
+        let result = ClamAVScanner::parse_response("UNKNOWN RESPONSE", "test.txt");
+        assert_eq!(result, ScanResult::Error);
+    }
+
+    #[test]
+    fn parse_response_empty() {
+        let result = ClamAVScanner::parse_response("", "test.txt");
+        assert_eq!(result, ScanResult::Error);
+    }
+
+    #[test]
+    fn parse_response_partial_ok() {
+        // "OK" must be at the end
+        let result = ClamAVScanner::parse_response("OK but not really", "test.txt");
+        assert_eq!(result, ScanResult::Error);
+    }
+
+    #[test]
+    fn parse_response_partial_found() {
+        // "FOUND" must be at the end
+        let result = ClamAVScanner::parse_response("FOUND something else", "test.txt");
+        assert_eq!(result, ScanResult::Error);
     }
 }

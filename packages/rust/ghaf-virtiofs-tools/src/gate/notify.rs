@@ -37,25 +37,15 @@ pub struct Notifier {
 
 impl Notifier {
     /// Create a new notifier from channel -> VM mappings
-    #[must_use]
-    #[allow(clippy::missing_const_for_fn)] // HashMap::new is not const
-    pub fn new(targets: HashMap<String, Vec<NotifyTarget>>) -> Self {
+    pub const fn new(targets: HashMap<String, Vec<NotifyTarget>>) -> Self {
         Self { targets }
     }
 
     /// Create an empty notifier (no-op, for when notifications disabled)
-    #[must_use]
     pub fn disabled() -> Self {
         Self {
             targets: HashMap::new(),
         }
-    }
-
-    /// Check if notifier has any targets configured
-    #[cfg(test)]
-    #[must_use]
-    pub fn has_targets(&self) -> bool {
-        !self.targets.is_empty()
     }
 
     /// Notify all VMs subscribed to a channel to refresh.
@@ -124,24 +114,5 @@ pub fn build_notifier(config: &super::config::Config) -> Notifier {
         Notifier::disabled()
     } else {
         Notifier::new(targets)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_disabled_notifier() {
-        let notifier = Notifier::disabled();
-        assert!(!notifier.has_targets());
-    }
-
-    #[test]
-    fn test_notifier_with_targets() {
-        let mut targets = HashMap::new();
-        targets.insert("test".to_string(), vec![NotifyTarget::new(3, 3401)]);
-        let notifier = Notifier::new(targets);
-        assert!(notifier.has_targets());
     }
 }
