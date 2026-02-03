@@ -1,14 +1,13 @@
 // SPDX-FileCopyrightText: 2025-2026 TII (SSRC) and the Ghaf contributors
 // SPDX-License-Identifier: Apache-2.0
 
-//! Common types and utilities shared between host and guest daemons.
+use std::io::Write;
+use std::os::unix::net::UnixStream;
+use std::path::Path;
 
 use anyhow::Result;
 use log::{debug, info, warn};
 use serde::{Deserialize, Serialize};
-use std::io::Write;
-use std::os::unix::net::UnixStream;
-use std::path::Path;
 
 // =============================================================================
 // Logger
