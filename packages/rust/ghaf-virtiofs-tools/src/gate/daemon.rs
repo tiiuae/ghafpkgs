@@ -493,9 +493,6 @@ impl ChannelHandler {
         if !metadata.file_type().is_file() {
             anyhow::bail!("not a regular file");
         }
-        if metadata.len() == 0 {
-            anyhow::bail!("empty file");
-        }
 
         Ok(file)
     }
