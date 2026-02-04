@@ -92,6 +92,11 @@ pub struct ChannelConfig {
     /// Consumer VMs that read files from this channel (read-only via export-ro/)
     pub consumers: Vec<String>,
 
+    /// Producers operating in diode mode (write-only, no sync from others).
+    /// Must be a subset of `producers`.
+    #[serde(default, rename = "diodeProducers")]
+    pub diode_producers: Vec<String>,
+
     /// Debounce duration in milliseconds (default: 1000ms).
     /// Wait this long after the last write before processing a file.
     #[serde(default = "default_debounce_ms", rename = "debounceMs")]
@@ -168,6 +173,15 @@ impl ChannelConfig {
             errors.push("Channel has no producers defined".to_string());
         }
 
+        // Validate diode_producers is subset of producers
+        for diode in &self.diode_producers {
+            if !self.producers.contains(diode) {
+                errors.push(format!(
+                    "Diode producer '{diode}' is not in producers list"
+                ));
+            }
+        }
+
         if errors.is_empty() {
             Ok(())
         } else {
@@ -175,11 +189,22 @@ impl ChannelConfig {
         }
     }
 
+    /// Check if a producer is in diode mode (write-only).
+    pub fn is_diode(&self, producer: &str) -> bool {
+        self.diode_producers.iter().any(|d| d == producer)
+    }
+
     /// Log scanning configuration info for a channel.
     pub fn log_config_info(&self, channel_name: &str) {
         if self.scanning.permissive {
             info!(
                 "Channel '{channel_name}': permissive mode enabled (scan errors treated as clean)"
+            );
+        }
+        if !self.diode_producers.is_empty() {
+            info!(
+                "Channel '{channel_name}': diode producers: {:?}",
+                self.diode_producers
             );
         }
         if !self.scanning.ignore_file_patterns.is_empty() {
@@ -460,6 +485,7 @@ mod tests {
                 base_path: PathBuf::from("/tmp/ch1"),
                 producers: vec!["vm1".to_string()],
                 consumers: vec![],
+                diode_producers: vec![],
                 debounce_ms: 1000,
                 scanning: ScanningConfig::default(),
                 notify: None,
@@ -471,6 +497,7 @@ mod tests {
                 base_path: PathBuf::from("/tmp/ch2"),
                 producers: vec!["vm1".to_string()],
                 consumers: vec![],
+                diode_producers: vec![],
                 debounce_ms: 1000,
                 scanning: ScanningConfig::default(),
                 notify: None,
@@ -489,6 +516,7 @@ mod tests {
                 base_path: PathBuf::from("/tmp/shared"),
                 producers: vec!["vm1".to_string()],
                 consumers: vec![],
+                diode_producers: vec![],
                 debounce_ms: 1000,
                 scanning: ScanningConfig::default(),
                 notify: None,
@@ -500,6 +528,7 @@ mod tests {
                 base_path: PathBuf::from("/tmp/shared"),
                 producers: vec!["vm2".to_string()],
                 consumers: vec![],
+                diode_producers: vec![],
                 debounce_ms: 1000,
                 scanning: ScanningConfig::default(),
                 notify: None,
@@ -509,5 +538,41 @@ mod tests {
         let result = validate_unique_base_paths(&config);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("conflicting base_path"));
+    }
+
+    #[test]
+    fn test_diode_config() {
+        let json = r#"{
+            "with-diode": {
+                "basePath": "/tmp/diode",
+                "producers": ["trusted-vm", "untrusted-vm"],
+                "consumers": ["reader-vm"],
+                "diodeProducers": ["untrusted-vm"]
+            }
+        }"#;
+
+        let config: Config = serde_json::from_str(json).unwrap();
+        let channel = config.get("with-diode").unwrap();
+
+        assert_eq!(channel.diode_producers, vec!["untrusted-vm"]);
+        assert!(channel.is_diode("untrusted-vm"));
+        assert!(!channel.is_diode("trusted-vm"));
+    }
+
+    #[test]
+    fn test_diode_default_empty() {
+        let json = r#"{
+            "no-diode": {
+                "basePath": "/tmp/no-diode",
+                "producers": ["vm1"],
+                "consumers": []
+            }
+        }"#;
+
+        let config: Config = serde_json::from_str(json).unwrap();
+        let channel = config.get("no-diode").unwrap();
+
+        assert!(channel.diode_producers.is_empty());
+        assert!(!channel.is_diode("vm1"));
     }
 }

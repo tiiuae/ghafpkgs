@@ -356,9 +356,9 @@ impl EventHandler for ChannelHandler {
             return;
         }
 
-        // Delete from other producers if file exists (handles renames and synced deletes)
+        // Delete from other producers if file exists (skip diode producers)
         for producer in &self.config.producers {
-            if producer == source {
+            if producer == source || self.config.is_diode(producer) {
                 continue;
             }
             let target = self.share_path(producer).join(&relative);
@@ -424,9 +424,9 @@ impl EventHandler for ChannelHandler {
 
         info!("Channel '{}': rename '{}' -> '{}' from {}", self.name, old_relative.display(), relative.display(), source);
 
-        // Delete old path from other producers and export
+        // Delete old path from other producers and export (skip diode producers)
         for producer in &self.config.producers {
-            if producer == source {
+            if producer == source || self.config.is_diode(producer) {
                 continue;
             }
             let old_target = self.share_path(producer).join(&old_relative);
@@ -563,10 +563,7 @@ impl ChannelHandler {
         let gid = rustix::fs::Gid::from_raw(0);
 
         rustix::fs::fchown(tmp.as_file(), Some(uid), Some(gid)).map_err(|e| {
-            anyhow::anyhow!(
-                "Channel '{}': CAP_CHOWN capability required for preserving file ownership: {e}",
-                self.name
-            )
+            anyhow::anyhow!("Channel '{}': CAP_CHOWN capability required for preserving file ownership: {e}", self.name)
         })?;
 
         info!("Channel '{}': CAP_CHOWN verified", self.name);
@@ -598,14 +595,22 @@ impl ChannelHandler {
         src_relative: &Path,
     ) -> Vec<(FileId, i64)> {
         let mut written = Vec::new();
+        let is_diode_source = self.config.is_diode(src_producer);
 
-        // Reflink to other producers
+        // Reflink to other producers (skip diode producers)
         for producer in &self.config.producers {
-            if producer == src_producer {
+            if producer == src_producer || self.config.is_diode(producer) {
                 continue;
             }
 
             let target = self.share_path(producer).join(src_relative);
+
+            // Diode ignore-existing: skip if target already exists
+            if is_diode_source && target.exists() {
+                debug!("Channel '{}': diode skip existing '{}' in {}", self.name, src_relative.display(), producer);
+                continue;
+            }
+
             if let Err(e) = Self::atomic_reflink(tmp.as_file(), Some(src_meta), &target) {
                 error!("Channel '{}': failed to propagate '{}' to {}: {e}", self.name, src_relative.display(), producer);
             } else if let Ok(meta) = fs::metadata(&target) {
@@ -618,7 +623,11 @@ impl ChannelHandler {
         // Reflink to export (only if consumers exist)
         if !self.config.consumers.is_empty() {
             let export_target = self.export_path().join(src_relative);
-            if let Err(e) = Self::atomic_reflink(tmp.as_file(), Some(src_meta), &export_target) {
+
+            // Diode ignore-existing: skip if export target already exists
+            if is_diode_source && export_target.exists() {
+                debug!("Channel '{}': diode skip existing '{}' in export", self.name, src_relative.display());
+            } else if let Err(e) = Self::atomic_reflink(tmp.as_file(), Some(src_meta), &export_target) {
                 error!("Channel '{}': failed to export '{}': {e}", self.name, src_relative.display());
             }
         }
@@ -637,14 +646,22 @@ impl ChannelHandler {
         src_relative: &Path,
     ) -> Vec<(FileId, i64)> {
         let mut written = Vec::new();
+        let is_diode_source = self.config.is_diode(src_producer);
 
-        // Reflink to other producers
+        // Reflink to other producers (skip diode producers)
         for producer in &self.config.producers {
-            if producer == src_producer {
+            if producer == src_producer || self.config.is_diode(producer) {
                 continue;
             }
 
             let target = self.share_path(producer).join(src_relative);
+
+            // Diode ignore-existing: skip if target already exists
+            if is_diode_source && target.exists() {
+                debug!("Channel '{}': diode skip existing '{}' in {}", self.name, src_relative.display(), producer);
+                continue;
+            }
+
             if let Err(e) = Self::atomic_reflink(src_file, Some(src_meta), &target) {
                 error!("Channel '{}': failed to propagate '{}' to {}: {e}", self.name, src_relative.display(), producer);
             } else if let Ok(meta) = fs::metadata(&target) {
@@ -657,7 +674,11 @@ impl ChannelHandler {
         // Reflink to export (only if consumers exist)
         if !self.config.consumers.is_empty() {
             let export_target = self.export_path().join(src_relative);
-            if let Err(e) = Self::atomic_reflink(src_file, Some(src_meta), &export_target) {
+
+            // Diode ignore-existing: skip if export target already exists
+            if is_diode_source && export_target.exists() {
+                debug!("Channel '{}': diode skip existing '{}' in export", self.name, src_relative.display());
+            } else if let Err(e) = Self::atomic_reflink(src_file, Some(src_meta), &export_target) {
                 error!("Channel '{}': failed to export '{}': {e}", self.name, src_relative.display());
             }
         }
@@ -826,6 +847,7 @@ mod tests {
             base_path: PathBuf::from("/tmp/test"),
             producers: vec!["vm1".to_string()],
             consumers: vec![],
+            diode_producers: vec![],
             debounce_ms: 1000,
             scanning: ScanningConfig {
                 ignore_file_patterns: file_patterns.into_iter().map(String::from).collect(),

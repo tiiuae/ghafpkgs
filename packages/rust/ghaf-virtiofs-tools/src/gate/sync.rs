@@ -30,13 +30,13 @@ struct FileInfo {
 /// Inventory entry: source name and file info.
 type InventoryEntry = (String, FileInfo);
 
-/// Inventory: relative_path -> list of (source_name, FileInfo).
+/// Inventory: `relative_path` -> list of (`source_name`, `FileInfo`).
 type Inventory = HashMap<PathBuf, Vec<InventoryEntry>>;
 
 /// Action to take during sync.
 #[derive(Debug)]
 enum SyncAction {
-    /// Trigger handler.on_modified() for this file.
+    /// Trigger `handler.on_modified()` for this file.
     /// Handler will scan and propagate to other producers + export.
     TriggerSync {
         source: String,
@@ -81,8 +81,8 @@ pub fn run<H: EventHandler>(
     let (producers, export) = build_inventory(config)?;
 
     let mut stats = SyncStats {
-        producer_files: producers.values().map(|v| v.len()).sum(),
-        export_files: export.values().map(|v| v.len()).sum(),
+        producer_files: producers.values().map(Vec::len).sum(),
+        export_files: export.values().map(Vec::len).sum(),
         ..Default::default()
     };
 
@@ -254,21 +254,23 @@ fn compute_producer_action(
     };
 
     // Check if file needs to be synced to other producers
-    let needs_producer_sync = entries.len() < config.producers.len();
+    let non_diode_count = config.producers.iter()
+        .filter(|p| !config.is_diode(p))
+        .count();
+    let non_diode_entries = entries.iter()
+        .filter(|(source, _)| !config.is_diode(source))
+        .count();
+    let needs_producer_sync = non_diode_entries < non_diode_count;
 
     // Check if file needs to be synced to export
     let needs_export_sync = if config.consumers.is_empty() {
         false
     } else {
-        match export.get(relative) {
-            None => true, // Not in export
-            Some(export_entries) => {
-                // In export but different content
-                export_entries.iter().any(|(_, info)| {
-                    info.mtime != best_info.mtime || info.size != best_info.size
-                })
-            }
-        }
+        export.get(relative).is_none_or(|export_entries| {
+            export_entries.iter().any(|(_, info)| {
+                info.mtime != best_info.mtime || info.size != best_info.size
+            })
+        })
     };
 
     // Trigger sync if:
@@ -300,7 +302,7 @@ mod tests {
         let relative = PathBuf::from("file.txt");
 
         producers.insert(
-            relative.clone(),
+            relative,
             vec![
                 (
                     "vm1".to_string(),
@@ -331,7 +333,7 @@ mod tests {
             SyncAction::TriggerSync { source, .. } => {
                 assert_eq!(source, "vm2"); // Should pick vm2 (latest mtime)
             }
-            _ => panic!("Expected TriggerSync"),
+            SyncAction::DeleteStale { .. } => panic!("Expected TriggerSync"),
         }
     }
 
@@ -361,7 +363,7 @@ mod tests {
             SyncAction::DeleteStale { relative, .. } => {
                 assert_eq!(relative, &PathBuf::from("orphan.txt"));
             }
-            _ => panic!("Expected DeleteStale"),
+            SyncAction::TriggerSync { .. } => panic!("Expected DeleteStale"),
         }
     }
 
@@ -396,7 +398,7 @@ mod tests {
         // Same file in export with identical metadata
         let mut export = Inventory::new();
         export.insert(
-            relative.clone(),
+            relative,
             vec![(
                 "export".to_string(),
                 FileInfo {
@@ -420,7 +422,7 @@ mod tests {
         let relative = PathBuf::from("new.txt");
 
         producers.insert(
-            relative.clone(),
+            relative,
             vec![(
                 "vm1".to_string(),
                 FileInfo {
@@ -448,7 +450,7 @@ mod tests {
 
         // File in both producers, in sync
         producers.insert(
-            relative.clone(),
+            relative,
             vec![
                 (
                     "vm1".to_string(),
@@ -486,7 +488,7 @@ mod tests {
 
         // File only in vm1, not in vm2
         producers.insert(
-            relative.clone(),
+            relative,
             vec![(
                 "vm1".to_string(),
                 FileInfo {
@@ -509,17 +511,103 @@ mod tests {
             SyncAction::TriggerSync { source, .. } => {
                 assert_eq!(source, "vm1");
             }
-            _ => panic!("Expected TriggerSync"),
+            SyncAction::DeleteStale { .. } => panic!("Expected TriggerSync"),
+        }
+    }
+
+    #[test]
+    fn test_diode_producer_not_sync_target() {
+        let mut producers = Inventory::new();
+        let relative = PathBuf::from("file.txt");
+
+        // File only in non-diode producer vm1
+        producers.insert(
+            relative,
+            vec![(
+                "vm1".to_string(),
+                FileInfo {
+                    path: PathBuf::from("/share/vm1/file.txt"),
+                    mtime: 100,
+                    size: 1000,
+                },
+            )],
+        );
+
+        let export = Inventory::new();
+
+        // vm2 is diode - should not be counted as sync target
+        let config = make_test_config_with_diode(
+            vec!["vm1", "vm2"],
+            vec!["consumer"],
+            vec!["vm2"],
+        );
+
+        let actions = compute_actions(&producers, &export, &config);
+
+        // Only need to sync to export, not to vm2 (diode)
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            SyncAction::TriggerSync { source, .. } => {
+                assert_eq!(source, "vm1");
+            }
+            SyncAction::DeleteStale { .. } => panic!("Expected TriggerSync"),
+        }
+    }
+
+    #[test]
+    fn test_diode_file_synced_to_non_diode() {
+        let mut producers = Inventory::new();
+        let relative = PathBuf::from("from_diode.txt");
+
+        // File only in diode producer
+        producers.insert(
+            relative,
+            vec![(
+                "untrusted".to_string(),
+                FileInfo {
+                    path: PathBuf::from("/share/untrusted/from_diode.txt"),
+                    mtime: 100,
+                    size: 1000,
+                },
+            )],
+        );
+
+        let export = Inventory::new();
+
+        let config = make_test_config_with_diode(
+            vec!["trusted", "untrusted"],
+            vec!["consumer"],
+            vec!["untrusted"],
+        );
+
+        let actions = compute_actions(&producers, &export, &config);
+
+        // Should sync from untrusted to trusted and export
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            SyncAction::TriggerSync { source, .. } => {
+                assert_eq!(source, "untrusted");
+            }
+            SyncAction::DeleteStale { .. } => panic!("Expected TriggerSync"),
         }
     }
 
     fn make_test_config(producers: Vec<&str>, consumers: Vec<&str>) -> ChannelConfig {
+        make_test_config_with_diode(producers, consumers, vec![])
+    }
+
+    fn make_test_config_with_diode(
+        producers: Vec<&str>,
+        consumers: Vec<&str>,
+        diode_producers: Vec<&str>,
+    ) -> ChannelConfig {
         use super::super::config::ScanningConfig;
 
         ChannelConfig {
             base_path: PathBuf::from("/tmp/test"),
             producers: producers.into_iter().map(String::from).collect(),
             consumers: consumers.into_iter().map(String::from).collect(),
+            diode_producers: diode_producers.into_iter().map(String::from).collect(),
             debounce_ms: 1000,
             scanning: ScanningConfig::default(),
             notify: None,
