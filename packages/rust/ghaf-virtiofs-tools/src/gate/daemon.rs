@@ -268,6 +268,14 @@ impl EventHandler for ChannelHandler {
             source
         );
 
+        // Empty files bypass scan (no content to scan, may be marker files)
+        if src_meta.len() == 0 {
+            debug!("Channel '{}': '{}' empty, skipping scan", self.name, relative.display());
+            let written = self.propagate_clean(&tmp, &src_meta, source, &relative);
+            self.spawn_notify();
+            return written;
+        }
+
         // Scan staged snapshot - guarantees scanned bytes == published bytes
         let scan_result = match self.scanner.scan_fd(tmp.as_file().as_fd(), path) {
             Ok(r) => r,

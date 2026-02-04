@@ -135,7 +135,7 @@ fn build_inventory(config: &ChannelConfig) -> Result<(Inventory, Inventory)> {
     for producer in &config.producers {
         let producer_dir = config.base_path.join("share").join(producer);
         if producer_dir.exists() {
-            scan_directory(&producer_dir, &producer_dir, producer, &mut producers)?;
+            scan_directory(&producer_dir, &producer_dir, producer, config, &mut producers)?;
         }
     }
 
@@ -144,7 +144,7 @@ fn build_inventory(config: &ChannelConfig) -> Result<(Inventory, Inventory)> {
     if !config.consumers.is_empty() {
         let export_dir = config.base_path.join("export");
         if export_dir.exists() {
-            scan_directory(&export_dir, &export_dir, "export", &mut export)?;
+            scan_directory(&export_dir, &export_dir, "export", config, &mut export)?;
         }
     }
 
@@ -156,6 +156,7 @@ fn scan_directory(
     root: &Path,
     dir: &Path,
     source: &str,
+    config: &ChannelConfig,
     inventory: &mut Inventory,
 ) -> Result<()> {
     let entries = fs::read_dir(dir)
@@ -173,11 +174,16 @@ fn scan_directory(
         }
 
         if ft.is_dir() {
-            scan_directory(root, &path, source, inventory)?;
+            scan_directory(root, &path, source, config, inventory)?;
         } else if ft.is_file() {
             let Ok(relative) = path.strip_prefix(root) else {
                 continue;
             };
+
+            // Apply ignore patterns
+            if should_ignore(&path, relative, config) {
+                continue;
+            }
 
             let info = FileInfo {
                 path: path.clone(),
@@ -192,6 +198,14 @@ fn scan_directory(
     }
 
     Ok(())
+}
+
+/// Check if a file should be ignored based on config patterns.
+fn should_ignore(path: &Path, relative: &Path, config: &ChannelConfig) -> bool {
+    let filename = path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default();
+    let relative_str = relative.to_string_lossy();
+    config.scanning.ignore_file_patterns.iter().any(|p| filename.contains(p))
+        || config.scanning.ignore_path_patterns.iter().any(|p| relative_str.contains(p.as_str()))
 }
 
 // =============================================================================
