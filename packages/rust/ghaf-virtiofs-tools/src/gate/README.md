@@ -24,8 +24,38 @@ The virtiofs-gate daemon monitors shared directories for file changes, scans fil
 A channel groups VMs that share files:
 - **Producers**: VMs with read-write access (bidirectional sync)
 - **Consumers**: VMs with read-only access (via `export/`)
+- **Diode Producers**: Producers with write-only access
 
 Each channel operates independently with its own configuration. The daemon runs all channels concurrently using async Tokio tasks, allowing parallel processing of file events across channels.
+
+### Diode Mode
+
+Diode producers operate in write-only mode for security isolation:
+- Files from diode producers are propagated to non-diode producers and export
+- Diode producers never receive files from other producers
+- Useful for untrusted VMs that should contribute files but not access shared content
+
+**Overwrite Protection:** Diode producers use an "ignore-existing" strategy (similar to rsync `--ignore-existing`). If a file already exists at the target, the diode file is skipped. This prevents data loss when a diode producer unknowingly creates a file that already exists elsewhere.
+
+#### Propagation Matrix
+
+| Source | Event | To Non-Diode | To Diode | To Export |
+|--------|-------|--------------|----------|-----------|
+| Non-diode | Create | Propagate | Skip | Propagate |
+| Non-diode | Update | Overwrite | Skip | Overwrite |
+| Non-diode | Delete | Delete | Skip | Delete |
+| Non-diode | Rename | Rename | Skip | Rename |
+| Diode | Create | Propagate | Skip | Propagate |
+| Diode | Update (new) | Propagate | Skip | Propagate |
+| Diode | Update (exists) | Skip | Skip | Skip |
+| Diode | Delete | Delete | Skip | Delete |
+
+- **Propagate**: File is copied to target
+- **Overwrite**: Existing file is replaced
+- **Skip**: No action taken (diode isolation or ignore-existing)
+- **exists/new**: Whether target file already exists
+
+Example: An untrusted browser VM can save downloads to a shared folder, but cannot read documents from a trusted office VM. If the browser saves `report.pdf` but that file already exists in the trusted VM, the browser's version is discarded.
 
 ### Loop Prevention
 
@@ -124,6 +154,7 @@ JSON configuration file with channel definitions:
 | `basePath` | string | required | Root directory for channel |
 | `producers` | array | required | VM names with rw access |
 | `consumers` | array | `[]` | VM names with ro access |
+| `diodeProducers` | array | `[]` | Producers with write-only access |
 | `debounceMs` | number | `1000` | Wait time after last write |
 
 The `debounceMs` option controls how long the daemon waits after detecting a file write before processing it. This allows large file copies or multi-write operations to complete before scanning. Lower values provide faster response but may scan incomplete files; higher values are safer for large transfers but add latency.
