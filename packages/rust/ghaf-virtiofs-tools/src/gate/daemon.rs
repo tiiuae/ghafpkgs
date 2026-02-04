@@ -122,11 +122,12 @@ impl Daemon {
 // =============================================================================
 
 struct ChannelRunner {
+    name: String,
+    config: ChannelConfig,
     handler: ChannelHandler,
-    watcher: Watcher,
 }
 
-/// Per-channel watcher lifecycle: setup and event loop.
+/// Per-channel watcher lifecycle: sync, setup, and event loop.
 impl ChannelRunner {
     fn new(
         name: String,
@@ -134,42 +135,59 @@ impl ChannelRunner {
         scanner: Arc<dyn VirusScanner + Send + Sync>,
         notifier: Arc<Notifier>,
     ) -> Result<Self> {
-        let debounce_duration = Duration::from_millis(config.debounce_ms);
+        let handler = ChannelHandler {
+            name: name.clone(),
+            config: config.clone(),
+            scanner,
+            notifier,
+        };
+        handler.verify_environment()?;
+
+        Ok(Self { name, config, handler })
+    }
+
+    async fn run(mut self) -> Result<()> {
+        debug!("Channel '{}': started", self.name);
+
+        // Run startup sync before creating watcher (no events captured)
+        if let Err(e) = super::sync::run(&self.name, &self.config, &mut self.handler) {
+            warn!("Channel '{}': sync failed: {e}", self.name);
+        }
+
+        // Create watcher after sync completes
+        let debounce_duration = Duration::from_millis(self.config.debounce_ms);
         let watcher_config = WatcherConfig {
             debounce_duration,
             ..Default::default()
         };
 
         let mut watcher = Watcher::with_config(watcher_config)
-            .with_context(|| format!("Channel '{name}': failed to create watcher"))?;
+            .with_context(|| format!("Channel '{}': failed to create watcher", self.name))?;
 
         // Add watches for each producer
-        for producer in &config.producers {
-            let producer_dir = config.base_path.join("share").join(producer);
+        for producer in &self.config.producers {
+            let producer_dir = self.config.base_path.join("share").join(producer);
 
             if !producer_dir.exists() {
-                anyhow::bail!("Channel '{name}': share directory not found: {}", producer_dir.display());
+                anyhow::bail!(
+                    "Channel '{}': share directory not found: {}",
+                    self.name,
+                    producer_dir.display()
+                );
             }
 
             watcher.add_recursive(&producer_dir, producer)?;
-            info!("Channel '{}': monitoring {} (debounce={}ms)", &name, producer_dir.display(), debounce_duration.as_millis());
+            info!(
+                "Channel '{}': monitoring {} (debounce={}ms)",
+                self.name,
+                producer_dir.display(),
+                debounce_duration.as_millis()
+            );
         }
 
-        let handler = ChannelHandler {
-            name,
-            config,
-            scanner,
-            notifier,
-        };
-        handler.verify_environment()?;
-
-        Ok(Self { handler, watcher })
-    }
-
-    async fn run(mut self) -> Result<()> {
-        debug!("Channel '{}': started", self.handler.name);
-        self.watcher.run(&mut self.handler).await;
-        debug!("Channel '{}': stopped", self.handler.name);
+        // Run watcher event loop
+        watcher.run(&mut self.handler).await;
+        debug!("Channel '{}': stopped", self.name);
         Ok(())
     }
 }

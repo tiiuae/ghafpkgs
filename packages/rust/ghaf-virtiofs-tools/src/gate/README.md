@@ -31,6 +31,26 @@ Each channel operates independently with its own configuration. The daemon runs 
 
 When virtiofs-gate writes files to producer shares, it tracks the (device, inode, ctime) of written files in an LRU cache. When inotify reports events for these files, they are skipped to avoid infinite re-processing of reflinks.
 
+### Startup Sync
+
+On daemon startup, each channel performs a sync phase before starting the watcher:
+
+1. **Inventory**: Scan all producer directories and export to build file lists with mtime/size
+2. **Diff**: Compare inventories to detect inconsistencies:
+   - Files in some producers but not others
+   - Files in producers but missing from export
+   - Conflicting versions across producers (different mtime/size)
+   - Orphan files in export (not in any producer)
+3. **Resolve**: For conflicts, the file with the latest mtime wins
+4. **Execute**: Trigger handler for files needing sync, delete orphans from export
+
+This ensures channel consistency after:
+- Daemon restart with files modified while offline
+- VM crashes that left partial state
+- Manual file manipulation on the host
+
+The sync runs before the watcher starts, so no inotify events are generated for sync operations.
+
 ## Extensibility
 
 The daemon uses trait-based abstractions for key components:
