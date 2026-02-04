@@ -4,6 +4,7 @@
 mod config;
 mod daemon;
 mod notify;
+mod sync;
 
 use std::path::PathBuf;
 use std::sync::Arc;

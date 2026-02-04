@@ -8,8 +8,9 @@
 //!
 //! Protocol: `channel\n`
 
-use log::{debug, info, warn};
 use std::collections::HashMap;
+
+use log::{debug, info, warn};
 use tokio::io::AsyncWriteExt;
 use tokio_vsock::{VsockAddr, VsockStream};
 
