@@ -60,7 +60,10 @@ impl Notifier {
 
         for target in targets {
             if let Err(e) = Self::send(target, &message).await {
-                warn!("Failed to notify CID {} for channel {}: {}", target.cid, channel, e);
+                warn!(
+                    "Failed to notify CID {} for channel {}: {}",
+                    target.cid, channel, e
+                );
             } else {
                 debug!("Notified CID {} to refresh {}", target.cid, channel);
             }

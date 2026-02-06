@@ -51,7 +51,11 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Run { config, debug, no_scan } => {
+        Commands::Run {
+            config,
+            debug,
+            no_scan,
+        } => {
             init_logger(debug)?;
 
             let config = ChannelConfig::load_config(&config).with_context(|| {
@@ -63,7 +67,9 @@ async fn main() -> Result<()> {
             } else {
                 let scanner = Arc::new(ClamAVScanner);
                 if let Err(e) = scanner.validate_availability() {
-                    log::warn!("ClamAV unavailable: {e}. Only permissive channels will propagate files.");
+                    log::warn!(
+                        "ClamAV unavailable: {e}. Only permissive channels will propagate files."
+                    );
                 }
                 scanner
             };

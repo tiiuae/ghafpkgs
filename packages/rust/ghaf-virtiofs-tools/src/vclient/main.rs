@@ -18,8 +18,8 @@ use tokio_vsock::{VsockAddr, VsockStream};
 
 use ghaf_virtiofs_tools::scanner::{ClamAVScanner, ScanResult, VirusScanner};
 use ghaf_virtiofs_tools::util::{
-    init_logger, notify_error, notify_infected, wait_for_shutdown, InfectedAction,
-    DEFAULT_NOTIFY_SOCKET,
+    DEFAULT_NOTIFY_SOCKET, InfectedAction, init_logger, notify_error, notify_infected,
+    wait_for_shutdown,
 };
 use ghaf_virtiofs_tools::watcher::{EventHandler, FileId, Watcher};
 
@@ -139,7 +139,11 @@ async fn validate_vsock_connection(addr: VsockAddr) -> Result<()> {
     let response = String::from_utf8_lossy(&buf[..n]);
 
     if response.trim().trim_matches('\0') == "PONG" {
-        info!("Host proxy available via vsock CID {} port {}", addr.cid(), addr.port());
+        info!(
+            "Host proxy available via vsock CID {} port {}",
+            addr.cid(),
+            addr.port()
+        );
         Ok(())
     } else {
         Err(anyhow::anyhow!("Unexpected ping response: {response}"))
@@ -263,7 +267,10 @@ async fn scan_file_vsock(path: &Path, cid: u32, port: u32) -> Result<ScanResult>
         .trim()
         .to_string();
 
-    Ok(ClamAVScanner::parse_response(&response, &path.display().to_string()))
+    Ok(ClamAVScanner::parse_response(
+        &response,
+        &path.display().to_string(),
+    ))
 }
 
 fn handle_scan_result(
@@ -329,9 +336,8 @@ fn handle_infected(path: &Path, action: InfectedAction, quarantine_dir: Option<&
                 let dest = unique_quarantine_path(qdir, path);
 
                 // Try rename first, fallback to copy+delete for cross-filesystem
-                let result = fs::rename(path, &dest).or_else(|_| {
-                    fs::copy(path, &dest).and_then(|_| fs::remove_file(path))
-                });
+                let result = fs::rename(path, &dest)
+                    .or_else(|_| fs::copy(path, &dest).and_then(|_| fs::remove_file(path)));
 
                 match result {
                     Ok(()) => info!("Quarantined: {} -> {}", path.display(), dest.display()),

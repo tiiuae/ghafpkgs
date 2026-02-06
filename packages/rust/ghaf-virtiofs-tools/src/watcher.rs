@@ -253,7 +253,9 @@ impl Watcher {
                 continue;
             }
 
-            let wd = self.stream.watches()
+            let wd = self
+                .stream
+                .watches()
                 .add(&dir, watch_mask)
                 .with_context(|| format!("Failed to add watch for {}", dir.display()))?;
 
@@ -341,9 +343,13 @@ impl Watcher {
     /// Try to queue a file for processing (used during rescan).
     /// Silently skips if file is inaccessible, a symlink, or not a regular file.
     fn try_queue_file(&mut self, path: PathBuf, source: String) {
-        let Ok(meta) = fs::symlink_metadata(&path) else { return };
+        let Ok(meta) = fs::symlink_metadata(&path) else {
+            return;
+        };
         let ft = meta.file_type();
-        if ft.is_symlink() || !ft.is_file() { return; }
+        if ft.is_symlink() || !ft.is_file() {
+            return;
+        }
         let file_id = (meta.dev(), meta.ino());
         self.handle_modify(file_id, path, source);
     }
@@ -361,10 +367,14 @@ impl Watcher {
         if self.is_excluded(dir) {
             return;
         }
-        let Ok(entries) = fs::read_dir(dir) else { return };
+        let Ok(entries) = fs::read_dir(dir) else {
+            return;
+        };
         for entry in entries.flatten() {
             let path = entry.path();
-            let Ok(meta) = fs::symlink_metadata(&path) else { continue };
+            let Ok(meta) = fs::symlink_metadata(&path) else {
+                continue;
+            };
             let ft = meta.file_type();
             // Only recurse into real directories, not symlinks
             if ft.is_dir() && !ft.is_symlink() {
@@ -414,12 +424,7 @@ impl Watcher {
     ) -> Option<()> {
         match event_result {
             Some(Ok(event)) => {
-                self.handle_inotify_event(
-                    &event.wd,
-                    event.mask,
-                    event.name,
-                    event.cookie,
-                );
+                self.handle_inotify_event(&event.wd, event.mask, event.name, event.cookie);
                 Some(())
             }
             Some(Err(e)) => {
@@ -431,11 +436,10 @@ impl Watcher {
     }
 
     fn next_timeout(&self) -> Option<Duration> {
-        self.pending
-            .values()
-            .map(|p| p.deadline)
-            .min()
-            .map(|d| d.saturating_duration_since(Instant::now()).max(MIN_POLL_INTERVAL))
+        self.pending.values().map(|p| p.deadline).min().map(|d| {
+            d.saturating_duration_since(Instant::now())
+                .max(MIN_POLL_INTERVAL)
+        })
     }
 
     fn flush_expired(&mut self) {
@@ -471,7 +475,11 @@ impl Watcher {
         for cookie in expired {
             if let Some(pm) = self.pending_moves.remove(&cookie) {
                 // No matching MOVED_TO arrived - treat as delete (moved out of tree)
-                debug!("Move cookie {} expired, emitting delete for {}", cookie, pm.old_path.display());
+                debug!(
+                    "Move cookie {} expired, emitting delete for {}",
+                    cookie,
+                    pm.old_path.display()
+                );
                 self.ready.push_back(FileEvent {
                     path: pm.old_path,
                     source: pm.source,
@@ -492,12 +500,16 @@ impl Watcher {
         }
 
         // Calculate exponential backoff: base * 2^count, capped at max
-        let backoff = OVERFLOW_BACKOFF_BASE
-            .saturating_mul(2_u32.saturating_pow(self.overflow_count));
+        let backoff =
+            OVERFLOW_BACKOFF_BASE.saturating_mul(2_u32.saturating_pow(self.overflow_count));
         let backoff = backoff.min(OVERFLOW_BACKOFF_MAX);
 
         // We sleep here as we cannot continue processing before rescan
-        warn!("Inotify queue overflow #{} - waiting {:?} before rescan", self.overflow_count + 1, backoff);
+        warn!(
+            "Inotify queue overflow #{} - waiting {:?} before rescan",
+            self.overflow_count + 1,
+            backoff
+        );
         std::thread::sleep(backoff);
         self.overflow_count += 1;
         self.last_overflow = Some(Instant::now());
@@ -515,6 +527,7 @@ impl Watcher {
     }
 
     /// Dispatch a single inotify event to the appropriate handler.
+    #[allow(clippy::too_many_lines)]
     fn handle_inotify_event(
         &mut self,
         wd: &WatchDescriptor,
@@ -528,7 +541,9 @@ impl Watcher {
             return;
         }
 
-        let Some(watch_info) = self.watches.get(wd) else { return };
+        let Some(watch_info) = self.watches.get(wd) else {
+            return;
+        };
         let Some(name) = name else { return };
         let file_path = watch_info.dir_path.join(name);
         let source = watch_info.source.clone();
@@ -539,13 +554,19 @@ impl Watcher {
             return;
         }
 
-        if mask.contains(EventMask::ISDIR) { return; }
+        if mask.contains(EventMask::ISDIR) {
+            return;
+        }
 
         if mask.contains(EventMask::DELETE) {
             if let Some(file_id) = self.pending_by_path.remove(&file_path) {
                 self.pending.remove(&file_id);
             }
-            self.ready.push_back(FileEvent { path: file_path, source, kind: FileEventKind::Deleted });
+            self.ready.push_back(FileEvent {
+                path: file_path,
+                source,
+                kind: FileEventKind::Deleted,
+            });
             return;
         }
 
@@ -555,9 +576,15 @@ impl Watcher {
             let old_id = fs::metadata(&file_path).ok().map(|m| (m.dev(), m.ino()));
             self.pending_by_path.remove(&file_path);
             debug!("MOVED_FROM cookie={}: {}", cookie, file_path.display());
-            self.pending_moves.insert(cookie, PendingMove {
-                old_path: file_path, source, old_id, expires: Instant::now() + MOVE_COOKIE_TIMEOUT,
-            });
+            self.pending_moves.insert(
+                cookie,
+                PendingMove {
+                    old_path: file_path,
+                    source,
+                    old_id,
+                    expires: Instant::now() + MOVE_COOKIE_TIMEOUT,
+                },
+            );
             return;
         }
 
@@ -565,8 +592,12 @@ impl Watcher {
         let is_moved_to = mask.contains(EventMask::MOVED_TO);
         let is_close_write = mask.contains(EventMask::CLOSE_WRITE);
 
-        if !is_moved_to && !is_close_write { return; }
-        let Ok(meta) = fs::metadata(&file_path) else { return };
+        if !is_moved_to && !is_close_write {
+            return;
+        }
+        let Ok(meta) = fs::metadata(&file_path) else {
+            return;
+        };
 
         let file_id = (meta.dev(), meta.ino());
         let ctime = meta.ctime();
@@ -574,7 +605,9 @@ impl Watcher {
         if let Some(&cached_ctime) = self.skip_cache.get(&file_id) {
             if cached_ctime == ctime {
                 debug!("Skipping own write: {}", file_path.display());
-                if is_moved_to { self.pending_moves.remove(&cookie); }
+                if is_moved_to {
+                    self.pending_moves.remove(&cookie);
+                }
                 return;
             }
         }
@@ -592,27 +625,57 @@ impl Watcher {
                     if let Some(entry) = self.pending.remove(&file_id) {
                         // Was pending scan -> delete old path, rescan at new path
                         self.pending_by_path.remove(&entry.path);
-                        debug!("MOVED_TO cookie={cookie}: {} -> {} (pending)", pm.old_path.display(), file_path.display());
-                        self.ready.push_back(FileEvent { path: pm.old_path, source: pm.source, kind: FileEventKind::Deleted });
+                        debug!(
+                            "MOVED_TO cookie={cookie}: {} -> {} (pending)",
+                            pm.old_path.display(),
+                            file_path.display()
+                        );
+                        self.ready.push_back(FileEvent {
+                            path: pm.old_path,
+                            source: pm.source,
+                            kind: FileEventKind::Deleted,
+                        });
                         // Fall through to handle_modify for new path
                     } else {
                         // Already scanned -> just emit rename, no rescan needed
-                        debug!("MOVED_TO cookie={cookie}: {} -> {} (scanned)", pm.old_path.display(), file_path.display());
+                        debug!(
+                            "MOVED_TO cookie={cookie}: {} -> {} (scanned)",
+                            pm.old_path.display(),
+                            file_path.display()
+                        );
                         if let Some(old_id) = self.pending_by_path.remove(&file_path) {
                             self.pending.remove(&old_id);
                         }
-                        self.ready.push_back(FileEvent { path: file_path, source, kind: FileEventKind::Renamed { old_path: pm.old_path } });
+                        self.ready.push_back(FileEvent {
+                            path: file_path,
+                            source,
+                            kind: FileEventKind::Renamed {
+                                old_path: pm.old_path,
+                            },
+                        });
                         return;
                     }
                 } else {
                     // Replace: different inode at same path -> delete old, scan new
-                    debug!("MOVED_TO cookie={cookie}: {} -> {} (replace)", pm.old_path.display(), file_path.display());
-                    self.ready.push_back(FileEvent { path: pm.old_path, source: pm.source, kind: FileEventKind::Deleted });
+                    debug!(
+                        "MOVED_TO cookie={cookie}: {} -> {} (replace)",
+                        pm.old_path.display(),
+                        file_path.display()
+                    );
+                    self.ready.push_back(FileEvent {
+                        path: pm.old_path,
+                        source: pm.source,
+                        kind: FileEventKind::Deleted,
+                    });
                     // Fall through to handle_modify for new file
                 }
             } else {
                 // No matching MOVED_FROM -> file moved in from outside tree
-                debug!("MOVED_TO cookie={}: {} (moved in)", cookie, file_path.display());
+                debug!(
+                    "MOVED_TO cookie={}: {} (moved in)",
+                    cookie,
+                    file_path.display()
+                );
                 // Fall through to handle_modify
             }
         }
@@ -644,7 +707,10 @@ impl Watcher {
                 debug!("Added watch for new directory: {}", dir.display());
             }
             Err(e) => {
-                warn!("Failed to add watch for new directory {}: {e}", dir.display());
+                warn!(
+                    "Failed to add watch for new directory {}: {e}",
+                    dir.display()
+                );
             }
         }
     }
@@ -670,7 +736,11 @@ impl Watcher {
             if self.pending.len() >= self.config.max_pending {
                 self.force_process_oldest();
             }
-            debug!("Pending: {} (total: {})", path.display(), self.pending.len() + 1);
+            debug!(
+                "Pending: {} (total: {})",
+                path.display(),
+                self.pending.len() + 1
+            );
 
             self.pending_by_path.insert(path.clone(), file_id);
             self.pending.insert(

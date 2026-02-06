@@ -15,9 +15,9 @@ use tempfile::NamedTempFile;
 use tokio::time::sleep;
 
 use super::config::{ChannelConfig, Config};
-use super::notify::{build_notifier, Notifier};
+use super::notify::{Notifier, build_notifier};
 use ghaf_virtiofs_tools::scanner::{ScanResult, VirusScanner};
-use ghaf_virtiofs_tools::util::{notify_error, notify_infected, InfectedAction, wait_for_shutdown};
+use ghaf_virtiofs_tools::util::{InfectedAction, notify_error, notify_infected, wait_for_shutdown};
 use ghaf_virtiofs_tools::watcher::{EventHandler, FileId, Watcher, WatcherConfig};
 
 // =============================================================================
@@ -64,9 +64,12 @@ impl Daemon {
             let notifier = Arc::clone(&notifier);
 
             let handle = tokio::spawn(async move {
-                let runner =
-                    match ChannelRunner::new(channel_name.clone(), channel_config, scanner, notifier)
-                    {
+                let runner = match ChannelRunner::new(
+                    channel_name.clone(),
+                    channel_config,
+                    scanner,
+                    notifier,
+                ) {
                     Ok(r) => r,
                     Err(e) => {
                         error!("Channel '{channel_name}' initialization failed: {e}");
@@ -140,7 +143,11 @@ impl ChannelRunner {
         };
         handler.verify_environment()?;
 
-        Ok(Self { name, config, handler })
+        Ok(Self {
+            name,
+            config,
+            handler,
+        })
     }
 
     async fn run(mut self) -> Result<()> {
@@ -202,17 +209,27 @@ struct ChannelHandler {
 
 /// Implements `Watcher`'s `EventHandler` trait for inotify events: modify, delete, rename.
 impl EventHandler for ChannelHandler {
+    #[allow(clippy::too_many_lines)]
     fn on_modified(&mut self, path: &Path, source: &str) -> Vec<(FileId, i64)> {
         let share_path = self.share_path(source);
         let Ok(rel) = path.strip_prefix(&share_path) else {
-            warn!("Channel '{}': {} not under {}, dropping", self.name, path.display(), share_path.display());
+            warn!(
+                "Channel '{}': {} not under {}, dropping",
+                self.name,
+                path.display(),
+                share_path.display()
+            );
             return vec![];
         };
         let relative = rel.to_path_buf();
 
         // Sanity checks
         if !Self::is_safe_relative_path(&relative) {
-            warn!("Channel '{}': path traversal in '{}', dropping", self.name, relative.display());
+            warn!(
+                "Channel '{}': path traversal in '{}', dropping",
+                self.name,
+                relative.display()
+            );
             return vec![];
         }
         if self.should_ignore(path, &relative) {
@@ -221,22 +238,48 @@ impl EventHandler for ChannelHandler {
         }
         let src_file = match Self::safe_open(path) {
             Ok(f) => f,
-            Err(e) => { debug!("Skipping {}: {e}", path.display()); return vec![]; }
+            Err(e) => {
+                debug!("Skipping {}: {e}", path.display());
+                return vec![];
+            }
         };
         let src_meta = match src_file.metadata() {
             Ok(m) => m,
-            Err(e) => { error!("Channel '{}': metadata failed for '{}': {e}", self.name, relative.display()); return vec![]; }
+            Err(e) => {
+                error!(
+                    "Channel '{}': metadata failed for '{}': {e}",
+                    self.name,
+                    relative.display()
+                );
+                return vec![];
+            }
         };
         let tmp = match self.clone_to_staging(&src_file) {
             Ok(t) => t,
-            Err(e) => { error!("Channel '{}': staging failed for '{}': {e}", self.name, relative.display()); return vec![]; }
+            Err(e) => {
+                error!(
+                    "Channel '{}': staging failed for '{}': {e}",
+                    self.name,
+                    relative.display()
+                );
+                return vec![];
+            }
         };
 
-        info!("Channel '{}': processing '{}' from {}", self.name, relative.display(), source);
+        info!(
+            "Channel '{}': processing '{}' from {}",
+            self.name,
+            relative.display(),
+            source
+        );
 
         // Empty files bypass scan (no content to scan, may be marker files)
         if src_meta.len() == 0 {
-            debug!("Channel '{}': '{}' empty, skipping scan", self.name, relative.display());
+            debug!(
+                "Channel '{}': '{}' empty, skipping scan",
+                self.name,
+                relative.display()
+            );
             let written = self.propagate_clean(&tmp, &src_meta, source, &relative);
             self.spawn_notify();
             return written;
@@ -246,7 +289,11 @@ impl EventHandler for ChannelHandler {
         let scan_result = match self.scanner.scan_fd(tmp.as_file().as_fd(), path) {
             Ok(r) => r,
             Err(e) => {
-                error!("Channel '{}': scan failed for '{}': {e}", self.name, relative.display());
+                error!(
+                    "Channel '{}': scan failed for '{}': {e}",
+                    self.name,
+                    relative.display()
+                );
                 notify_error(&self.config.scanning.notify_socket, path, &e.to_string());
                 if self.config.scanning.permissive {
                     ScanResult::Clean
@@ -264,25 +311,46 @@ impl EventHandler for ChannelHandler {
                 written
             }
             ScanResult::Infected(virus_name) => {
-                warn!("Channel '{}': '{}' infected ({})", self.name, relative.display(), &virus_name);
+                warn!(
+                    "Channel '{}': '{}' infected ({})",
+                    self.name,
+                    relative.display(),
+                    &virus_name
+                );
                 notify_infected(&self.config.scanning.notify_socket, path, &virus_name);
                 self.handle_infected(&tmp, path, &relative);
                 vec![]
             }
             ScanResult::Error if self.config.scanning.permissive => {
-                warn!("Channel '{}': scan error for '{}' (permissive, treating as clean)", self.name, relative.display());
+                warn!(
+                    "Channel '{}': scan error for '{}' (permissive, treating as clean)",
+                    self.name,
+                    relative.display()
+                );
                 let written = self.propagate_clean(&tmp, &src_meta, source, &relative);
                 self.spawn_notify();
                 written
             }
             ScanResult::Error => {
-                warn!("Channel '{}': scan error for '{}' (fail-safe, treating as infected)", self.name, relative.display());
-                notify_error(&self.config.scanning.notify_socket, path, "scan error (fail-safe)");
+                warn!(
+                    "Channel '{}': scan error for '{}' (fail-safe, treating as infected)",
+                    self.name,
+                    relative.display()
+                );
+                notify_error(
+                    &self.config.scanning.notify_socket,
+                    path,
+                    "scan error (fail-safe)",
+                );
                 self.handle_infected(&tmp, path, &relative);
                 vec![]
             }
             ScanResult::NotFound => {
-                error!("Channel '{}': staged file lost for '{}' (unexpected)", self.name, relative.display());
+                error!(
+                    "Channel '{}': staged file lost for '{}' (unexpected)",
+                    self.name,
+                    relative.display()
+                );
                 vec![]
             }
         }
@@ -291,14 +359,23 @@ impl EventHandler for ChannelHandler {
     fn on_deleted(&mut self, path: &Path, source: &str) {
         let share_path = self.share_path(source);
         let Ok(rel) = path.strip_prefix(&share_path) else {
-            warn!("Channel '{}': path {} not under share {}, dropping", self.name, path.display(), share_path.display());
+            warn!(
+                "Channel '{}': path {} not under share {}, dropping",
+                self.name,
+                path.display(),
+                share_path.display()
+            );
             return;
         };
         let relative = rel.to_path_buf();
 
         // Sanity checks
         if !Self::is_safe_relative_path(&relative) {
-            warn!("Channel '{}': path traversal in '{}', dropping", self.name, relative.display());
+            warn!(
+                "Channel '{}': path traversal in '{}', dropping",
+                self.name,
+                relative.display()
+            );
             return;
         }
         if self.should_ignore(path, &relative) {
@@ -315,7 +392,12 @@ impl EventHandler for ChannelHandler {
                 if let Err(e) = fs::remove_file(&target) {
                     debug!("Failed to delete {}: {e}", target.display());
                 } else {
-                    info!("Channel '{}': deleted '{}' from {}", self.name, relative.display(), producer);
+                    info!(
+                        "Channel '{}': deleted '{}' from {}",
+                        self.name,
+                        relative.display(),
+                        producer
+                    );
                 }
             }
         }
@@ -327,7 +409,11 @@ impl EventHandler for ChannelHandler {
                 if let Err(e) = fs::remove_file(&export_target) {
                     debug!("Failed to delete {}: {e}", export_target.display());
                 } else {
-                    info!("Channel '{}': deleted '{}' from export", self.name, relative.display());
+                    info!(
+                        "Channel '{}': deleted '{}' from export",
+                        self.name,
+                        relative.display()
+                    );
                 }
             }
         }
@@ -341,21 +427,34 @@ impl EventHandler for ChannelHandler {
 
         // Validate new path
         let Ok(rel) = path.strip_prefix(&share_path) else {
-            warn!("Channel '{}': {} not under {}, dropping", self.name, path.display(), share_path.display());
+            warn!(
+                "Channel '{}': {} not under {}, dropping",
+                self.name,
+                path.display(),
+                share_path.display()
+            );
             return vec![];
         };
         let relative = rel.to_path_buf();
 
         // Validate old path
         let Ok(old_rel) = old_path.strip_prefix(&share_path) else {
-            warn!("Channel '{}': old path {} not under {}, dropping", self.name, old_path.display(), share_path.display());
+            warn!(
+                "Channel '{}': old path {} not under {}, dropping",
+                self.name,
+                old_path.display(),
+                share_path.display()
+            );
             return vec![];
         };
         let old_relative = old_rel.to_path_buf();
 
         // Sanity checks
         if !Self::is_safe_relative_path(&relative) || !Self::is_safe_relative_path(&old_relative) {
-            warn!("Channel '{}': path traversal in rename, dropping", self.name);
+            warn!(
+                "Channel '{}': path traversal in rename, dropping",
+                self.name
+            );
             return vec![];
         }
         if self.should_ignore(path, &relative) {
@@ -364,14 +463,30 @@ impl EventHandler for ChannelHandler {
         }
         let src_file = match Self::safe_open(path) {
             Ok(f) => f,
-            Err(e) => { debug!("Skipping renamed {}: {e}", path.display()); return vec![]; }
+            Err(e) => {
+                debug!("Skipping renamed {}: {e}", path.display());
+                return vec![];
+            }
         };
         let src_meta = match src_file.metadata() {
             Ok(m) => m,
-            Err(e) => { error!("Channel '{}': metadata failed for '{}': {e}", self.name, relative.display()); return vec![]; }
+            Err(e) => {
+                error!(
+                    "Channel '{}': metadata failed for '{}': {e}",
+                    self.name,
+                    relative.display()
+                );
+                return vec![];
+            }
         };
 
-        info!("Channel '{}': rename '{}' -> '{}' from {}", self.name, old_relative.display(), relative.display(), source);
+        info!(
+            "Channel '{}': rename '{}' -> '{}' from {}",
+            self.name,
+            old_relative.display(),
+            relative.display(),
+            source
+        );
 
         // Delete old path from other producers and export (skip diode producers)
         for producer in &self.config.producers {
@@ -414,15 +529,29 @@ impl ChannelHandler {
     }
 
     fn should_ignore(&self, path: &Path, relative: &Path) -> bool {
-        let filename = path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default();
+        let filename = path
+            .file_name()
+            .map(|n| n.to_string_lossy())
+            .unwrap_or_default();
         let relative_str = relative.to_string_lossy();
-        self.config.scanning.ignore_file_patterns.iter().any(|p| filename.contains(p))
-            || self.config.scanning.ignore_path_patterns.iter().any(|p| relative_str.contains(p.as_str()))
+        self.config
+            .scanning
+            .ignore_file_patterns
+            .iter()
+            .any(|p| filename.contains(p))
+            || self
+                .config
+                .scanning
+                .ignore_path_patterns
+                .iter()
+                .any(|p| relative_str.contains(p.as_str()))
     }
 
     /// Check that a relative path has no traversal components (.. or absolute).
     fn is_safe_relative_path(path: &Path) -> bool {
-        !path.components().any(|c| matches!(c, Component::ParentDir | Component::RootDir))
+        !path
+            .components()
+            .any(|c| matches!(c, Component::ParentDir | Component::RootDir))
     }
 
     /// Safely open a file with security checks:
@@ -430,8 +559,12 @@ impl ChannelHandler {
     /// - Verify it's a regular file (not FIFO, device, etc.)
     /// - Verify it's not empty
     fn safe_open(path: &Path) -> Result<File> {
-        let fd = rustix::fs::open(path, OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC, Mode::empty())
-            .map_err(|e| anyhow::anyhow!("open failed: {e}"))?;
+        let fd = rustix::fs::open(
+            path,
+            OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::empty(),
+        )
+        .map_err(|e| anyhow::anyhow!("open failed: {e}"))?;
         let file = File::from(fd);
 
         let metadata = file.metadata()?;
@@ -489,7 +622,11 @@ impl ChannelHandler {
             })?;
         }
 
-        info!("Channel '{}': FICLONE verified for {} targets", self.name, targets.len());
+        info!(
+            "Channel '{}': FICLONE verified for {} targets",
+            self.name,
+            targets.len()
+        );
         Ok(())
     }
 
@@ -505,7 +642,10 @@ impl ChannelHandler {
         let gid = rustix::fs::Gid::from_raw(0);
 
         rustix::fs::fchown(tmp.as_file(), Some(uid), Some(gid)).map_err(|e| {
-            anyhow::anyhow!("Channel '{}': CAP_CHOWN capability required for preserving file ownership: {e}", self.name)
+            anyhow::anyhow!(
+                "Channel '{}': CAP_CHOWN capability required for preserving file ownership: {e}",
+                self.name
+            )
         })?;
 
         info!("Channel '{}': CAP_CHOWN verified", self.name);
@@ -549,12 +689,22 @@ impl ChannelHandler {
 
             // Diode ignore-existing: skip if target already exists
             if is_diode_source && target.exists() {
-                debug!("Channel '{}': diode skip existing '{}' in {}", self.name, src_relative.display(), producer);
+                debug!(
+                    "Channel '{}': diode skip existing '{}' in {}",
+                    self.name,
+                    src_relative.display(),
+                    producer
+                );
                 continue;
             }
 
             if let Err(e) = Self::atomic_reflink(tmp.as_file(), Some(src_meta), &target) {
-                error!("Channel '{}': failed to propagate '{}' to {}: {e}", self.name, src_relative.display(), producer);
+                error!(
+                    "Channel '{}': failed to propagate '{}' to {}: {e}",
+                    self.name,
+                    src_relative.display(),
+                    producer
+                );
             } else if let Ok(meta) = fs::metadata(&target) {
                 let fid = (meta.dev(), meta.ino());
                 let ctime = meta.ctime();
@@ -568,13 +718,27 @@ impl ChannelHandler {
 
             // Diode ignore-existing: skip if export target already exists
             if is_diode_source && export_target.exists() {
-                debug!("Channel '{}': diode skip existing '{}' in export", self.name, src_relative.display());
-            } else if let Err(e) = Self::atomic_reflink(tmp.as_file(), Some(src_meta), &export_target) {
-                error!("Channel '{}': failed to export '{}': {e}", self.name, src_relative.display());
+                debug!(
+                    "Channel '{}': diode skip existing '{}' in export",
+                    self.name,
+                    src_relative.display()
+                );
+            } else if let Err(e) =
+                Self::atomic_reflink(tmp.as_file(), Some(src_meta), &export_target)
+            {
+                error!(
+                    "Channel '{}': failed to export '{}': {e}",
+                    self.name,
+                    src_relative.display()
+                );
             }
         }
 
-        debug!("Channel '{}': propagated '{}'", self.name, src_relative.display());
+        debug!(
+            "Channel '{}': propagated '{}'",
+            self.name,
+            src_relative.display()
+        );
         written
     }
 
@@ -600,12 +764,22 @@ impl ChannelHandler {
 
             // Diode ignore-existing: skip if target already exists
             if is_diode_source && target.exists() {
-                debug!("Channel '{}': diode skip existing '{}' in {}", self.name, src_relative.display(), producer);
+                debug!(
+                    "Channel '{}': diode skip existing '{}' in {}",
+                    self.name,
+                    src_relative.display(),
+                    producer
+                );
                 continue;
             }
 
             if let Err(e) = Self::atomic_reflink(src_file, Some(src_meta), &target) {
-                error!("Channel '{}': failed to propagate '{}' to {}: {e}", self.name, src_relative.display(), producer);
+                error!(
+                    "Channel '{}': failed to propagate '{}' to {}: {e}",
+                    self.name,
+                    src_relative.display(),
+                    producer
+                );
             } else if let Ok(meta) = fs::metadata(&target) {
                 let fid = (meta.dev(), meta.ino());
                 let ctime = meta.ctime();
@@ -619,13 +793,25 @@ impl ChannelHandler {
 
             // Diode ignore-existing: skip if export target already exists
             if is_diode_source && export_target.exists() {
-                debug!("Channel '{}': diode skip existing '{}' in export", self.name, src_relative.display());
+                debug!(
+                    "Channel '{}': diode skip existing '{}' in export",
+                    self.name,
+                    src_relative.display()
+                );
             } else if let Err(e) = Self::atomic_reflink(src_file, Some(src_meta), &export_target) {
-                error!("Channel '{}': failed to export '{}': {e}", self.name, src_relative.display());
+                error!(
+                    "Channel '{}': failed to export '{}': {e}",
+                    self.name,
+                    src_relative.display()
+                );
             }
         }
 
-        debug!("Channel '{}': propagated '{}' (rename)", self.name, src_relative.display());
+        debug!(
+            "Channel '{}': propagated '{}' (rename)",
+            self.name,
+            src_relative.display()
+        );
         written
     }
 
@@ -673,15 +859,26 @@ impl ChannelHandler {
                 if let Err(e) = fs::remove_file(src_path) {
                     error!("Failed to delete infected file: {e}");
                 } else {
-                    info!("Channel '{}': deleted infected '{}'", self.name, relative.display());
+                    info!(
+                        "Channel '{}': deleted infected '{}'",
+                        self.name,
+                        relative.display()
+                    );
                 }
             }
             InfectedAction::Quarantine => {
                 let quarantine_dest = self.quarantine_path().join(relative);
                 if let Err(e) = Self::atomic_reflink(tmp.as_file(), None, &quarantine_dest) {
-                    warn!("Failed to quarantine '{}': {e} - deleting instead", relative.display());
+                    warn!(
+                        "Failed to quarantine '{}': {e} - deleting instead",
+                        relative.display()
+                    );
                 } else {
-                    info!("Channel '{}': quarantined '{}'", self.name, relative.display());
+                    info!(
+                        "Channel '{}': quarantined '{}'",
+                        self.name,
+                        relative.display()
+                    );
                 }
                 let _ = fs::remove_file(src_path);
             }
@@ -725,37 +922,51 @@ mod tests {
 
     #[test]
     fn safe_path_nested() {
-        assert!(ChannelHandler::is_safe_relative_path(Path::new("subdir/file.txt")));
+        assert!(ChannelHandler::is_safe_relative_path(Path::new(
+            "subdir/file.txt"
+        )));
     }
 
     #[test]
     fn safe_path_deeply_nested() {
-        assert!(ChannelHandler::is_safe_relative_path(Path::new("a/b/c/d/file.txt")));
+        assert!(ChannelHandler::is_safe_relative_path(Path::new(
+            "a/b/c/d/file.txt"
+        )));
     }
 
     #[test]
     fn unsafe_path_parent_simple() {
-        assert!(!ChannelHandler::is_safe_relative_path(Path::new("../file.txt")));
+        assert!(!ChannelHandler::is_safe_relative_path(Path::new(
+            "../file.txt"
+        )));
     }
 
     #[test]
     fn unsafe_path_parent_nested() {
-        assert!(!ChannelHandler::is_safe_relative_path(Path::new("subdir/../file.txt")));
+        assert!(!ChannelHandler::is_safe_relative_path(Path::new(
+            "subdir/../file.txt"
+        )));
     }
 
     #[test]
     fn unsafe_path_parent_deep() {
-        assert!(!ChannelHandler::is_safe_relative_path(Path::new("a/b/../../c/file.txt")));
+        assert!(!ChannelHandler::is_safe_relative_path(Path::new(
+            "a/b/../../c/file.txt"
+        )));
     }
 
     #[test]
     fn unsafe_path_absolute() {
-        assert!(!ChannelHandler::is_safe_relative_path(Path::new("/etc/passwd")));
+        assert!(!ChannelHandler::is_safe_relative_path(Path::new(
+            "/etc/passwd"
+        )));
     }
 
     #[test]
     fn unsafe_path_absolute_nested() {
-        assert!(!ChannelHandler::is_safe_relative_path(Path::new("/var/log/file.txt")));
+        assert!(!ChannelHandler::is_safe_relative_path(Path::new(
+            "/var/log/file.txt"
+        )));
     }
 
     #[test]
@@ -767,7 +978,9 @@ mod tests {
     #[test]
     fn safe_path_dot_in_name() {
         // Dots in middle of filename are fine
-        assert!(ChannelHandler::is_safe_relative_path(Path::new("file..txt")));
+        assert!(ChannelHandler::is_safe_relative_path(Path::new(
+            "file..txt"
+        )));
     }
 
     #[test]
@@ -780,10 +993,13 @@ mod tests {
     // should_ignore tests
     // =========================================================================
 
-    fn make_handler_with_patterns(file_patterns: Vec<&str>, path_patterns: Vec<&str>) -> ChannelHandler {
+    fn make_handler_with_patterns(
+        file_patterns: Vec<&str>,
+        path_patterns: Vec<&str>,
+    ) -> ChannelHandler {
         use super::super::config::{ChannelConfig, ScanningConfig};
-        use std::sync::Arc;
         use ghaf_virtiofs_tools::scanner::NoopScanner;
+        use std::sync::Arc;
 
         let config = ChannelConfig {
             base_path: PathBuf::from("/tmp/test"),
@@ -810,19 +1026,28 @@ mod tests {
     #[test]
     fn ignore_crdownload() {
         let handler = make_handler_with_patterns(vec![".crdownload"], vec![]);
-        assert!(handler.should_ignore(Path::new("/share/vm1/file.crdownload"), Path::new("file.crdownload")));
+        assert!(handler.should_ignore(
+            Path::new("/share/vm1/file.crdownload"),
+            Path::new("file.crdownload")
+        ));
     }
 
     #[test]
     fn ignore_part_file() {
         let handler = make_handler_with_patterns(vec![".part"], vec![]);
-        assert!(handler.should_ignore(Path::new("/share/vm1/download.part"), Path::new("download.part")));
+        assert!(handler.should_ignore(
+            Path::new("/share/vm1/download.part"),
+            Path::new("download.part")
+        ));
     }
 
     #[test]
     fn ignore_tilde_prefix() {
         let handler = make_handler_with_patterns(vec!["~$"], vec![]);
-        assert!(handler.should_ignore(Path::new("/share/vm1/~$document.docx"), Path::new("~$document.docx")));
+        assert!(handler.should_ignore(
+            Path::new("/share/vm1/~$document.docx"),
+            Path::new("~$document.docx")
+        ));
     }
 
     #[test]
@@ -834,20 +1059,28 @@ mod tests {
     #[test]
     fn no_ignore_normal_file() {
         let handler = make_handler_with_patterns(vec![".crdownload", ".part", ".tmp"], vec![]);
-        assert!(!handler.should_ignore(Path::new("/share/vm1/document.pdf"), Path::new("document.pdf")));
+        assert!(!handler.should_ignore(
+            Path::new("/share/vm1/document.pdf"),
+            Path::new("document.pdf")
+        ));
     }
 
     #[test]
     fn no_ignore_similar_name() {
         let handler = make_handler_with_patterns(vec![".crdownload"], vec![]);
         // "crdownload" without the dot should not match ".crdownload" pattern
-        assert!(!handler.should_ignore(Path::new("/share/vm1/crdownload"), Path::new("crdownload")));
+        assert!(
+            !handler.should_ignore(Path::new("/share/vm1/crdownload"), Path::new("crdownload"))
+        );
     }
 
     #[test]
     fn ignore_trash_path() {
         let handler = make_handler_with_patterns(vec![], vec![".Trash-"]);
-        assert!(handler.should_ignore(Path::new("/share/vm1/.Trash-1000/file.txt"), Path::new(".Trash-1000/file.txt")));
+        assert!(handler.should_ignore(
+            Path::new("/share/vm1/.Trash-1000/file.txt"),
+            Path::new(".Trash-1000/file.txt")
+        ));
     }
 
     #[test]
@@ -862,18 +1095,29 @@ mod tests {
     #[test]
     fn no_ignore_normal_path() {
         let handler = make_handler_with_patterns(vec![], vec![".Trash-"]);
-        assert!(!handler.should_ignore(Path::new("/share/vm1/documents/file.txt"), Path::new("documents/file.txt")));
+        assert!(!handler.should_ignore(
+            Path::new("/share/vm1/documents/file.txt"),
+            Path::new("documents/file.txt")
+        ));
     }
 
     #[test]
     fn ignore_combined_patterns() {
         let handler = make_handler_with_patterns(vec![".crdownload"], vec![".Trash-"]);
         // File pattern match
-        assert!(handler.should_ignore(Path::new("/share/vm1/file.crdownload"), Path::new("file.crdownload")));
+        assert!(handler.should_ignore(
+            Path::new("/share/vm1/file.crdownload"),
+            Path::new("file.crdownload")
+        ));
         // Path pattern match
-        assert!(handler.should_ignore(Path::new("/share/vm1/.Trash-1000/file.txt"), Path::new(".Trash-1000/file.txt")));
+        assert!(handler.should_ignore(
+            Path::new("/share/vm1/.Trash-1000/file.txt"),
+            Path::new(".Trash-1000/file.txt")
+        ));
         // Neither match
-        assert!(!handler.should_ignore(Path::new("/share/vm1/normal.txt"), Path::new("normal.txt")));
+        assert!(
+            !handler.should_ignore(Path::new("/share/vm1/normal.txt"), Path::new("normal.txt"))
+        );
     }
 
     #[test]
@@ -886,6 +1130,9 @@ mod tests {
     fn ignore_pattern_in_middle() {
         let handler = make_handler_with_patterns(vec![".part"], vec![]);
         // Pattern can match anywhere in filename
-        assert!(handler.should_ignore(Path::new("/share/vm1/file.part.bak"), Path::new("file.part.bak")));
+        assert!(handler.should_ignore(
+            Path::new("/share/vm1/file.part.bak"),
+            Path::new("file.part.bak")
+        ));
     }
 }

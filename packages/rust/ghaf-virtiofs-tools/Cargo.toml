@@ -7,7 +7,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0"
+anyhow = "1.0.101"
 bytes = "1.10"
 clap = { version = "4.5.55", features = ["derive"] }
 futures = "0.3"
@@ -22,10 +22,6 @@ serde_json = "1.0"
 systemd-journal-logger = "2.1"
 tokio = { version = "1.48", features = ["full"] }
 tokio-vsock = "0.7.2"
-
-[dev-dependencies]
-assert_matches = "1.5"
-pretty_assertions = "1.4"
 
 [lib]
 name = "ghaf_virtiofs_tools"

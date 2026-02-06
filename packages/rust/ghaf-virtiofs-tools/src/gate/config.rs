@@ -176,9 +176,7 @@ impl ChannelConfig {
         // Validate diode_producers is subset of producers
         for diode in &self.diode_producers {
             if !self.producers.contains(diode) {
-                errors.push(format!(
-                    "Diode producer '{diode}' is not in producers list"
-                ));
+                errors.push(format!("Diode producer '{diode}' is not in producers list"));
             }
         }
 
@@ -235,7 +233,11 @@ impl ChannelConfig {
         for channel_config in config.values_mut() {
             if channel_config.notify.is_some() {
                 let pattern = REFRESH_TRIGGER_FILE.to_string();
-                if !channel_config.scanning.ignore_file_patterns.contains(&pattern) {
+                if !channel_config
+                    .scanning
+                    .ignore_file_patterns
+                    .contains(&pattern)
+                {
                     channel_config.scanning.ignore_file_patterns.push(pattern);
                 }
             }
@@ -243,8 +245,8 @@ impl ChannelConfig {
 
         // Validate and filter channels
         let original_count = config.len();
-        config.retain(|channel_name, channel_config| {
-            match channel_config.validate() {
+        config.retain(
+            |channel_name, channel_config| match channel_config.validate() {
                 Ok(()) => {
                     channel_config.log_config_info(channel_name);
                     info!("Channel '{channel_name}': ready for operation");
@@ -257,8 +259,8 @@ impl ChannelConfig {
                     warn!("Channel '{channel_name}': removed due to configuration errors");
                     false
                 }
-            }
-        });
+            },
+        );
 
         // Validate base_path uniqueness across channels
         validate_unique_base_paths(&config)?;
@@ -287,7 +289,10 @@ fn validate_unique_base_paths(config: &Config) -> Result<()> {
     let mut seen: HashMap<PathBuf, &str> = HashMap::new();
 
     for (name, channel) in config {
-        let canonical = channel.base_path.canonicalize().unwrap_or_else(|_| channel.base_path.clone());
+        let canonical = channel
+            .base_path
+            .canonicalize()
+            .unwrap_or_else(|_| channel.base_path.clone());
         if let Some(existing) = seen.get(&canonical) {
             return Err(anyhow::anyhow!(
                 "Channels '{}' and '{}' have conflicting base_path '{}'",
@@ -530,7 +535,12 @@ mod tests {
 
         let result = validate_unique_base_paths(&config);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("conflicting base_path"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("conflicting base_path")
+        );
     }
 
     #[test]

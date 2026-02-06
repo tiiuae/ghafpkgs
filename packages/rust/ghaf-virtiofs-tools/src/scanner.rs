@@ -194,16 +194,20 @@ mod tests {
     #[test]
     fn parse_response_infected_simple() {
         let result = ClamAVScanner::parse_response("fd[0]: Eicar-Test-Signature FOUND", "test.txt");
-        assert_eq!(result, ScanResult::Infected("Eicar-Test-Signature".to_string()));
+        assert_eq!(
+            result,
+            ScanResult::Infected("Eicar-Test-Signature".to_string())
+        );
     }
 
     #[test]
     fn parse_response_infected_complex_signature() {
-        let result = ClamAVScanner::parse_response(
-            "stream: Win.Trojan.Agent-123456 FOUND",
-            "malware.exe",
+        let result =
+            ClamAVScanner::parse_response("stream: Win.Trojan.Agent-123456 FOUND", "malware.exe");
+        assert_eq!(
+            result,
+            ScanResult::Infected("Win.Trojan.Agent-123456".to_string())
         );
-        assert_eq!(result, ScanResult::Infected("Win.Trojan.Agent-123456".to_string()));
     }
 
     #[test]
@@ -221,7 +225,10 @@ mod tests {
 
     #[test]
     fn parse_response_error_lstat() {
-        let result = ClamAVScanner::parse_response("fd[0]: lstat() failed: No such file or directory. ERROR", "test.txt");
+        let result = ClamAVScanner::parse_response(
+            "fd[0]: lstat() failed: No such file or directory. ERROR",
+            "test.txt",
+        );
         assert_eq!(result, ScanResult::Error);
     }
 
