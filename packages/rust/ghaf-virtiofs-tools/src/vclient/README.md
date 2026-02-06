@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2022-2026 TII (SSRC) and the Ghaf contributors
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # clamd-vclient
 
 Guest daemon for on-write virus scanning via ClamAV.
@@ -30,6 +35,7 @@ The client could also connect to a scanning daemon in a different guest, if eith
 ### INSTREAM Protocol
 
 The client sends:
+
 1. `zINSTREAM\0` command
 2. Chunk: 4-byte big-endian size + data
 3. End marker: 4 zero bytes
@@ -64,7 +70,7 @@ clamd-vclient --watch /home/user/Downloads --debug
 ### Options
 
 | Option | Default | Description |
-|--------|---------|-------------|
+| ------ | ------- | ----------- |
 | `--watch`, `-w` | required | Directories to monitor (can specify multiple) |
 | `--exclude`, `-e` | none | Directories to exclude from recursive watching |
 | `--cid`, `-c` | `2` | vsock CID (2 = host) |
@@ -78,7 +84,7 @@ clamd-vclient --watch /home/user/Downloads --debug
 ## Failure Handling
 
 | Failure | Behavior |
-|---------|----------|
+| ------- | -------- |
 | Proxy unavailable at startup | Daemon refuses to start |
 | vsock connection fails during scan | Error logged, file skipped |
 | File disappeared before scan | Skipped silently |

@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2022-2026 TII (SSRC) and the Ghaf contributors
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # virtiofs-notify
 
 Guest notification receiver for virtiofs file change events.
@@ -20,6 +25,7 @@ virtiofs-notify runs inside guest VMs and listens for channel notifications from
 ### Why Toggle a File?
 
 Some file browsers don't refresh on:
+
 - `touch` (mtime update only)
 - Metadata changes
 - Events they consider "unimportant"
@@ -29,7 +35,8 @@ By creating or deleting an actual file, we generate `IN_CREATE` or `IN_DELETE` e
 ### Protocol
 
 Simple line-based protocol over vsock:
-```
+
+```text
 channel_name\n
 ```
 
@@ -53,7 +60,7 @@ virtiofs-notify --map documents=/mnt/share/documents --debug
 ### Options
 
 | Option | Default | Description |
-|--------|---------|-------------|
+| ------ | ------- | ----------- |
 | `--port`, `-p` | `3401` | vsock port to listen on |
 | `--map`, `-m` | required | Channel to path mapping (channel=path) |
 | `--debug`, `-d` | `false` | Enable debug logging |
@@ -74,7 +81,7 @@ When files are exported to the documents channel, the file browser showing `/mnt
 ## Failure Handling
 
 | Failure | Behavior |
-|---------|----------|
+| ------- | -------- |
 | Mapped path doesn't exist at startup | Daemon refuses to start |
 | Unknown channel received | Ignored silently |
 | Trigger file operation fails | Warning logged, continues |

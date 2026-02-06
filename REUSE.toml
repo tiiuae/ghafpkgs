@@ -35,6 +35,7 @@ path = [
   "packages/rust/ghaf-mem-manager/Cargo.lock",
   "packages/rust/ghaf-nw-packet-forwarder/Cargo.lock",
   "packages/rust/ghaf-nw-packet-forwarder/flake.lock",
+  "packages/rust/ghaf-virtiofs-tools/Cargo.lock",
   "packages/update-deps/README.md",
   "SECURITY.md"
 ]

@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2022-2026 TII (SSRC) and the Ghaf contributors
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # virtiofs-gate
 
 Host daemon to secure cross-VM file sharing over virtiofs with virus scanning.
@@ -22,6 +27,7 @@ The virtiofs-gate daemon monitors shared directories for file changes, scans fil
 ### Channels
 
 A channel groups VMs that share files:
+
 - **Producers**: VMs with read-write access (bidirectional sync)
 - **Consumers**: VMs with read-only access (via `export/`)
 - **Diode Producers**: Producers with write-only access
@@ -31,6 +37,7 @@ Each channel operates independently with its own configuration. The daemon runs 
 ### Diode Mode
 
 Diode producers operate in write-only mode for security isolation:
+
 - Files from diode producers are propagated to non-diode producers and export
 - Diode producers never receive files from other producers
 - Useful for untrusted VMs that should contribute files but not access shared content
@@ -40,7 +47,7 @@ Diode producers operate in write-only mode for security isolation:
 #### Propagation Matrix
 
 | Source | Event | To Non-Diode | To Diode | To Export |
-|--------|-------|--------------|----------|-----------|
+| ------ | ----- | ------------ | -------- | --------- |
 | Non-diode | Create | Propagate | Skip | Propagate |
 | Non-diode | Update | Overwrite | Skip | Overwrite |
 | Non-diode | Delete | Delete | Skip | Delete |
@@ -75,6 +82,7 @@ On daemon startup, each channel performs a sync phase before starting the watche
 4. **Execute**: Trigger handler for files needing sync, delete orphans from export
 
 This ensures channel consistency after:
+
 - Daemon restart with files modified while offline
 - VM crashes that left partial state
 - Manual file manipulation on the host
@@ -94,7 +102,7 @@ The daemon uses trait-based abstractions for key components:
 ## Failure Handling
 
 | Failure | Behavior |
-|---------|----------|
+| ------- | -------- |
 | ClamAV unavailable at startup | Warning logged, daemon continues |
 | Scan error (permissive=true) | File treated as clean, propagated |
 | Scan error (permissive=false) | File not propagated |
@@ -110,7 +118,7 @@ When ClamAV is unavailable, the daemon logs a warning and continues. Permissive 
 
 Each channel requires this host directory layout:
 
-```
+```text
 {basePath}/
   staging/           # temporary files during scan
   share/
@@ -150,7 +158,7 @@ JSON configuration file with channel definitions:
 ### Channel Options
 
 | Field | Type | Default | Description |
-|-------|------|---------|-------------|
+| ----- | ---- | ------- | ----------- |
 | `basePath` | string | required | Root directory for channel |
 | `producers` | array | required | VM names with rw access |
 | `consumers` | array | `[]` | VM names with ro access |
@@ -162,7 +170,7 @@ The `debounceMs` option controls how long the daemon waits after detecting a fil
 ### Scanning Options
 
 | Field | Type | Default | Description |
-|-------|------|---------|-------------|
+| ----- | ---- | ------- | ----------- |
 | `infectedAction` | string | `"delete"` | `log`, `delete`, or `quarantine` |
 | `permissive` | bool | `false` | Treat scan errors as clean |
 | `ignoreFilePatterns` | array | `[]` | Filename patterns to skip |
@@ -170,13 +178,14 @@ The `debounceMs` option controls how long the daemon waits after detecting a fil
 | `notifySocket` | string | `/run/clamav/notify.sock` | User notification socket |
 
 Ignore patterns prevent unnecessary scanning and syncing:
+
 - **File patterns** match against filenames only. Use for temporary files that are still being written (e.g., `.crdownload`, `.part`, `~$` for browser downloads and Office temp files).
 - **Path patterns** match against the full relative path. Use for system directories that should not be synced (e.g., `.Trash-`, `.local/share/Trash`).
 
 ### Notify Options
 
 | Field | Type | Default | Description |
-|-------|------|---------|-------------|
+| ----- | ---- | ------- | ----------- |
 | `guests` | array | `[]` | Guest VM CIDs to notify |
 | `port` | number | `3401` | vsock port for notifications |
 

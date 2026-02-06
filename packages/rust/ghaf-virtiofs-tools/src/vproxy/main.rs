@@ -262,7 +262,8 @@ where
         .context("Failed to connect to clamd")?;
 
     // Forward only the validated command bytes to clamd
-    clamd.write_all(&buf[..command_len])
+    clamd
+        .write_all(&buf[..command_len])
         .await
         .context("Failed to forward command to clamd")?;
 
@@ -335,12 +336,18 @@ where
             let chunk_size = pending.get_u32();
 
             if chunk_size > limits.max_chunk_size {
-                warn!("[{conn_id}] Blocked: chunk size {} exceeds limit {}", chunk_size, limits.max_chunk_size);
+                warn!(
+                    "[{conn_id}] Blocked: chunk size {} exceeds limit {}",
+                    chunk_size, limits.max_chunk_size
+                );
                 return Err(anyhow::anyhow!("Chunk size exceeds limit"));
             }
 
             if total_bytes + u64::from(chunk_size) > limits.max_stream_size {
-                warn!("[{conn_id}] Blocked: stream size would exceed limit {}", limits.max_stream_size);
+                warn!(
+                    "[{conn_id}] Blocked: stream size would exceed limit {}",
+                    limits.max_stream_size
+                );
                 return Err(anyhow::anyhow!("Stream size exceeds limit"));
             }
 
@@ -358,7 +365,10 @@ where
             if !pending.is_empty() {
                 let use_len = pending.len().min(remaining);
                 let chunk_data = pending.split_to(use_len);
-                clamd.write_all(&chunk_data).await.context("Failed to forward to clamd")?;
+                clamd
+                    .write_all(&chunk_data)
+                    .await
+                    .context("Failed to forward to clamd")?;
                 remaining -= use_len;
             }
 
@@ -372,7 +382,10 @@ where
                 if n == 0 {
                     return Err(anyhow::anyhow!("Client disconnected during transfer"));
                 }
-                clamd.write_all(&buf[..n]).await.context("Failed to forward to clamd")?;
+                clamd
+                    .write_all(&buf[..n])
+                    .await
+                    .context("Failed to forward to clamd")?;
                 remaining -= n;
             }
         }
@@ -386,7 +399,10 @@ where
         // Log scan result
         let response_str = String::from_utf8_lossy(&response[..n]);
         if response_str.contains("FOUND") {
-            warn!("[{conn_id}] Scan result: INFECTED - {}", response_str.trim());
+            warn!(
+                "[{conn_id}] Scan result: INFECTED - {}",
+                response_str.trim()
+            );
         } else {
             debug!("[{conn_id}] Scan result: {}", response_str.trim());
         }

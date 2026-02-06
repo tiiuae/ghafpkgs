@@ -18,7 +18,7 @@ use log::{debug, error, info, warn};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio_vsock::{VMADDR_CID_ANY, VsockAddr, VsockListener};
 
-use ghaf_virtiofs_tools::util::{init_logger, wait_for_shutdown, REFRESH_TRIGGER_FILE};
+use ghaf_virtiofs_tools::util::{REFRESH_TRIGGER_FILE, init_logger, wait_for_shutdown};
 
 /// Default vsock port for notifications
 const DEFAULT_NOTIFY_PORT: u32 = 3401;
@@ -75,7 +75,11 @@ async fn main() -> Result<()> {
         debug!("Channel '{}' mapped to {}", channel, path.display());
     }
 
-    info!("virtiofs-notify: starting (port={}, channels={})", cli.port, mappings.len());
+    info!(
+        "virtiofs-notify: starting (port={}, channels={})",
+        cli.port,
+        mappings.len()
+    );
     run(cli.port, mappings).await
 }
 
@@ -133,7 +137,10 @@ async fn handle_connection(
         };
 
         trigger_refresh(base_path)?;
-        info!("Triggered refresh on {} for channel '{channel}'", base_path.display());
+        info!(
+            "Triggered refresh on {} for channel '{channel}'",
+            base_path.display()
+        );
     }
 
     Ok(())

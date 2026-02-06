@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2022-2026 TII (SSRC) and the Ghaf contributors
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # clamd-vproxy
 
 ClamAV vsock proxy with command filtering.
@@ -13,7 +18,7 @@ clamd-vproxy accepts connections from guest VMs over virtio-vsock and forwards a
 Only these ClamAV commands are allowed:
 
 | Command | Purpose |
-|---------|---------|
+| ------- | ------- |
 | `INSTREAM` | Stream file contents for scanning |
 | `PING` | Check if scanner is alive |
 | `VERSION` | Get scanner version |
@@ -21,7 +26,7 @@ Only these ClamAV commands are allowed:
 All other commands are blocked:
 
 | Command | Risk |
-|---------|------|
+| ------- | ---- |
 | `SCAN`, `CONTSCAN`, `MULTISCAN` | Could scan host filesystem |
 | `SHUTDOWN` | Would kill clamd for all users |
 | `RELOAD` | DoS via forced signature reload |
@@ -65,7 +70,7 @@ clamd-vproxy --debug
 ### Options
 
 | Option | Default | Description |
-|--------|---------|-------------|
+| ------ | ------- | ----------- |
 | `--cid`, `-c` | `2` | vsock CID to bind (2 = host) |
 | `--port`, `-p` | `3400` | vsock port to listen on |
 | `--clamd`, `-C` | `/run/clamav/clamd.ctl` | ClamAV daemon socket path |
@@ -80,7 +85,7 @@ clamd-vproxy --debug
 ## Failure Handling
 
 | Failure | Behavior |
-|---------|----------|
+| ------- | -------- |
 | clamd socket missing at startup | Proxy refuses to start |
 | clamd connection fails during request | Error returned to client |
 | Command not allowed | Error returned, connection closed |
@@ -93,6 +98,7 @@ clamd-vproxy --debug
 ### Why Filter Commands?
 
 Without filtering, a compromised guest VM could:
+
 - Use `SCAN /etc/shadow` to probe host files
 - Use `SHUTDOWN` to disable scanning for all VMs
 - Use `RELOAD` repeatedly to cause DoS
@@ -100,6 +106,7 @@ Without filtering, a compromised guest VM could:
 ### INSTREAM Safety
 
 The `INSTREAM` command is "safe" because:
+
 - File contents are sent by the client, not read from host
 - clamd only scans the streamed data
 - No host filesystem access occurs
@@ -109,6 +116,7 @@ However, ClamAV vulnerabilities could be exploited.
 ### Limits Alignment
 
 Configure limits to match or be below clamd settings:
+
 - `max-connections` should not exceed clamd's `MaxThreads`
 - `max-stream-size` should match clamd's `StreamMaxLength`
 - Timeouts should be below clamd's `ReadTimeout`

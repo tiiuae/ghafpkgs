@@ -176,9 +176,7 @@ impl ChannelConfig {
         // Validate diode_producers is subset of producers
         for diode in &self.diode_producers {
             if !self.producers.contains(diode) {
-                errors.push(format!(
-                    "Diode producer '{diode}' is not in producers list"
-                ));
+                errors.push(format!("Diode producer '{diode}' is not in producers list"));
             }
         }
 
@@ -537,7 +535,12 @@ mod tests {
 
         let result = validate_unique_base_paths(&config);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("conflicting base_path"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("conflicting base_path")
+        );
     }
 
     #[test]

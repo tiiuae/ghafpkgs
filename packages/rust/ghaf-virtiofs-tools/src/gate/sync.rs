@@ -98,15 +98,26 @@ pub fn run<H: EventHandler>(
     // Execute actions
     for action in actions {
         match action {
-            SyncAction::TriggerSync { source, path, relative } => {
-                debug!("Channel '{name}': syncing '{}' from {}", relative.display(), source);
+            SyncAction::TriggerSync {
+                source,
+                path,
+                relative,
+            } => {
+                debug!(
+                    "Channel '{name}': syncing '{}' from {}",
+                    relative.display(),
+                    source
+                );
                 let _written = handler.on_modified(&path, &source);
                 stats.synced += 1;
             }
             SyncAction::DeleteStale { path, relative } => {
                 debug!("Channel '{name}': deleting stale '{}'", relative.display());
                 if let Err(e) = fs::remove_file(&path) {
-                    warn!("Channel '{name}': failed to delete stale '{}': {e}", relative.display());
+                    warn!(
+                        "Channel '{name}': failed to delete stale '{}': {e}",
+                        relative.display()
+                    );
                     stats.errors += 1;
                 } else {
                     stats.deleted += 1;
@@ -135,7 +146,13 @@ fn build_inventory(config: &ChannelConfig) -> Result<(Inventory, Inventory)> {
     for producer in &config.producers {
         let producer_dir = config.base_path.join("share").join(producer);
         if producer_dir.exists() {
-            scan_directory(&producer_dir, &producer_dir, producer, config, &mut producers)?;
+            scan_directory(
+                &producer_dir,
+                &producer_dir,
+                producer,
+                config,
+                &mut producers,
+            )?;
         }
     }
 
@@ -191,7 +208,8 @@ fn scan_directory(
                 size: meta.size(),
             };
 
-            inventory.entry(relative.to_path_buf())
+            inventory
+                .entry(relative.to_path_buf())
                 .or_default()
                 .push((source.to_string(), info));
         }
@@ -202,10 +220,21 @@ fn scan_directory(
 
 /// Check if a file should be ignored based on config patterns.
 fn should_ignore(path: &Path, relative: &Path, config: &ChannelConfig) -> bool {
-    let filename = path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default();
+    let filename = path
+        .file_name()
+        .map(|n| n.to_string_lossy())
+        .unwrap_or_default();
     let relative_str = relative.to_string_lossy();
-    config.scanning.ignore_file_patterns.iter().any(|p| filename.contains(p))
-        || config.scanning.ignore_path_patterns.iter().any(|p| relative_str.contains(p.as_str()))
+    config
+        .scanning
+        .ignore_file_patterns
+        .iter()
+        .any(|p| filename.contains(p))
+        || config
+            .scanning
+            .ignore_path_patterns
+            .iter()
+            .any(|p| relative_str.contains(p.as_str()))
 }
 
 // =============================================================================
@@ -262,16 +291,20 @@ fn compute_producer_action(
     // Check if producers are in conflict
     let producers_in_conflict = entries.len() > 1 && {
         let first = &entries[0].1;
-        entries.iter().skip(1).any(|(_, info)| {
-            info.mtime != first.mtime || info.size != first.size
-        })
+        entries
+            .iter()
+            .skip(1)
+            .any(|(_, info)| info.mtime != first.mtime || info.size != first.size)
     };
 
     // Check if file needs to be synced to other producers
-    let non_diode_count = config.producers.iter()
+    let non_diode_count = config
+        .producers
+        .iter()
         .filter(|p| !config.is_diode(p))
         .count();
-    let non_diode_entries = entries.iter()
+    let non_diode_entries = entries
+        .iter()
         .filter(|(source, _)| !config.is_diode(source))
         .count();
     let needs_producer_sync = non_diode_entries < non_diode_count;
@@ -281,9 +314,9 @@ fn compute_producer_action(
         false
     } else {
         export.get(relative).is_none_or(|export_entries| {
-            export_entries.iter().any(|(_, info)| {
-                info.mtime != best_info.mtime || info.size != best_info.size
-            })
+            export_entries
+                .iter()
+                .any(|(_, info)| info.mtime != best_info.mtime || info.size != best_info.size)
         })
     };
 
@@ -550,11 +583,7 @@ mod tests {
         let export = Inventory::new();
 
         // vm2 is diode - should not be counted as sync target
-        let config = make_test_config_with_diode(
-            vec!["vm1", "vm2"],
-            vec!["consumer"],
-            vec!["vm2"],
-        );
+        let config = make_test_config_with_diode(vec!["vm1", "vm2"], vec!["consumer"], vec!["vm2"]);
 
         let actions = compute_actions(&producers, &export, &config);
 

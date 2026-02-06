@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2022-2026 TII (SSRC) and the Ghaf contributors
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # ghaf-virtiofs-tools
 
 Tools for secure cross-VM file sharing over virtiofs with integrated virus scanning.
@@ -5,7 +10,7 @@ Tools for secure cross-VM file sharing over virtiofs with integrated virus scann
 ## Components
 
 | Binary | Location | Description |
-|--------|----------|-------------|
+| ------ | -------- | ----------- |
 | `virtiofs-gate` | Host | Gateway daemon - scans files and propagates to VMs |
 | `clamd-vclient` | Guest | On-write scanner - watches directories, scans via vsock |
 | `clamd-vproxy` | Host | ClamAV proxy - filters commands, forwards to clamd |
