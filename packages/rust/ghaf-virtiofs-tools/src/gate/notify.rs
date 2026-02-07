@@ -85,16 +85,16 @@ pub fn build_notifier(config: &super::config::Config) -> Notifier {
     let mut targets: HashMap<String, Vec<NotifyTarget>> = HashMap::new();
 
     for (channel_name, channel_config) in config {
-        let Some(ref notify_config) = channel_config.notify else {
+        let Some(ref guest_notify) = channel_config.guest_notify else {
             continue;
         };
 
-        if notify_config.guests.is_empty() {
+        if guest_notify.guests.is_empty() {
             continue;
         }
 
-        let port = notify_config.port;
-        let channel_targets: Vec<NotifyTarget> = notify_config
+        let port = guest_notify.port;
+        let channel_targets: Vec<NotifyTarget> = guest_notify
             .guests
             .iter()
             .map(|&cid| NotifyTarget::new(cid, port))
@@ -102,7 +102,7 @@ pub fn build_notifier(config: &super::config::Config) -> Notifier {
 
         if !channel_targets.is_empty() {
             info!(
-                "Channel '{}': notifications enabled for {} guests on port {}",
+                "Channel '{}': guest notifications enabled for {} VMs on port {}",
                 channel_name,
                 channel_targets.len(),
                 port

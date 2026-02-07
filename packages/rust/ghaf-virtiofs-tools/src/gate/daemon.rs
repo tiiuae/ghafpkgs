@@ -286,7 +286,7 @@ impl EventHandler for ChannelHandler {
         }
 
         // Skip scanning if disabled for this channel
-        if !self.config.scanning.enabled {
+        if !self.config.scanning.enable {
             debug!(
                 "Channel '{}': '{}' scanning disabled, treating as clean",
                 self.name,
@@ -306,7 +306,9 @@ impl EventHandler for ChannelHandler {
                     self.name,
                     relative.display()
                 );
-                notify_error(&self.config.scanning.notify_socket, path, &e.to_string());
+                if self.config.user_notify.enable {
+                    notify_error(&self.config.user_notify.socket, path, &e.to_string());
+                }
                 if self.config.scanning.permissive {
                     ScanResult::Clean
                 } else {
@@ -329,7 +331,9 @@ impl EventHandler for ChannelHandler {
                     relative.display(),
                     &virus_name
                 );
-                notify_infected(&self.config.scanning.notify_socket, path, &virus_name);
+                if self.config.user_notify.enable {
+                    notify_infected(&self.config.user_notify.socket, path, &virus_name);
+                }
                 self.handle_infected(&tmp, path, &relative);
                 vec![]
             }
@@ -349,11 +353,13 @@ impl EventHandler for ChannelHandler {
                     self.name,
                     relative.display()
                 );
-                notify_error(
-                    &self.config.scanning.notify_socket,
-                    path,
-                    "scan error (fail-safe)",
-                );
+                if self.config.user_notify.enable {
+                    notify_error(
+                        &self.config.user_notify.socket,
+                        path,
+                        "scan error (fail-safe)",
+                    );
+                }
                 self.handle_infected(&tmp, path, &relative);
                 vec![]
             }
@@ -1009,7 +1015,7 @@ mod tests {
         file_patterns: Vec<&str>,
         path_patterns: Vec<&str>,
     ) -> ChannelHandler {
-        use super::super::config::{ChannelConfig, ScanningConfig};
+        use super::super::config::{ChannelConfig, ScanningConfig, UserNotifyConfig};
         use ghaf_virtiofs_tools::scanner::NoopScanner;
         use std::sync::Arc;
 
@@ -1024,7 +1030,8 @@ mod tests {
                 ignore_path_patterns: path_patterns.into_iter().map(String::from).collect(),
                 ..Default::default()
             },
-            notify: None,
+            user_notify: UserNotifyConfig::default(),
+            guest_notify: None,
         };
 
         ChannelHandler {

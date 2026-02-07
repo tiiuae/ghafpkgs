@@ -16,8 +16,8 @@ use ghaf_virtiofs_tools::util::{InfectedAction, REFRESH_TRIGGER_FILE};
 pub struct ScanningConfig {
     /// Enable virus scanning for this channel (default: true).
     /// Set to false to skip scanning and treat all files as clean.
-    #[serde(default = "default_enabled")]
-    pub enabled: bool,
+    #[serde(default = "default_enable")]
+    pub enable: bool,
 
     /// Action to take on infected files: log, delete (default), or quarantine.
     #[serde(default, rename = "infectedAction")]
@@ -39,30 +39,50 @@ pub struct ScanningConfig {
     /// Examples: `.Trash-`, `.local/share/Trash`
     #[serde(default, rename = "ignorePathPatterns")]
     pub ignore_path_patterns: Vec<String>,
-
-    /// Notification socket path for user alerts.
-    /// Default: /run/clamav/notify.sock
-    #[serde(default = "default_notify_socket", rename = "notifySocket")]
-    pub notify_socket: PathBuf,
 }
 
-fn default_notify_socket() -> PathBuf {
-    PathBuf::from("/run/clamav/notify.sock")
-}
-
-const fn default_enabled() -> bool {
+const fn default_enable() -> bool {
     true
 }
 
 impl Default for ScanningConfig {
     fn default() -> Self {
         Self {
-            enabled: true,
+            enable: true,
             infected_action: InfectedAction::default(),
             permissive: false,
             ignore_file_patterns: Vec::new(),
             ignore_path_patterns: Vec::new(),
-            notify_socket: default_notify_socket(),
+        }
+    }
+}
+
+/// User notification configuration for malware alerts.
+///
+/// Controls desktop notifications sent when malware is detected or scan errors occur.
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct UserNotifyConfig {
+    /// Enable user notifications for this channel (default: true).
+    /// Set to false to disable desktop notifications.
+    /// Notifications are also skipped if the socket doesn't exist.
+    #[serde(default = "default_enable")]
+    pub enable: bool,
+
+    /// Socket path for user notifications.
+    /// Default: /run/clamav/notify.sock
+    #[serde(default = "default_user_notify_socket")]
+    pub socket: PathBuf,
+}
+
+fn default_user_notify_socket() -> PathBuf {
+    PathBuf::from("/run/clamav/notify.sock")
+}
+
+impl Default for UserNotifyConfig {
+    fn default() -> Self {
+        Self {
+            enable: true,
+            socket: default_user_notify_socket(),
         }
     }
 }
@@ -77,9 +97,9 @@ const fn default_debounce_ms() -> u64 {
     1000
 }
 
-/// Configuration for guest VM notifications.
+/// Configuration for guest VM notifications (file browser refresh via vsock).
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
-pub struct NotifyConfig {
+pub struct GuestNotifyConfig {
     /// Guest VM CIDs to notify about file changes
     #[serde(default)]
     pub guests: Vec<u32>,
@@ -116,9 +136,13 @@ pub struct ChannelConfig {
     #[serde(default)]
     pub scanning: ScanningConfig,
 
-    /// Guest notification configuration (optional)
-    #[serde(default)]
-    pub notify: Option<NotifyConfig>,
+    /// User notification configuration for malware alerts
+    #[serde(default, rename = "userNotify")]
+    pub user_notify: UserNotifyConfig,
+
+    /// Guest VM notification configuration (file browser refresh via vsock)
+    #[serde(default, rename = "guestNotify")]
+    pub guest_notify: Option<GuestNotifyConfig>,
 }
 
 /// Map of channel name to configuration.
@@ -202,15 +226,18 @@ impl ChannelConfig {
         self.diode_producers.iter().any(|d| d == producer)
     }
 
-    /// Log scanning configuration info for a channel.
+    /// Log configuration info for a channel.
     pub fn log_config_info(&self, channel_name: &str) {
-        if !self.scanning.enabled {
+        if !self.scanning.enable {
             info!("Channel '{channel_name}': scanning disabled (all files treated as clean)");
         }
         if self.scanning.permissive {
             info!(
                 "Channel '{channel_name}': permissive mode enabled (scan errors treated as clean)"
             );
+        }
+        if !self.user_notify.enable {
+            info!("Channel '{channel_name}': user notifications disabled");
         }
         if !self.diode_producers.is_empty() {
             info!(
@@ -242,9 +269,9 @@ impl ChannelConfig {
 
         info!("Loaded configuration for {} channels", config.len());
 
-        // Auto-add refresh trigger file to ignore patterns when notify is enabled
+        // Auto-add refresh trigger file to ignore patterns when guest notify is enabled
         for channel_config in config.values_mut() {
-            if channel_config.notify.is_some() {
+            if channel_config.guest_notify.is_some() {
                 let pattern = REFRESH_TRIGGER_FILE.to_string();
                 if !channel_config
                     .scanning
@@ -418,7 +445,7 @@ mod tests {
         let config: Config = serde_json::from_str(json).unwrap();
         let channel = config.get("minimal").unwrap();
 
-        assert!(channel.scanning.enabled);
+        assert!(channel.scanning.enable);
         assert_eq!(channel.scanning.infected_action, InfectedAction::Delete);
         assert!(!channel.scanning.permissive);
         assert!(channel.scanning.ignore_file_patterns.is_empty());
@@ -433,7 +460,7 @@ mod tests {
                 "producers": ["trusted-vm"],
                 "consumers": [],
                 "scanning": {
-                    "enabled": false
+                    "enable": false
                 }
             }
         }"#;
@@ -441,7 +468,7 @@ mod tests {
         let config: Config = serde_json::from_str(json).unwrap();
         let channel = config.get("no-scan").unwrap();
 
-        assert!(!channel.scanning.enabled);
+        assert!(!channel.scanning.enable);
     }
 
     #[test]
@@ -458,22 +485,23 @@ mod tests {
         let channel = config.get("defaults").unwrap();
 
         assert_eq!(channel.debounce_ms, 1000);
-        assert!(channel.scanning.enabled);
+        assert!(channel.scanning.enable);
+        assert!(channel.user_notify.enable);
         assert_eq!(
-            channel.scanning.notify_socket,
+            channel.user_notify.socket,
             PathBuf::from("/run/clamav/notify.sock")
         );
-        assert!(channel.notify.is_none());
+        assert!(channel.guest_notify.is_none());
     }
 
     #[test]
-    fn test_notify_config() {
+    fn test_guest_notify_config() {
         let json = r#"{
             "with-notify": {
                 "basePath": "/tmp/notify",
                 "producers": ["vm1"],
                 "consumers": [],
-                "notify": {
+                "guestNotify": {
                     "guests": [3, 4, 5],
                     "port": 9999
                 }
@@ -482,20 +510,20 @@ mod tests {
 
         let config: Config = serde_json::from_str(json).unwrap();
         let channel = config.get("with-notify").unwrap();
-        let notify = channel.notify.as_ref().unwrap();
+        let guest_notify = channel.guest_notify.as_ref().unwrap();
 
-        assert_eq!(notify.guests, vec![3, 4, 5]);
-        assert_eq!(notify.port, 9999);
+        assert_eq!(guest_notify.guests, vec![3, 4, 5]);
+        assert_eq!(guest_notify.port, 9999);
     }
 
     #[test]
-    fn test_notify_config_defaults() {
+    fn test_guest_notify_config_defaults() {
         let json = r#"{
             "notify-defaults": {
                 "basePath": "/tmp/notify",
                 "producers": ["vm1"],
                 "consumers": [],
-                "notify": {
+                "guestNotify": {
                     "guests": [3]
                 }
             }
@@ -503,9 +531,33 @@ mod tests {
 
         let config: Config = serde_json::from_str(json).unwrap();
         let channel = config.get("notify-defaults").unwrap();
-        let notify = channel.notify.as_ref().unwrap();
+        let guest_notify = channel.guest_notify.as_ref().unwrap();
 
-        assert_eq!(notify.port, 3401);
+        assert_eq!(guest_notify.port, 3401);
+    }
+
+    #[test]
+    fn test_user_notify_config() {
+        let json = r#"{
+            "with-user-notify": {
+                "basePath": "/tmp/user-notify",
+                "producers": ["vm1"],
+                "consumers": [],
+                "userNotify": {
+                    "enable": false,
+                    "socket": "/custom/notify.sock"
+                }
+            }
+        }"#;
+
+        let config: Config = serde_json::from_str(json).unwrap();
+        let channel = config.get("with-user-notify").unwrap();
+
+        assert!(!channel.user_notify.enable);
+        assert_eq!(
+            channel.user_notify.socket,
+            PathBuf::from("/custom/notify.sock")
+        );
     }
 
     #[test]
@@ -520,7 +572,8 @@ mod tests {
                 diode_producers: vec![],
                 debounce_ms: 1000,
                 scanning: ScanningConfig::default(),
-                notify: None,
+                user_notify: UserNotifyConfig::default(),
+                guest_notify: None,
             },
         );
         config.insert(
@@ -532,7 +585,8 @@ mod tests {
                 diode_producers: vec![],
                 debounce_ms: 1000,
                 scanning: ScanningConfig::default(),
-                notify: None,
+                user_notify: UserNotifyConfig::default(),
+                guest_notify: None,
             },
         );
 
@@ -551,7 +605,8 @@ mod tests {
                 diode_producers: vec![],
                 debounce_ms: 1000,
                 scanning: ScanningConfig::default(),
-                notify: None,
+                user_notify: UserNotifyConfig::default(),
+                guest_notify: None,
             },
         );
         config.insert(
@@ -563,7 +618,8 @@ mod tests {
                 diode_producers: vec![],
                 debounce_ms: 1000,
                 scanning: ScanningConfig::default(),
-                notify: None,
+                user_notify: UserNotifyConfig::default(),
+                guest_notify: None,
             },
         );
 

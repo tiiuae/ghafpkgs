@@ -142,12 +142,17 @@ JSON configuration file with channel definitions:
     "consumers": ["reader-vm"],
     "debounceMs": 1000,
     "scanning": {
+      "enable": true,
       "infectedAction": "quarantine",
       "permissive": false,
       "ignoreFilePatterns": [".crdownload", ".part", "~$"],
       "ignorePathPatterns": [".Trash-"]
     },
-    "notify": {
+    "userNotify": {
+      "enable": true,
+      "socket": "/run/clamav/notify.sock"
+    },
+    "guestNotify": {
       "guests": [10, 11],
       "port": 3401
     }
@@ -171,23 +176,36 @@ The `debounceMs` option controls how long the daemon waits after detecting a fil
 
 | Field | Type | Default | Description |
 | ----- | ---- | ------- | ----------- |
+| `enable` | bool | `true` | Enable virus scanning for this channel |
 | `infectedAction` | string | `"delete"` | `log`, `delete`, or `quarantine` |
 | `permissive` | bool | `false` | Treat scan errors as clean |
 | `ignoreFilePatterns` | array | `[]` | Filename patterns to skip |
 | `ignorePathPatterns` | array | `[]` | Path patterns to skip |
-| `notifySocket` | string | `/run/clamav/notify.sock` | User notification socket |
+
+Set `enable` to `false` to skip scanning entirely and treat all files as clean. This is useful for trusted internal channels or when scanning is handled elsewhere.
 
 Ignore patterns prevent unnecessary scanning and syncing:
 
 - **File patterns** match against filenames only. Use for temporary files that are still being written (e.g., `.crdownload`, `.part`, `~$` for browser downloads and Office temp files).
 - **Path patterns** match against the full relative path. Use for system directories that should not be synced (e.g., `.Trash-`, `.local/share/Trash`).
 
-### Notify Options
+### User Notify Options
+
+| Field | Type | Default | Description |
+| ----- | ---- | ------- | ----------- |
+| `enable` | bool | `true` | Enable desktop notifications for malware alerts |
+| `socket` | string | `/run/clamav/notify.sock` | Unix socket for user notifications |
+
+User notifications alert the desktop user when malware is detected or scan errors occur. Notifications are skipped silently if the socket doesn't exist.
+
+### Guest Notify Options
 
 | Field | Type | Default | Description |
 | ----- | ---- | ------- | ----------- |
 | `guests` | array | `[]` | Guest VM CIDs to notify |
 | `port` | number | `3401` | vsock port for notifications |
+
+Guest notifications trigger file browser refresh in consumer VMs when files are propagated.
 
 ## CLI Usage
 

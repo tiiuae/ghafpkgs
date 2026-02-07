@@ -111,8 +111,13 @@ pub const REFRESH_TRIGGER_FILE: &str = ".virtiofs-refresh";
 
 /// Send a notification message to the notification socket.
 ///
-/// Fails silently with a warning if the socket is unavailable.
+/// Skips silently if the socket doesn't exist.
+/// Logs a warning if connection/write fails for an existing socket.
 fn send_notification(socket_path: &Path, message: &str) {
+    if !socket_path.exists() {
+        return;
+    }
+
     match UnixStream::connect(socket_path) {
         Ok(mut stream) => {
             if let Err(e) = writeln!(stream, "{message}") {

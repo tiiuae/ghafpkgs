@@ -644,7 +644,7 @@ mod tests {
         consumers: Vec<&str>,
         diode_producers: Vec<&str>,
     ) -> ChannelConfig {
-        use super::super::config::ScanningConfig;
+        use super::super::config::{ScanningConfig, UserNotifyConfig};
 
         ChannelConfig {
             base_path: PathBuf::from("/tmp/test"),
@@ -653,7 +653,8 @@ mod tests {
             diode_producers: diode_producers.into_iter().map(String::from).collect(),
             debounce_ms: 1000,
             scanning: ScanningConfig::default(),
-            notify: None,
+            user_notify: UserNotifyConfig::default(),
+            guest_notify: None,
         }
     }
 }
