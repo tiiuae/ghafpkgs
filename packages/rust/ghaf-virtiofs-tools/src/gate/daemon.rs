@@ -285,6 +285,18 @@ impl EventHandler for ChannelHandler {
             return written;
         }
 
+        // Skip scanning if disabled for this channel
+        if !self.config.scanning.enabled {
+            debug!(
+                "Channel '{}': '{}' scanning disabled, treating as clean",
+                self.name,
+                relative.display()
+            );
+            let written = self.propagate_clean(&tmp, &src_meta, source, &relative);
+            self.spawn_notify();
+            return written;
+        }
+
         // Scan staged snapshot - guarantees scanned bytes == published bytes
         let scan_result = match self.scanner.scan_fd(tmp.as_file().as_fd(), path) {
             Ok(r) => r,

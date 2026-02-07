@@ -14,6 +14,11 @@ use ghaf_virtiofs_tools::util::{InfectedAction, REFRESH_TRIGGER_FILE};
 /// Scanning configuration for a channel.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ScanningConfig {
+    /// Enable virus scanning for this channel (default: true).
+    /// Set to false to skip scanning and treat all files as clean.
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+
     /// Action to take on infected files: log, delete (default), or quarantine.
     #[serde(default, rename = "infectedAction")]
     pub infected_action: InfectedAction,
@@ -45,9 +50,14 @@ fn default_notify_socket() -> PathBuf {
     PathBuf::from("/run/clamav/notify.sock")
 }
 
+const fn default_enabled() -> bool {
+    true
+}
+
 impl Default for ScanningConfig {
     fn default() -> Self {
         Self {
+            enabled: true,
             infected_action: InfectedAction::default(),
             permissive: false,
             ignore_file_patterns: Vec::new(),
@@ -194,6 +204,9 @@ impl ChannelConfig {
 
     /// Log scanning configuration info for a channel.
     pub fn log_config_info(&self, channel_name: &str) {
+        if !self.scanning.enabled {
+            info!("Channel '{channel_name}': scanning disabled (all files treated as clean)");
+        }
         if self.scanning.permissive {
             info!(
                 "Channel '{channel_name}': permissive mode enabled (scan errors treated as clean)"
@@ -405,10 +418,30 @@ mod tests {
         let config: Config = serde_json::from_str(json).unwrap();
         let channel = config.get("minimal").unwrap();
 
+        assert!(channel.scanning.enabled);
         assert_eq!(channel.scanning.infected_action, InfectedAction::Delete);
         assert!(!channel.scanning.permissive);
         assert!(channel.scanning.ignore_file_patterns.is_empty());
         assert!(channel.scanning.ignore_path_patterns.is_empty());
+    }
+
+    #[test]
+    fn test_scanning_disabled() {
+        let json = r#"{
+            "no-scan": {
+                "basePath": "/tmp/no-scan",
+                "producers": ["trusted-vm"],
+                "consumers": [],
+                "scanning": {
+                    "enabled": false
+                }
+            }
+        }"#;
+
+        let config: Config = serde_json::from_str(json).unwrap();
+        let channel = config.get("no-scan").unwrap();
+
+        assert!(!channel.scanning.enabled);
     }
 
     #[test]
@@ -425,6 +458,7 @@ mod tests {
         let channel = config.get("defaults").unwrap();
 
         assert_eq!(channel.debounce_ms, 1000);
+        assert!(channel.scanning.enabled);
         assert_eq!(
             channel.scanning.notify_socket,
             PathBuf::from("/run/clamav/notify.sock")
