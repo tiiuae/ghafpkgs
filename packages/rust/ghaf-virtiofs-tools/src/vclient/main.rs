@@ -38,6 +38,9 @@ const SCAN_CHANNEL_CAPACITY: usize = 100;
 /// Buffer size for scan response from `ClamAV`
 const SCAN_RESPONSE_BUFFER_SIZE: usize = 4096;
 
+/// Retry delay when waiting for proxy to become available
+const PROXY_RETRY_DELAY: std::time::Duration = std::time::Duration::from_secs(5);
+
 #[derive(Parser)]
 #[command(name = "clamd-vclient")]
 #[command(about = "ClamAV vsock client for on-modify virus scanning")]
@@ -101,16 +104,12 @@ async fn main() -> Result<()> {
 
     init_logger(cli.debug)?;
 
-    // Validate connectivity
+    // Wait for scanner to become available
     if cli.socket {
-        ClamAVScanner
-            .validate_availability()
-            .context("Failed to connect to local ClamAV")?;
+        wait_for_local_scanner().await?;
     } else {
         let addr = VsockAddr::new(cli.cid, cli.port);
-        validate_vsock_connection(addr)
-            .await
-            .context("Failed to connect to host proxy")?;
+        wait_for_proxy(addr).await?;
     }
 
     let scanner_info = if cli.socket {
@@ -126,8 +125,37 @@ async fn main() -> Result<()> {
     run(cli).await
 }
 
-/// Validate vsock connection by sending PING to proxy
-async fn validate_vsock_connection(addr: VsockAddr) -> Result<()> {
+/// Wait for host proxy to become available, retrying indefinitely.
+async fn wait_for_proxy(addr: VsockAddr) -> Result<()> {
+    let mut logged_waiting = false;
+
+    loop {
+        match try_ping_proxy(addr).await {
+            Ok(()) => {
+                info!(
+                    "Host proxy available via vsock CID {} port {}",
+                    addr.cid(),
+                    addr.port()
+                );
+                return Ok(());
+            }
+            Err(e) => {
+                if !logged_waiting {
+                    warn!(
+                        "Waiting for host proxy (CID {} port {}): {e}",
+                        addr.cid(),
+                        addr.port()
+                    );
+                    logged_waiting = true;
+                }
+                tokio::time::sleep(PROXY_RETRY_DELAY).await;
+            }
+        }
+    }
+}
+
+/// Try to ping the proxy once.
+async fn try_ping_proxy(addr: VsockAddr) -> Result<()> {
     let mut stream = VsockStream::connect(addr)
         .await
         .context("Failed to connect to vsock")?;
@@ -139,14 +167,27 @@ async fn validate_vsock_connection(addr: VsockAddr) -> Result<()> {
     let response = String::from_utf8_lossy(&buf[..n]);
 
     if response.trim().trim_matches('\0') == "PONG" {
-        info!(
-            "Host proxy available via vsock CID {} port {}",
-            addr.cid(),
-            addr.port()
-        );
         Ok(())
     } else {
         Err(anyhow::anyhow!("Unexpected ping response: {response}"))
+    }
+}
+
+/// Wait for local `ClamAV` scanner to become available, retrying indefinitely.
+async fn wait_for_local_scanner() -> Result<()> {
+    let mut logged_waiting = false;
+
+    loop {
+        if ClamAVScanner.validate_availability().is_ok() {
+            info!("Local ClamAV scanner available");
+            return Ok(());
+        }
+
+        if !logged_waiting {
+            warn!("Waiting for local ClamAV scanner...");
+            logged_waiting = true;
+        }
+        tokio::time::sleep(PROXY_RETRY_DELAY).await;
     }
 }
 
