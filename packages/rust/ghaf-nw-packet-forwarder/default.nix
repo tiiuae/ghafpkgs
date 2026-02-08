@@ -39,11 +39,27 @@ let
   # Build only the cargo dependencies (for caching)
   cargoArtifacts = craneLib.buildDepsOnly commonArgs;
 
+  # Run cargo test
+  cargoTest = craneLib.cargoTest (commonArgs // { inherit cargoArtifacts; });
+
+  # Run cargo clippy for linting
+  cargoClippy = craneLib.cargoClippy (
+    commonArgs
+    // {
+      inherit cargoArtifacts;
+      cargoClippyExtraArgs = "--all-targets -- --deny warnings";
+    }
+  );
+
   # Build the actual application
   ghaf-nw-packet-forwarder = craneLib.buildPackage (
     commonArgs
     // {
       inherit cargoArtifacts;
+
+      passthru.tests = {
+        inherit cargoTest cargoClippy;
+      };
 
       meta = {
         description = "Network packet forwarder for Ghaf virtualization platform";

@@ -41,6 +41,8 @@ buildPythonApplication {
     pygobject3
   ];
 
+  # TODO: Add pytest tests and enable checking
+  # To enable: add pytest to nativeCheckInputs and set doCheck = true
   doCheck = false;
   meta = {
     description = "USB panel applet for COSMIC (GTK4)";

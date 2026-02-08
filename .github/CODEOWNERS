@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2022-2026 TII (SSRC) and the Ghaf contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# This file defines code ownership for the ghafpkgs repository.
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owners for everything in the repo
+* @tiiuae/ghaf-maintainers
+
+# Security-critical Rust packages
+/packages/rust/ghaf-nw-packet-forwarder/ @tiiuae/ghaf-security
+/packages/rust/ghaf-mem-manager/ @tiiuae/ghaf-security
+
+# Security-critical C++ packages
+/packages/cpp/vsockproxy/ @tiiuae/ghaf-security
+/packages/cpp/dbus-proxy/ @tiiuae/ghaf-security
+
+# Security-critical Go packages
+/packages/go/swtpm-proxy-shim/ @tiiuae/ghaf-security
+
+# CI/CD and GitHub configuration
+/.github/workflows/ @tiiuae/ghaf-security @tiiuae/ghaf-maintainers
+/.github/CODEOWNERS @tiiuae/ghaf-security @tiiuae/ghaf-maintainers
+
+# Nix infrastructure
+/nix/ @tiiuae/ghaf-maintainers
+/flake.nix @tiiuae/ghaf-maintainers
+/flake.lock @tiiuae/ghaf-maintainers
+
+# Security documentation
+/SECURITY.md @tiiuae/ghaf-security

@@ -23,6 +23,8 @@ buildPythonApplication {
     inotify-simple
   ];
 
+  # TODO: Add pytest tests and enable checking
+  # To enable: add pytest to nativeCheckInputs and set doCheck = true
   doCheck = false;
 
   meta = {
