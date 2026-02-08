@@ -30,11 +30,27 @@ let
   # Build only the cargo dependencies (for caching)
   cargoArtifacts = craneLib.buildDepsOnly commonArgs;
 
+  # Run cargo test
+  cargoTest = craneLib.cargoTest (commonArgs // { inherit cargoArtifacts; });
+
+  # Run cargo clippy for linting
+  cargoClippy = craneLib.cargoClippy (
+    commonArgs
+    // {
+      inherit cargoArtifacts;
+      cargoClippyExtraArgs = "--all-targets -- --deny warnings";
+    }
+  );
+
   # Build the actual application
   ghaf-mem-manager = craneLib.buildPackage (
     commonArgs
     // {
       inherit cargoArtifacts;
+
+      passthru.tests = {
+        inherit cargoTest cargoClippy;
+      };
 
       # Metadata for the final package
       meta = {

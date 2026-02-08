@@ -1,9 +1,6 @@
 # SPDX-FileCopyrightText: 2022-2026 TII (SSRC) and the Ghaf contributors
 # SPDX-License-Identifier: Apache-2.0
-{ pkgs }:
-let
-  inherit (pkgs) python3Packages;
-in
+{ python3Packages }:
 {
   ldap-query = python3Packages.callPackage ./ldap-query/package.nix { };
   vinotify = python3Packages.callPackage ./vinotify/package.nix { };

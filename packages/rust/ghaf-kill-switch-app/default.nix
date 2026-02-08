@@ -41,11 +41,28 @@ let
   # Build only the cargo dependencies (for caching)
   cargoArtifacts = craneLib.buildDepsOnly commonArgs;
 
+  # Run cargo test
+  cargoTest = craneLib.cargoTest (commonArgs // { inherit cargoArtifacts; });
+
+  # Run cargo clippy for linting
+  cargoClippy = craneLib.cargoClippy (
+    commonArgs
+    // {
+      inherit cargoArtifacts;
+      cargoClippyExtraArgs = "--all-targets -- --deny warnings";
+    }
+  );
+
   # Build the actual application
   ghaf-kill-switch-app = craneLib.buildPackage (
     commonArgs
     // {
       inherit cargoArtifacts;
+
+      passthru.tests = {
+        inherit cargoTest cargoClippy;
+      };
+
       # After install, make a wrapper that ensures LD_LIBRARY_PATH contains
       # the library search path for our dlopen-able libraries.
       postInstall = ''

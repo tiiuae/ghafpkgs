@@ -243,6 +243,65 @@ If you need assistance with the review process:
 - Review our [examples of good PRs](#) (coming soon)
 
 
+### Testing Requirements
+
+All code contributions should include appropriate tests. Testing is critical for a security-focused platform like Ghaf.
+
+#### Rust Packages
+
+Rust packages use [Crane](https://github.com/ipetkov/crane) for building and testing. Each package includes:
+
+- **cargoTest**: Runs `cargo test` on the package
+- **cargoClippy**: Runs `cargo clippy` with `--deny warnings`
+
+Tests are exposed via `passthru.tests` and can be run with:
+```bash
+# Run tests for a specific package
+nix build .#ghaf-nw-packet-forwarder.passthru.tests.cargoTest
+nix build .#ghaf-nw-packet-forwarder.passthru.tests.cargoClippy
+```
+
+When adding new Rust code:
+- Write unit tests in `#[cfg(test)]` modules
+- Ensure all clippy warnings are resolved
+- Add integration tests where appropriate
+
+#### Python Packages
+
+Python packages should use pytest for testing. To add tests:
+
+1. Add `pytest` to `nativeCheckInputs` in `package.nix`
+2. Create test files following pytest conventions (`test_*.py`)
+3. Set `doCheck = true` in the package definition
+
+#### C++ Packages
+
+C++ code is analyzed with `cppcheck` for static analysis. The check runs automatically during `nix flake check`.
+
+When writing C++ code:
+- Address all cppcheck warnings
+- Follow memory-safe coding practices
+- Consider using smart pointers and RAII
+
+#### Go Packages
+
+Go packages should include `*_test.go` files. Tests run automatically via `buildGoModule`.
+
+#### Running All Checks
+
+Before submitting a PR, run all checks locally:
+```bash
+# Run all flake checks (builds, tests, formatting)
+nix flake check
+
+# Run only the C++ static analysis
+nix build .#checks.x86_64-linux.cpp-static-analysis
+
+# Run the network packet forwarder integration test (x86_64-linux only)
+nix build .#checks.x86_64-linux.nw-packet-forwarder-integration
+```
+
+
 ### License Headers
 
 Make sure the [license](https://github.com/tiiuae/ghaf#licensing) information is added on top of all your source files as in the example:
