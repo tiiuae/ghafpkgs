@@ -1,13 +1,6 @@
 // SPDX-FileCopyrightText: 2025-2026 TII (SSRC) and the Ghaf contributors
 // SPDX-License-Identifier: Apache-2.0
 
-//! Guest notification receiver daemon.
-//!
-//! Receives channel notifications from host over vsock.
-//! Triggers file browser refresh by toggling a hidden temp file.
-//!
-//! Protocol: `channel\n`
-
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

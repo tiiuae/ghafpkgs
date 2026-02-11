@@ -14,7 +14,7 @@ use clap::Parser;
 
 use config::{ChannelConfig, verify_config};
 use daemon::Daemon;
-use ghaf_virtiofs_tools::scanner::{ClamAVScanner, NoopScanner, VirusScanner};
+use ghaf_virtiofs_tools::scanner::{ClamAVScanner, VirusScanner};
 use ghaf_virtiofs_tools::util::init_logger;
 
 #[derive(Parser)]
@@ -31,18 +31,16 @@ enum Commands {
     Run {
         #[arg(short, long)]
         config: PathBuf,
-        #[arg(short, long, default_value = "false")]
+        #[arg(short, long)]
         debug: bool,
         /// Disable virus scanning (treat all files as clean)
-        #[arg(long, default_value = "false")]
+        #[arg(long)]
         no_scan: bool,
     },
     /// Verify configuration file without starting daemon
     Verify {
         #[arg(short, long)]
         config: PathBuf,
-        #[arg(short, long, default_value = "false")]
-        verbose: bool,
     },
 }
 
@@ -58,31 +56,33 @@ async fn main() -> Result<()> {
         } => {
             init_logger(debug)?;
 
-            let config = ChannelConfig::load_config(&config).with_context(|| {
+            let mut config = ChannelConfig::load_config(&config).with_context(|| {
                 format!("Failed to load configuration from {}", config.display())
             })?;
 
-            let scanner: Arc<dyn VirusScanner + Send + Sync> = if no_scan {
-                Arc::new(NoopScanner)
-            } else {
-                let scanner = Arc::new(ClamAVScanner);
+            // Disable scanning for all channels if --no-scan is set
+            if no_scan {
+                log::info!("Virus scanning disabled via --no-scan flag");
+                for channel in config.values_mut() {
+                    channel.scanning.enable = false;
+                }
+            }
+
+            let scanner: Arc<dyn VirusScanner + Send + Sync> = Arc::new(ClamAVScanner);
+            if !no_scan {
                 if let Err(e) = scanner.validate_availability() {
                     log::warn!(
                         "ClamAV unavailable: {e}. Only permissive channels will propagate files."
                     );
                 }
-                scanner
-            };
+            }
 
             let daemon = Daemon::new(config, scanner);
-            daemon
-                .run()
-                .await
-                .with_context(|| "Daemon execution failed")?;
+            daemon.run().await.context("Daemon execution failed")?;
 
             Ok(())
         }
-        Commands::Verify { config, verbose } => verify_config(&config, verbose)
+        Commands::Verify { config } => verify_config(&config)
             .with_context(|| format!("Failed to verify configuration file {}", config.display())),
     }
 }

@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 use std::fs;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
@@ -13,36 +14,28 @@ use ghaf_virtiofs_tools::util::{InfectedAction, REFRESH_TRIGGER_FILE};
 
 /// Scanning configuration for a channel.
 #[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(default, rename_all = "camelCase")]
 pub struct ScanningConfig {
     /// Enable virus scanning for this channel (default: true).
     /// Set to false to skip scanning and treat all files as clean.
-    #[serde(default = "default_enable")]
     pub enable: bool,
 
     /// Action to take on infected files: log, delete (default), or quarantine.
-    #[serde(default, rename = "infectedAction")]
     pub infected_action: InfectedAction,
 
     /// Permissive mode: treat scan errors as clean (true) or infected (false).
     /// Default is false (fail-safe: errors are treated as infected).
-    #[serde(default)]
     pub permissive: bool,
 
     /// Filename patterns to ignore (temp files that shouldn't be scanned).
     /// Matches against the filename only.
     /// Examples: `.crdownload`, `.part`, `.tmp`, `~$`
-    #[serde(default, rename = "ignoreFilePatterns")]
     pub ignore_file_patterns: Vec<String>,
 
     /// Path patterns to ignore (system directories that shouldn't be synced).
     /// Matches against the full relative path.
     /// Examples: `.Trash-`, `.local/share/Trash`
-    #[serde(default, rename = "ignorePathPatterns")]
     pub ignore_path_patterns: Vec<String>,
-}
-
-const fn default_enable() -> bool {
-    true
 }
 
 impl Default for ScanningConfig {
@@ -61,35 +54,25 @@ impl Default for ScanningConfig {
 ///
 /// Controls desktop notifications sent when malware is detected or scan errors occur.
 #[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(default)]
 pub struct UserNotifyConfig {
     /// Enable user notifications for this channel (default: true).
     /// Set to false to disable desktop notifications.
     /// Notifications are also skipped if the socket doesn't exist.
-    #[serde(default = "default_enable")]
     pub enable: bool,
 
     /// Socket path for user notifications.
     /// Default: /run/clamav/notify.sock
-    #[serde(default = "default_user_notify_socket")]
     pub socket: PathBuf,
-}
-
-fn default_user_notify_socket() -> PathBuf {
-    PathBuf::from("/run/clamav/notify.sock")
 }
 
 impl Default for UserNotifyConfig {
     fn default() -> Self {
         Self {
             enable: true,
-            socket: default_user_notify_socket(),
+            socket: PathBuf::from("/run/clamav/notify.sock"),
         }
     }
-}
-
-/// Default vsock port for guest notifications
-const fn default_notify_port() -> u32 {
-    3401
 }
 
 /// Default debounce duration in milliseconds
@@ -98,22 +81,30 @@ const fn default_debounce_ms() -> u64 {
 }
 
 /// Configuration for guest VM notifications (file browser refresh via vsock).
-#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(default)]
 pub struct GuestNotifyConfig {
     /// Guest VM CIDs to notify about file changes
-    #[serde(default)]
     pub guests: Vec<u32>,
 
     /// Vsock port for notifications (default 3401)
-    #[serde(default = "default_notify_port")]
     pub port: u32,
+}
+
+impl Default for GuestNotifyConfig {
+    fn default() -> Self {
+        Self {
+            guests: Vec::new(),
+            port: 3401,
+        }
+    }
 }
 
 /// Configuration for a single sharing channel.
 #[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct ChannelConfig {
     /// Base path containing share/, export/, staging/, quarantine/
-    #[serde(rename = "basePath")]
     pub base_path: PathBuf,
 
     /// Producer VMs that write files to this channel (bidirectional sharing)
@@ -124,12 +115,12 @@ pub struct ChannelConfig {
 
     /// Producers operating in diode mode (write-only, no sync from others).
     /// Must be a subset of `producers`.
-    #[serde(default, rename = "diodeProducers")]
+    #[serde(default)]
     pub diode_producers: Vec<String>,
 
     /// Debounce duration in milliseconds (default: 1000ms).
     /// Wait this long after the last write before processing a file.
-    #[serde(default = "default_debounce_ms", rename = "debounceMs")]
+    #[serde(default = "default_debounce_ms")]
     pub debounce_ms: u64,
 
     /// Scanning configuration
@@ -137,16 +128,27 @@ pub struct ChannelConfig {
     pub scanning: ScanningConfig,
 
     /// User notification configuration for malware alerts
-    #[serde(default, rename = "userNotify")]
+    #[serde(default)]
     pub user_notify: UserNotifyConfig,
 
     /// Guest VM notification configuration (file browser refresh via vsock)
-    #[serde(default, rename = "guestNotify")]
+    #[serde(default)]
     pub guest_notify: Option<GuestNotifyConfig>,
 }
 
 /// Map of channel name to configuration.
 pub type Config = HashMap<String, ChannelConfig>;
+
+/// Check if a path is an accessible directory.
+fn check_dir(dir: &Path) -> Result<(), &'static str> {
+    match dir.metadata() {
+        Ok(meta) if meta.is_dir() => Ok(()),
+        Ok(_) => Err("is not a directory"),
+        Err(e) if e.kind() == ErrorKind::NotFound => Err("does not exist"),
+        Err(e) if e.kind() == ErrorKind::PermissionDenied => Err("permission denied"),
+        Err(_) => Err("is not accessible"),
+    }
+}
 
 impl ChannelConfig {
     /// Validate channel configuration.
@@ -154,60 +156,41 @@ impl ChannelConfig {
     pub fn validate(&self) -> Result<(), Vec<String>> {
         let mut errors: Vec<String> = Vec::new();
 
-        // Validate base path exists and is a directory
-        if !self.base_path.exists() {
-            errors.push("Base path does not exist".to_string());
-        } else if !self.base_path.is_dir() {
-            errors.push("Base path is not a directory".to_string());
-        }
+        // Validate path structure (short-circuit if base path is invalid)
+        if let Err(e) = check_dir(&self.base_path) {
+            errors.push(format!("Base path {e}"));
+        } else {
+            let share = self.base_path.join("share");
+            if let Err(e) = check_dir(&share) {
+                errors.push(format!("'share' {e}"));
+            } else {
+                for producer in &self.producers {
+                    if let Err(e) = check_dir(&share.join(producer)) {
+                        errors.push(format!("'share/{producer}' {e}"));
+                    }
+                }
+            }
 
-        // Validate share directory exists
-        let share = self.base_path.join("share");
-        if !share.exists() {
-            errors.push("Required 'share' directory does not exist".to_string());
-        } else if !share.is_dir() {
-            errors.push("'share' path exists but is not a directory".to_string());
-        }
+            if !self.consumers.is_empty() {
+                if let Err(e) = check_dir(&self.base_path.join("export")) {
+                    errors.push(format!("'export' {e}"));
+                }
+            }
 
-        // Validate export directory exists (only required if consumers exist)
-        if !self.consumers.is_empty() {
-            let export = self.base_path.join("export");
-            if !export.exists() {
-                errors.push("Required 'export' directory does not exist".to_string());
-            } else if !export.is_dir() {
-                errors.push("'export' path exists but is not a directory".to_string());
+            if self.scanning.infected_action == InfectedAction::Quarantine {
+                if let Err(e) = check_dir(&self.base_path.join("quarantine")) {
+                    errors.push(format!(
+                        "'quarantine' {e} (required for infectedAction=quarantine)"
+                    ));
+                }
             }
         }
 
-        // Validate per-producer share directories exist
-        for producer in &self.producers {
-            let producer_dir = share.join(producer);
-            if !producer_dir.exists() {
-                errors.push(format!("'share/{producer}' does not exist"));
-            } else if !producer_dir.is_dir() {
-                errors.push(format!("'share/{producer}' exists but is not a directory"));
-            }
-        }
-
-        // Validate quarantine directory if quarantine action is configured
-        if self.scanning.infected_action == InfectedAction::Quarantine {
-            let quarantine = self.base_path.join("quarantine");
-            if !quarantine.exists() {
-                errors.push(
-                    "Required 'quarantine' directory does not exist (infectedAction=quarantine)"
-                        .to_string(),
-                );
-            } else if !quarantine.is_dir() {
-                errors.push("'quarantine' path exists but is not a directory".to_string());
-            }
-        }
-
-        // Validate producers exist
+        // Validate logical constraints (always check these)
         if self.producers.is_empty() {
             errors.push("Channel has no producers defined".to_string());
         }
 
-        // Validate diode_producers is subset of producers
         for diode in &self.diode_producers {
             if !self.producers.contains(diode) {
                 errors.push(format!("Diode producer '{diode}' is not in producers list"));
@@ -261,11 +244,11 @@ impl ChannelConfig {
 
     /// Load and validate configuration from file.
     pub fn load_config(config_path: &Path) -> Result<Config> {
-        let config_data = fs::read_to_string(config_path)
+        let config_data = fs::read(config_path)
             .with_context(|| format!("Failed to read config file: {}", config_path.display()))?;
 
         let mut config: Config =
-            serde_json::from_str(&config_data).with_context(|| "Failed to parse config JSON")?;
+            serde_json::from_slice(&config_data).context("Failed to parse config JSON")?;
 
         info!("Loaded configuration for {} channels", config.len());
 
@@ -326,72 +309,54 @@ impl ChannelConfig {
 
 /// Validate that no two channels share the same `base_path`.
 fn validate_unique_base_paths(config: &Config) -> Result<()> {
-    let mut seen: HashMap<PathBuf, &str> = HashMap::new();
+    let mut seen = HashMap::new();
 
     for (name, channel) in config {
         let canonical = channel
             .base_path
             .canonicalize()
             .unwrap_or_else(|_| channel.base_path.clone());
-        if let Some(existing) = seen.get(&canonical) {
-            return Err(anyhow::anyhow!(
-                "Channels '{}' and '{}' have conflicting base_path '{}'",
-                existing,
-                name,
+        if let Some(existing) = seen.insert(canonical, name) {
+            anyhow::bail!(
+                "Channels '{existing}' and '{name}' have conflicting base_path '{}'",
                 channel.base_path.display()
-            ));
+            );
         }
-        seen.insert(canonical, name);
     }
 
     Ok(())
 }
 
 /// Verify configuration file without starting daemon.
-pub fn verify_config(config_path: &Path, verbose: bool) -> Result<()> {
-    let config_data = fs::read_to_string(config_path)
+pub fn verify_config(config_path: &Path) -> Result<()> {
+    let config_data = fs::read(config_path)
         .with_context(|| format!("Failed to read config file: {}", config_path.display()))?;
 
     let config: Config =
-        serde_json::from_str(&config_data).with_context(|| "Failed to parse config JSON")?;
+        serde_json::from_slice(&config_data).context("Failed to parse config JSON")?;
 
-    info!("Loaded configuration for {} channels", config.len());
-
-    let mut total_valid = 0;
-    let mut total_invalid = 0;
-
-    for (channel_name, channel_config) in &config {
-        if verbose {
-            info!("Verifying channel '{channel_name}'...");
-        }
-
-        match channel_config.validate() {
-            Ok(()) => {
-                total_valid += 1;
-                if verbose {
-                    info!("Channel '{channel_name}': valid");
+    let (total_valid, total_invalid) =
+        config.iter().fold((0, 0), |(valid, invalid), (name, cfg)| {
+            match cfg.validate() {
+                Ok(()) => {
+                    eprintln!("Channel '{name}': valid");
+                    (valid + 1, invalid)
+                }
+                Err(errors) => {
+                    for err in &errors {
+                        eprintln!("Channel '{name}': {err}");
+                    }
+                    (valid, invalid + 1)
                 }
             }
-            Err(errors) => {
-                total_invalid += 1;
-                for err in &errors {
-                    error!("Channel '{channel_name}': {err}");
-                }
-            }
-        }
-    }
+        });
 
-    // Check base_path uniqueness
     validate_unique_base_paths(&config)?;
 
-    info!(
-        "Configuration verification complete: {total_valid} valid, {total_invalid} invalid channels"
-    );
+    eprintln!("{total_valid} valid, {total_invalid} invalid");
 
     if total_invalid > 0 {
-        return Err(anyhow::anyhow!(
-            "Configuration has {total_invalid} invalid channels"
-        ));
+        anyhow::bail!("Configuration has {total_invalid} invalid channels");
     }
 
     Ok(())

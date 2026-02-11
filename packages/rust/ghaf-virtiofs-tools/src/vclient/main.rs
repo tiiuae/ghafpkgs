@@ -1,11 +1,6 @@
 // SPDX-FileCopyrightText: 2025-2026 TII (SSRC) and the Ghaf contributors
 // SPDX-License-Identifier: Apache-2.0
 
-//! Guest daemon for on-demand virus scanning via vsock.
-//!
-//! Watches directories and streams modified files to the host proxy
-//! via virtio-vsock using the `ClamAV` INSTREAM protocol.
-
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -21,7 +16,7 @@ use ghaf_virtiofs_tools::util::{
     DEFAULT_NOTIFY_SOCKET, InfectedAction, init_logger, notify_error, notify_infected,
     wait_for_shutdown,
 };
-use ghaf_virtiofs_tools::watcher::{EventHandler, FileId, Watcher};
+use ghaf_virtiofs_tools::watcher::{EventHandler, FileId, Watcher, WatcherConfig};
 
 /// Host CID (always 2 for guest-to-host communication)
 const VMADDR_CID_HOST: u32 = 2;
@@ -192,8 +187,11 @@ async fn wait_for_local_scanner() -> Result<()> {
 }
 
 async fn run(cli: Cli) -> Result<()> {
-    let mut watcher = Watcher::new()?;
-    watcher.set_excludes(cli.exclude.clone());
+    let config = WatcherConfig {
+        excludes: cli.exclude.clone(),
+        ..WatcherConfig::new()
+    };
+    let mut watcher = Watcher::with_config(config)?;
 
     for dir in &cli.watch {
         watcher.add_recursive(dir, "")?;

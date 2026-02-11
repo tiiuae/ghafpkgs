@@ -50,25 +50,6 @@ pub trait VirusScanner: Send + Sync {
     fn scan_fd(&self, fd: BorrowedFd<'_>, path_for_logging: &Path) -> Result<ScanResult>;
 }
 
-/// No-op scanner that treats all files as clean.
-/// Use when virus scanning is disabled.
-pub struct NoopScanner;
-
-impl VirusScanner for NoopScanner {
-    fn validate_availability(&self) -> Result<()> {
-        info!("Virus scanning disabled");
-        Ok(())
-    }
-
-    fn scan_path(&self, _file_path: &Path) -> Result<ScanResult> {
-        Ok(ScanResult::Clean)
-    }
-
-    fn scan_fd(&self, _fd: BorrowedFd<'_>, _path_for_logging: &Path) -> Result<ScanResult> {
-        Ok(ScanResult::Clean)
-    }
-}
-
 /// `ClamAV` scanner using FILDES command via Unix socket.
 /// Uses file descriptor passing for TOCTOU-safe scanning.
 pub struct ClamAVScanner;
@@ -76,13 +57,10 @@ pub struct ClamAVScanner;
 impl ClamAVScanner {
     fn ping() -> std::io::Result<String> {
         let mut stream = UnixStream::connect(CLAMAV_SOCKET_PATH)?;
-        stream.write_all(b"zPING\0")?;
+        stream.write_all(b"nPING\n")?;
         let mut buf = [0u8; 64];
         let n = stream.read(&mut buf)?;
-        Ok(String::from_utf8_lossy(&buf[..n])
-            .trim_matches('\0')
-            .trim()
-            .to_string())
+        Ok(String::from_utf8_lossy(buf[..n].trim_ascii()).into_owned())
     }
 
     fn send_fd_for_scan(fd: BorrowedFd<'_>) -> std::io::Result<String> {
@@ -91,10 +69,7 @@ impl ClamAVScanner {
         stream.send_with_fd(&[0], &[fd.as_raw_fd()])?;
         let mut buf = [0u8; 4096];
         let n = stream.read(&mut buf)?;
-        Ok(String::from_utf8_lossy(&buf[..n])
-            .trim_matches('\0')
-            .trim()
-            .to_string())
+        Ok(String::from_utf8_lossy(buf[..n].trim_ascii()).into_owned())
     }
 
     /// Parse a `ClamAV` response string into a `ScanResult`.
@@ -105,10 +80,8 @@ impl ClamAVScanner {
             return ScanResult::Clean;
         }
 
-        if response.ends_with("FOUND") {
-            let signature = response
-                .rsplit_once(": ")
-                .map_or("unknown", |(_, s)| s.trim_end_matches(" FOUND"));
+        if let Some(stripped) = response.strip_suffix(" FOUND") {
+            let signature = stripped.rsplit_once(": ").map_or("unknown", |(_, s)| s);
             warn!("Virus in {name_for_logging}: {signature}");
             return ScanResult::Infected(signature.to_string());
         }

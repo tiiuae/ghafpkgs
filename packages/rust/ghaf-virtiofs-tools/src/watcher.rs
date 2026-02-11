@@ -1,11 +1,6 @@
 // SPDX-FileCopyrightText: 2025-2026 TII (SSRC) and the Ghaf contributors
 // SPDX-License-Identifier: Apache-2.0
 
-//! Inotify-based file watcher with debouncing.
-//!
-//! Provides a reusable watcher that monitors directories for file changes
-//! and emits debounced events. Used by both host and guest daemons.
-
 use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::num::NonZeroUsize;
@@ -95,19 +90,26 @@ pub trait EventHandler {
 }
 
 /// Configuration for the watcher.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct WatcherConfig {
     /// Duration to wait after last write before emitting event.
+    /// Defaults to 500ms.
     pub debounce_duration: Duration,
     /// Maximum number of pending files before forcing early processing.
+    /// Defaults to 1000.
     pub max_pending: usize,
+    /// Directories to exclude from recursive watching.
+    pub excludes: Vec<PathBuf>,
 }
 
-impl Default for WatcherConfig {
-    fn default() -> Self {
+impl WatcherConfig {
+    /// Create a new config with default values.
+    #[must_use]
+    pub const fn new() -> Self {
         Self {
             debounce_duration: DEFAULT_DEBOUNCE_DURATION,
             max_pending: DEFAULT_MAX_PENDING,
+            excludes: Vec::new(),
         }
     }
 }
@@ -150,10 +152,7 @@ impl PendingEntry {
 const MOVE_COOKIE_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Maximum entries in the loop prevention LRU cache.
-const SKIP_CACHE_SIZE: NonZeroUsize = match NonZeroUsize::new(10_000) {
-    Some(n) => n,
-    None => panic!("SKIP_CACHE_SIZE must be > 0"),
-};
+const SKIP_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(10_000).expect("non-zero");
 
 /// A pending move-from event waiting for a matching move-to.
 struct PendingMove {
@@ -187,8 +186,6 @@ pub struct Watcher {
     /// LRU cache for loop prevention: `FileId` -> ctime at write.
     /// Skip events only if ctime matches (file unchanged since we wrote it).
     skip_cache: LruCache<FileId, i64>,
-    /// Directories to exclude from recursive watching.
-    excludes: Vec<PathBuf>,
     /// Overflow backoff: consecutive overflow count.
     overflow_count: u32,
     /// Overflow backoff: time of last overflow (for reset).
@@ -201,7 +198,7 @@ impl Watcher {
     /// # Errors
     /// Returns an error if inotify initialization fails.
     pub fn new() -> Result<Self> {
-        Self::with_config(WatcherConfig::default())
+        Self::with_config(WatcherConfig::new())
     }
 
     /// Create a new watcher with custom configuration.
@@ -223,7 +220,6 @@ impl Watcher {
             pending_moves: HashMap::new(),
             ready: VecDeque::new(),
             skip_cache: LruCache::new(SKIP_CACHE_SIZE),
-            excludes: Vec::new(),
             overflow_count: 0,
             last_overflow: None,
         })
@@ -268,27 +264,24 @@ impl Watcher {
             );
 
             if let Ok(entries) = fs::read_dir(&dir) {
-                for entry in entries.flatten() {
-                    if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                        stack.push(entry.path());
-                    }
-                }
+                stack.extend(
+                    entries
+                        .flatten()
+                        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+                        .map(|e| e.path()),
+                );
             }
         }
 
         Ok(())
     }
 
-    /// Set directories to exclude from recursive watching.
-    ///
-    /// Excluded directories and their subdirectories will not be watched.
-    pub fn set_excludes(&mut self, excludes: Vec<PathBuf>) {
-        self.excludes = excludes;
-    }
-
     /// Check if a path should be excluded from watching.
     fn is_excluded(&self, path: &Path) -> bool {
-        self.excludes.iter().any(|excl| path.starts_with(excl))
+        self.config
+            .excludes
+            .iter()
+            .any(|excl| path.starts_with(excl))
     }
 
     /// Mark an inode as written with its ctime (for loop prevention).
@@ -319,23 +312,10 @@ impl Watcher {
             // Flush expired pending moves
             self.flush_expired_moves();
 
-            // Only use timeout when there are pending entries awaiting debounce
-            if let Some(timeout) = self.next_timeout() {
-                tokio::select! {
-                    biased;
-
-                    event_result = self.stream.next() => {
-                        self.process_stream_event(event_result)?;
-                    }
-
-                    () = tokio::time::sleep(timeout) => {
-                        // Timeout - flush expired pending
-                    }
-                }
-            } else {
-                // No pending entries - block on inotify stream
-                let event_result = self.stream.next().await;
-                self.process_stream_event(event_result)?;
+            // Wait for next event, with timeout if pending entries await debounce
+            let timeout = self.next_timeout().unwrap_or(Duration::MAX);
+            if let Ok(e) = tokio::time::timeout(timeout, self.stream.next()).await {
+                self.process_stream_event(e?);
             }
         }
     }
@@ -355,11 +335,13 @@ impl Watcher {
     }
 
     /// Rescan root directories after overflow.
-    fn rescan_roots(&mut self, roots: &[(PathBuf, String)]) -> usize {
+    fn rescan_roots(&mut self) -> usize {
+        let roots = std::mem::take(&mut self.roots);
         let mut count = 0;
-        for (root, source) in roots {
+        for (root, source) in &roots {
             self.rescan_directory(root, source, &mut count);
         }
+        self.roots = roots;
         count
     }
 
@@ -417,75 +399,62 @@ impl Watcher {
     // =========================================================================
 
     /// Process a single event from the inotify stream.
-    /// Returns `None` to signal stream end, `Some(())` to continue.
     fn process_stream_event(
         &mut self,
-        event_result: Option<Result<inotify::Event<std::ffi::OsString>, std::io::Error>>,
-    ) -> Option<()> {
+        event_result: Result<inotify::Event<std::ffi::OsString>, std::io::Error>,
+    ) {
         match event_result {
-            Some(Ok(event)) => {
+            Ok(event) => {
                 self.handle_inotify_event(&event.wd, event.mask, event.name, event.cookie);
-                Some(())
             }
-            Some(Err(e)) => {
+            Err(e) => {
                 warn!("Inotify read error: {e}");
-                Some(())
             }
-            None => None,
         }
     }
 
     fn next_timeout(&self) -> Option<Duration> {
         self.pending.values().map(|p| p.deadline).min().map(|d| {
-            d.saturating_duration_since(Instant::now())
-                .max(MIN_POLL_INTERVAL)
+            Some(d.saturating_duration_since(Instant::now()))
+                .filter(|r| !r.is_zero())
+                .unwrap_or(MIN_POLL_INTERVAL)
         })
     }
 
     fn flush_expired(&mut self) {
         let now = Instant::now();
-        let expired: Vec<FileId> = self
-            .pending
-            .iter()
-            .filter(|(_, p)| p.deadline <= now)
-            .map(|(id, _)| *id)
-            .collect();
-
-        for file_id in expired {
-            if let Some(entry) = self.pending.remove(&file_id) {
-                self.pending_by_path.remove(&entry.path);
-                self.ready.push_back(FileEvent {
-                    path: entry.path,
-                    source: entry.source,
-                    kind: FileEventKind::Modified,
-                });
-            }
+        for (_, PendingEntry { path, source, .. }) in
+            self.pending.extract_if(|_, p| p.deadline <= now)
+        {
+            self.pending_by_path.remove(&path);
+            self.ready.push_back(FileEvent {
+                path,
+                source,
+                kind: FileEventKind::Modified,
+            });
         }
     }
 
     fn flush_expired_moves(&mut self) {
         let now = Instant::now();
-        let expired: Vec<u32> = self
-            .pending_moves
-            .iter()
-            .filter(|(_, pm)| pm.expires <= now)
-            .map(|(cookie, _)| *cookie)
-            .collect();
-
-        for cookie in expired {
-            if let Some(pm) = self.pending_moves.remove(&cookie) {
-                // No matching MOVED_TO arrived - treat as delete (moved out of tree)
-                debug!(
-                    "Move cookie {} expired, emitting delete for {}",
-                    cookie,
-                    pm.old_path.display()
-                );
-                self.ready.push_back(FileEvent {
-                    path: pm.old_path,
-                    source: pm.source,
-                    kind: FileEventKind::Deleted,
-                });
-            }
+        for (
+            cookie,
+            PendingMove {
+                old_path, source, ..
+            },
+        ) in self.pending_moves.extract_if(|_, pm| pm.expires <= now)
+        {
+            // No matching MOVED_TO arrived - treat as delete (moved out of tree)
+            debug!(
+                "Move cookie {} expired, emitting delete for {}",
+                cookie,
+                old_path.display()
+            );
+            self.ready.push_back(FileEvent {
+                path: old_path,
+                source,
+                kind: FileEventKind::Deleted,
+            });
         }
     }
 
@@ -521,8 +490,7 @@ impl Watcher {
         self.ready.clear();
 
         // Rescan from roots
-        let roots = self.roots.clone();
-        let count = self.rescan_roots(&roots);
+        let count = self.rescan_roots();
         warn!("Overflow rescan queued {count} files");
     }
 
@@ -637,7 +605,6 @@ impl Watcher {
                         });
                         // Fall through to handle_modify for new path
                     } else {
-
                         // Already scanned -> just emit rename, no rescan needed
                         debug!(
                             "MOVED_TO cookie={cookie}: {} -> {} (scanned)",

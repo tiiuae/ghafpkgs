@@ -8,6 +8,7 @@ use std::path::Path;
 use anyhow::Result;
 use log::{debug, info, warn};
 use serde::{Deserialize, Serialize};
+use strum::{Display, EnumString};
 
 // =============================================================================
 // Logger
@@ -64,8 +65,11 @@ pub async fn wait_for_shutdown() -> Result<ShutdownSignal> {
 // =============================================================================
 
 /// Action to take when an infected file is detected.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, Display, EnumString,
+)]
 #[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase", ascii_case_insensitive)]
 pub enum InfectedAction {
     /// Log the infection but take no action on the file.
     Log,
@@ -74,29 +78,6 @@ pub enum InfectedAction {
     Delete,
     /// Move the infected file to a quarantine directory.
     Quarantine,
-}
-
-impl std::fmt::Display for InfectedAction {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Log => write!(f, "log"),
-            Self::Delete => write!(f, "delete"),
-            Self::Quarantine => write!(f, "quarantine"),
-        }
-    }
-}
-
-impl std::str::FromStr for InfectedAction {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "log" => Ok(Self::Log),
-            "delete" => Ok(Self::Delete),
-            "quarantine" => Ok(Self::Quarantine),
-            _ => Err(format!("Invalid action: {s}. Use: log, delete, quarantine")),
-        }
-    }
 }
 
 // =============================================================================

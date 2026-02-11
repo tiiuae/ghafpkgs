@@ -1,13 +1,6 @@
 // SPDX-FileCopyrightText: 2025-2026 TII (SSRC) and the Ghaf contributors
 // SPDX-License-Identifier: Apache-2.0
 
-//! Guest notification module.
-//!
-//! Notifies guest VMs over vsock when files are propagated.
-//! Guests receive channel name and trigger file browser refresh.
-//!
-//! Protocol: `channel\n`
-
 use std::collections::HashMap;
 
 use log::{debug, info, warn};
@@ -40,13 +33,6 @@ impl Notifier {
     /// Create a new notifier from channel -> VM mappings
     pub const fn new(targets: HashMap<String, Vec<NotifyTarget>>) -> Self {
         Self { targets }
-    }
-
-    /// Create an empty notifier (no-op, for when notifications disabled)
-    pub fn disabled() -> Self {
-        Self {
-            targets: HashMap::new(),
-        }
     }
 
     /// Notify all VMs subscribed to a channel to refresh.
@@ -82,38 +68,36 @@ impl Notifier {
 
 /// Build notifier from channel configurations
 pub fn build_notifier(config: &super::config::Config) -> Notifier {
-    let mut targets: HashMap<String, Vec<NotifyTarget>> = HashMap::new();
-
-    for (channel_name, channel_config) in config {
-        let Some(ref guest_notify) = channel_config.guest_notify else {
-            continue;
-        };
-
-        if guest_notify.guests.is_empty() {
-            continue;
-        }
-
-        let port = guest_notify.port;
-        let channel_targets: Vec<NotifyTarget> = guest_notify
-            .guests
+    Notifier::new(
+        config
             .iter()
-            .map(|&cid| NotifyTarget::new(cid, port))
-            .collect();
-
-        if !channel_targets.is_empty() {
-            info!(
-                "Channel '{}': guest notifications enabled for {} VMs on port {}",
-                channel_name,
-                channel_targets.len(),
-                port
-            );
-            targets.insert(channel_name.clone(), channel_targets);
-        }
-    }
-
-    if targets.is_empty() {
-        Notifier::disabled()
-    } else {
-        Notifier::new(targets)
-    }
+            .filter_map(|(name, config)| {
+                Some((
+                    name,
+                    config
+                        .guest_notify
+                        .as_ref()
+                        .filter(|gn| !gn.guests.is_empty())?,
+                ))
+            })
+            .inspect(|(name, gn)| {
+                info!(
+                    "Channel '{}': guest notifications enabled for {} VMs on port {}",
+                    name,
+                    gn.guests.len(),
+                    gn.port
+                );
+            })
+            .map(|(name, gn_config)| {
+                (
+                    name.clone(),
+                    gn_config
+                        .guests
+                        .iter()
+                        .map(|&cid| NotifyTarget::new(cid, gn_config.port))
+                        .collect(),
+                )
+            })
+            .collect(),
+    )
 }

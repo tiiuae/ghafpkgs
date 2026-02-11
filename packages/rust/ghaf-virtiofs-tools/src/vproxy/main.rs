@@ -1,14 +1,6 @@
 // SPDX-FileCopyrightText: 2025-2026 TII (SSRC) and the Ghaf contributors
 // SPDX-License-Identifier: Apache-2.0
 
-//! `ClamAV` proxy with command filtering and rate limiting.
-//!
-//! Accepts connections from guest VMs via vsock, filters `ClamAV` commands to
-//! allow only safe operations (INSTREAM, PING, VERSION), and forwards to clamd.
-//!
-//! This prevents guests from executing dangerous commands like SCAN (which
-//! could access host files) or SHUTDOWN (which would kill the scanner).
-
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
