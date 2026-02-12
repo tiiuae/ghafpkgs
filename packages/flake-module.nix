@@ -4,29 +4,27 @@
 let
   # Build all ghafpkgs packages given a pkgs set
   # This function is reused by both perSystem.packages and the overlay
+  #
+  # Uses `import` instead of `callPackage` for category directories so that
+  # the resulting attrset has statically-known attribute names.  This keeps the
+  # overlay lazy: nixpkgs's fixed-point can determine which names the overlay
+  # contributes without forcing `pkgs.callPackage` (which would cause infinite
+  # recursion when the overlay is composed with other overlays via
+  # `composeManyExtensions`).
   mkGhafpkgs =
     { pkgs, crane }:
     let
-      inherit (pkgs) callPackage lib;
+      inherit (pkgs) callPackage python3Packages;
 
-      # Filter function to remove override attributes from package sets
-      filterPackages =
-        packageSet:
-        lib.filterAttrs (
-          name: _value:
-          !(lib.elem name [
-            "override"
-            "overrideDerivation"
-          ])
-        ) packageSet;
+      artPackages = import ./art { inherit callPackage; };
+      pythonPackages = import ./python { inherit python3Packages; };
+      goPackages = import ./go { inherit callPackage; };
+      rustPackages = import ./rust {
+        inherit callPackage;
+        inherit crane;
+      };
+      cppPackages = import ./cpp { inherit callPackage; };
 
-      artPackages = filterPackages (callPackage ./art { });
-      pythonPackages = filterPackages (callPackage ./python { });
-      goPackages = filterPackages (callPackage ./go { });
-      rustPackages = filterPackages (callPackage ./rust { inherit crane; });
-      cppPackages = filterPackages (callPackage ./cpp { });
-
-      # Utility packages
       utilityPackages = {
         update-deps = callPackage ./update-deps { };
       };
