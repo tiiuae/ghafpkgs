@@ -998,7 +998,7 @@ dependencies = [
 [[package]]
 name = "cosmic-config"
 version = "1.0.0"
-source = "git+https://github.com/pop-os/libcosmic#3e78eb238159d90956e85e95e868164671b649f6"
+source = "git+https://github.com/pop-os/libcosmic#6328c40ef763e165f365d9af680912348414d17b"
 dependencies = [
  "atomicwrites",
  "cosmic-config-derive",
@@ -1019,7 +1019,7 @@ dependencies = [
 [[package]]
 name = "cosmic-config-derive"
 version = "1.0.0"
-source = "git+https://github.com/pop-os/libcosmic#3e78eb238159d90956e85e95e868164671b649f6"
+source = "git+https://github.com/pop-os/libcosmic#6328c40ef763e165f365d9af680912348414d17b"
 dependencies = [
  "quote",
  "syn 2.0.114",
@@ -1042,7 +1042,7 @@ dependencies = [
 [[package]]
 name = "cosmic-panel-config"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/cosmic-panel#8eb8a1b6305213ec7402cb2ec24bef6b501b978a"
+source = "git+https://github.com/pop-os/cosmic-panel#6a783a18c3079955ff4cde1d00eaadf8e77b869c"
 dependencies = [
  "anyhow",
  "cosmic-config",
@@ -1070,7 +1070,7 @@ dependencies = [
 [[package]]
 name = "cosmic-settings-daemon"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/dbus-settings-bindings#87c3c35666b926a24a1e8045fd70be2db1145e34"
+source = "git+https://github.com/pop-os/dbus-settings-bindings#0fa672f8dadb884001ef9a251b149ed432879629"
 dependencies = [
  "zbus 5.13.2",
 ]
@@ -1101,7 +1101,7 @@ dependencies = [
 [[package]]
 name = "cosmic-theme"
 version = "1.0.0"
-source = "git+https://github.com/pop-os/libcosmic#3e78eb238159d90956e85e95e868164671b649f6"
+source = "git+https://github.com/pop-os/libcosmic#6328c40ef763e165f365d9af680912348414d17b"
 dependencies = [
  "almost",
  "cosmic-config",
@@ -2206,7 +2206,7 @@ dependencies = [
 [[package]]
 name = "iced"
 version = "0.14.0-dev"
-source = "git+https://github.com/pop-os/libcosmic#3e78eb238159d90956e85e95e868164671b649f6"
+source = "git+https://github.com/pop-os/libcosmic#6328c40ef763e165f365d9af680912348414d17b"
 dependencies = [
  "dnd",
  "iced_accessibility",
@@ -2224,7 +2224,7 @@ dependencies = [
 [[package]]
 name = "iced_accessibility"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/libcosmic#3e78eb238159d90956e85e95e868164671b649f6"
+source = "git+https://github.com/pop-os/libcosmic#6328c40ef763e165f365d9af680912348414d17b"
 dependencies = [
  "accesskit",
  "accesskit_winit",
@@ -2233,7 +2233,7 @@ dependencies = [
 [[package]]
 name = "iced_core"
 version = "0.14.0-dev"
-source = "git+https://github.com/pop-os/libcosmic#3e78eb238159d90956e85e95e868164671b649f6"
+source = "git+https://github.com/pop-os/libcosmic#6328c40ef763e165f365d9af680912348414d17b"
 dependencies = [
  "bitflags 2.10.0",
  "bytes",
@@ -2257,7 +2257,7 @@ dependencies = [
 [[package]]
 name = "iced_futures"
 version = "0.14.0-dev"
-source = "git+https://github.com/pop-os/libcosmic#3e78eb238159d90956e85e95e868164671b649f6"
+source = "git+https://github.com/pop-os/libcosmic#6328c40ef763e165f365d9af680912348414d17b"
 dependencies = [
  "futures",
  "iced_core",
@@ -2283,7 +2283,7 @@ dependencies = [
 [[package]]
 name = "iced_graphics"
 version = "0.14.0-dev"
-source = "git+https://github.com/pop-os/libcosmic#3e78eb238159d90956e85e95e868164671b649f6"
+source = "git+https://github.com/pop-os/libcosmic#6328c40ef763e165f365d9af680912348414d17b"
 dependencies = [
  "bitflags 2.10.0",
  "bytemuck",
@@ -2305,7 +2305,7 @@ dependencies = [
 [[package]]
 name = "iced_renderer"
 version = "0.14.0-dev"
-source = "git+https://github.com/pop-os/libcosmic#3e78eb238159d90956e85e95e868164671b649f6"
+source = "git+https://github.com/pop-os/libcosmic#6328c40ef763e165f365d9af680912348414d17b"
 dependencies = [
  "iced_graphics",
  "iced_tiny_skia",
@@ -2317,7 +2317,7 @@ dependencies = [
 [[package]]
 name = "iced_runtime"
 version = "0.14.0-dev"
-source = "git+https://github.com/pop-os/libcosmic#3e78eb238159d90956e85e95e868164671b649f6"
+source = "git+https://github.com/pop-os/libcosmic#6328c40ef763e165f365d9af680912348414d17b"
 dependencies = [
  "bytes",
  "cosmic-client-toolkit",
@@ -2332,7 +2332,7 @@ dependencies = [
 [[package]]
 name = "iced_tiny_skia"
 version = "0.14.0-dev"
-source = "git+https://github.com/pop-os/libcosmic#3e78eb238159d90956e85e95e868164671b649f6"
+source = "git+https://github.com/pop-os/libcosmic#6328c40ef763e165f365d9af680912348414d17b"
 dependencies = [
  "bytemuck",
  "cosmic-text",
@@ -2348,7 +2348,7 @@ dependencies = [
 [[package]]
 name = "iced_wgpu"
 version = "0.14.0-dev"
-source = "git+https://github.com/pop-os/libcosmic#3e78eb238159d90956e85e95e868164671b649f6"
+source = "git+https://github.com/pop-os/libcosmic#6328c40ef763e165f365d9af680912348414d17b"
 dependencies = [
  "as-raw-xcb-connection",
  "bitflags 2.10.0",
@@ -2379,7 +2379,7 @@ dependencies = [
 [[package]]
 name = "iced_widget"
 version = "0.14.0-dev"
-source = "git+https://github.com/pop-os/libcosmic#3e78eb238159d90956e85e95e868164671b649f6"
+source = "git+https://github.com/pop-os/libcosmic#6328c40ef763e165f365d9af680912348414d17b"
 dependencies = [
  "cosmic-client-toolkit",
  "dnd",
@@ -2398,7 +2398,7 @@ dependencies = [
 [[package]]
 name = "iced_winit"
 version = "0.14.0-dev"
-source = "git+https://github.com/pop-os/libcosmic#3e78eb238159d90956e85e95e868164671b649f6"
+source = "git+https://github.com/pop-os/libcosmic#6328c40ef763e165f365d9af680912348414d17b"
 dependencies = [
  "cosmic-client-toolkit",
  "dnd",
@@ -2770,7 +2770,7 @@ checksum = "bcc35a38544a891a5f7c865aca548a982ccb3b8650a5b06d0fd33a10283c56fc"
 [[package]]
 name = "libcosmic"
 version = "1.0.0"
-source = "git+https://github.com/pop-os/libcosmic#3e78eb238159d90956e85e95e868164671b649f6"
+source = "git+https://github.com/pop-os/libcosmic#6328c40ef763e165f365d9af680912348414d17b"
 dependencies = [
  "apply",
  "ashpd 0.12.1",
@@ -6253,7 +6253,7 @@ dependencies = [
 [[package]]
 name = "xdg-shell-wrapper-config"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/cosmic-panel#8eb8a1b6305213ec7402cb2ec24bef6b501b978a"
+source = "git+https://github.com/pop-os/cosmic-panel#6a783a18c3079955ff4cde1d00eaadf8e77b869c"
 dependencies = [
  "serde",
  "wayland-protocols-wlr",
