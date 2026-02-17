@@ -36,7 +36,10 @@ Ensure these libraries are installed on your system before building the program.
 Use `g++` with `pkg-config` to compile:
 
 ```bash
-g++ -o dbus-proxy dbus-proxy.cpp $(pkg-config --cflags --libs gio-2.0 glib-2.0)
+mkdir build
+cd build
+cmake ..
+make
 ```
 
 ---
@@ -63,13 +66,9 @@ g++ -o dbus-proxy dbus-proxy.cpp $(pkg-config --cflags --libs gio-2.0 glib-2.0)
 | `--proxy-bus-name`      | Bus name to expose on the target bus.       |
 | `--source-bus-type`     | Type of source bus: `system` or `session`.  |
 | `--target-bus-type`     | Type of target bus: `system` or `session`.  |
-| `--nm-mode`             | Enable NetworkManager mode.                 |
 | `--verbose`             | Enable verbose logging.                     |
 | `--help`                | Show usage information.                     |
 
-Environment variable:
-| `NM_SECRET_AGENT_XML`   | Path to the SecretAgent.xml D-Bus interface |
-|                         | file used in --nm-mode.                     |
 
 ---
 
