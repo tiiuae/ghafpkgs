@@ -31,6 +31,39 @@ warn() { echo -e "${YELLOW}[WARN]${NC} $*"; WARN_COUNT=$((WARN_COUNT + 1)); }
 fail() { echo -e "${RED}[FAIL]${NC} $*"; FAIL_COUNT=$((FAIL_COUNT + 1)); }
 pass() { echo -e "${GREEN}[PASS]${NC} $*"; PASS_COUNT=$((PASS_COUNT + 1)); }
 
+# Wait until a Unix socket file exists and dbus-daemon responds, or timeout
+wait_for_socket() {
+  local sock="$1"
+  local _i
+  for _i in $(seq 1 40); do
+    [[ -S "$sock" ]] && \
+      DBUS_SESSION_BUS_ADDRESS="unix:path=$sock" \
+        dbus-send --session --print-reply \
+          --dest=org.freedesktop.DBus \
+          /org/freedesktop/DBus \
+          org.freedesktop.DBus.ListNames &>/dev/null && return 0
+    sleep 0.25
+  done
+  return 1
+}
+
+# Wait until a D-Bus well-known name appears on a bus (via its socket), or timeout
+wait_for_name() {
+  local sock="$1"
+  local name="$2"
+  local _i names
+  for _i in $(seq 1 40); do
+    names=$(DBUS_SESSION_BUS_ADDRESS="unix:path=$sock" \
+      dbus-send --session --print-reply \
+        --dest=org.freedesktop.DBus \
+        /org/freedesktop/DBus \
+        org.freedesktop.DBus.ListNames 2>/dev/null || true)
+    echo "$names" | grep -q "$name" && return 0
+    sleep 0.5
+  done
+  return 1
+}
+
 cleanup() {
   log "Cleaning up..."
   for pid in "${PIDS[@]}"; do
@@ -124,7 +157,8 @@ PIDS+=("$TARGET_PID")
 
 log "Source bus: unix:path=$SOURCE_SOCK (PID $SOURCE_PID)"
 log "Target bus: unix:path=$TARGET_SOCK (PID $TARGET_PID)"
-sleep 0.5
+wait_for_socket "$SOURCE_SOCK" || { fail "Source dbus-daemon did not start"; exit 1; }
+wait_for_socket "$TARGET_SOCK" || { fail "Target dbus-daemon did not start"; exit 1; }
 
 # --- Step 2: Start dbus-proxy in SNI mode (optionally under valgrind) ---
 VALGRIND_LOG="/tmp/test-sni-valgrind-$$.log"
@@ -149,8 +183,13 @@ else
 fi
 PROXY_PID=$!
 PIDS+=("$PROXY_PID")
-sleep 2
 
+# Wait until the proxy registers StatusNotifierWatcher on the source bus (up to 20s)
+if ! wait_for_name "$SOURCE_SOCK" "org.kde.StatusNotifierWatcher"; then
+  fail "Proxy did not register StatusNotifierWatcher within timeout"
+  cat /tmp/test-sni-proxy-$$.log
+  exit 1
+fi
 if ! kill -0 "$PROXY_PID" 2>/dev/null; then
   fail "Proxy crashed at startup"
   cat /tmp/test-sni-proxy-$$.log
@@ -163,7 +202,9 @@ log "Starting fake SNI item on source bus..."
 ITEM_LOG="/tmp/test-sni-item-$$.log"
 ITEM_PID=$(start_fake_item "$ITEM_LOG")
 PIDS+=("$ITEM_PID")
-sleep 3
+
+# Wait until the item is proxied on the target bus (up to 20s)
+wait_for_name "$TARGET_SOCK" "StatusNotifierItem-99999" || true
 
 # --- Step 4a: Watcher on source bus ---
 SOURCE_NAMES=$(source_send --dest=org.freedesktop.DBus \
@@ -309,7 +350,9 @@ exec(open('$SCRIPT_DIR/sni_item.py').read().replace('StatusNotifierItem-99999-1'
   echo $!
 )
 PIDS+=("$ITEM2_PID")
-sleep 3
+
+# Wait until the second item is proxied on the target bus (up to 20s)
+wait_for_name "$TARGET_SOCK" "StatusNotifierItem-88888" || true
 
 TARGET_NAMES2=$(target_send --dest=org.freedesktop.DBus \
     /org/freedesktop/DBus org.freedesktop.DBus.ListNames)
