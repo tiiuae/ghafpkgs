@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: 2022-2026 TII (SSRC) and the Ghaf contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# Valgrind suppression file for SNI proxy tests.
+#
+# All suppressed issues originate from third-party libraries (GTK4, Mesa/EGL,
+# fontconfig, pango) that are initialised transitively by gtk_init_check() for
+# XDG activation token support.  None are bugs in dbus-proxy itself.
+
+# --------------------------------------------------------------------------
+# Mesa/EGL: uninitialized value in dri2_setup_extensions (X11 EGL path).
+# Triggered when GTK4 tries to set up an EGL context on an X11 display.
+# --------------------------------------------------------------------------
+{
+   mesa_egl_dri2_setup_extensions_uninit
+   Memcheck:Cond
+   fun:dri2_setup_extensions
+   fun:dri2_initialize_x11
+   fun:dri2_initialize
+   fun:eglInitialize
+}
+
+# --------------------------------------------------------------------------
+# fontconfig: FcPattern allocation that pango's font-scan thread does not
+# free before process exit.  This is a known fontconfig behaviour and is
+# suppressed upstream in many projects.
+# --------------------------------------------------------------------------
+{
+   fontconfig_FcPatternObjectInsertElt_leak
+   Memcheck:Leak
+   match-leak-kinds: definite,indirect
+   fun:malloc
+   fun:FcPatternObjectInsertElt
+   fun:FcPatternObjectAddWithBinding
+   fun:FcPatternAppend
+   fun:FcEndElement
+}
+
+# fontconfig: strdup'd string inside FcPatternObjectAddWithBinding (child of
+# the FcPatternObjectInsertElt block above, reported separately as indirect).
+{
+   fontconfig_FcValueSave_leak
+   Memcheck:Leak
+   match-leak-kinds: indirect
+   ...
+   fun:FcValueSave
+   fun:FcPatternObjectAddWithBinding
+   fun:FcPatternAppend
+   fun:FcEndElement
+}
+
+# fontconfig: calloc inside FcPatternObjectAddWithBinding for value storage
+# (another indirect child of the FcPatternObjectInsertElt parent block).
+{
+   fontconfig_FcPatternObjectAddWithBinding_calloc_leak
+   Memcheck:Leak
+   match-leak-kinds: indirect
+   ...
+   fun:FcPatternObjectAddWithBinding
+   fun:FcPatternAppend
+   fun:FcEndElement
+}
+
+# GTK4 X11: atom name table allocated during device manager construction.
+# gdk_x11_get_xatom_by_name_for_display stores X11 atom names in a hash
+# table that is intentionally kept alive for the lifetime of the display.
+{
+   gdk_x11_atom_table_leak
+   Memcheck:Leak
+   match-leak-kinds: indirect
+   ...
+   fun:g_strdup
+   fun:insert_atom_pair
+   fun:gdk_x11_get_xatom_by_name_for_display
+}

@@ -2,8 +2,17 @@
 # SPDX-License-Identifier: Apache-2.0
 {
   stdenv,
+  cmake,
   pkg-config,
   glib,
+  gdk-pixbuf,
+  gtk4,
+  util-linux,
+  cppcheck,
+  valgrind,
+  dbus,
+  python3,
+  gobject-introspection,
   lib,
 }:
 stdenv.mkDerivation {
@@ -12,12 +21,25 @@ stdenv.mkDerivation {
 
   src = ./dbus-proxy;
 
-  nativeBuildInputs = [ pkg-config ];
-  buildInputs = [ glib ];
+  nativeBuildInputs = [
+    cmake
+    pkg-config
+    cppcheck
+    valgrind
+    dbus
+    (python3.withPackages (ps: [ ps.pygobject3 ]))
+    gobject-introspection
+  ];
+  buildInputs = [
+    glib
+    gdk-pixbuf
+    gtk4
+    util-linux
+  ];
 
-  installPhase = ''
-    mkdir -p $out/bin
-    install -Dm755 dbus-proxy $out/bin/dbus-proxy
+  doCheck = true;
+  checkPhase = ''
+    bash ../tests/sni.sh ./dbus-proxy
   '';
 
   meta = {
