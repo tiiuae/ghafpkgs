@@ -78,18 +78,19 @@ sni_node_info = None
 menu_node_info = None
 
 
-def on_sni_method_call(connection, sender, object_path, interface_name,
-                       method_name, parameters, invocation):
+def on_sni_method_call(
+    connection, sender, object_path, interface_name, method_name, parameters, invocation
+):
     print(f"[SNI] Method call: {interface_name}.{method_name} from {sender}")
     if method_name in ("Activate", "SecondaryActivate", "ContextMenu", "Scroll"):
         invocation.return_value(None)
     else:
-        invocation.return_dbus_error("org.freedesktop.DBus.Error.UnknownMethod",
-                                     f"Unknown method: {method_name}")
+        invocation.return_dbus_error(
+            "org.freedesktop.DBus.Error.UnknownMethod", f"Unknown method: {method_name}"
+        )
 
 
-def on_sni_get_property(connection, sender, object_path, interface_name,
-                        property_name):
+def on_sni_get_property(connection, sender, object_path, interface_name, property_name):
     print(f"[SNI] Get property: {property_name} from {sender}")
     props = {
         "Category": GLib.Variant("s", "ApplicationStatus"),
@@ -102,20 +103,23 @@ def on_sni_get_property(connection, sender, object_path, interface_name,
     return props.get(property_name)
 
 
-def on_menu_method_call(connection, sender, object_path, interface_name,
-                        method_name, parameters, invocation):
+def on_menu_method_call(
+    connection, sender, object_path, interface_name, method_name, parameters, invocation
+):
     print(f"[Menu] Method call: {interface_name}.{method_name} from {sender}")
     if method_name == "GetLayout":
         # Return a minimal empty menu layout
         layout = GLib.Variant("(u(ia{sv}av))", (1, (0, {}, [])))
         invocation.return_value(layout)
     else:
-        invocation.return_dbus_error("org.freedesktop.DBus.Error.UnknownMethod",
-                                     f"Unknown method: {method_name}")
+        invocation.return_dbus_error(
+            "org.freedesktop.DBus.Error.UnknownMethod", f"Unknown method: {method_name}"
+        )
 
 
-def on_menu_get_property(connection, sender, object_path, interface_name,
-                         property_name):
+def on_menu_get_property(
+    connection, sender, object_path, interface_name, property_name
+):
     print(f"[Menu] Get property: {property_name} from {sender}")
     props = {
         "Version": GLib.Variant("u", 3),
@@ -127,7 +131,7 @@ def on_menu_get_property(connection, sender, object_path, interface_name,
 def on_bus_acquired(connection, name):
     global sni_node_info, menu_node_info
 
-    print(f"[*] Bus acquired, registering objects...")
+    print("[*] Bus acquired, registering objects...")
 
     # Register SNI object
     sni_node_info = Gio.DBusNodeInfo.new_for_xml(SNI_XML)
@@ -138,7 +142,7 @@ def on_bus_acquired(connection, name):
         on_sni_get_property,
         None,
     )
-    print(f"[*] Registered /StatusNotifierItem")
+    print("[*] Registered /StatusNotifierItem")
 
     # Register dbusmenu object
     menu_node_info = Gio.DBusNodeInfo.new_for_xml(DBUSMENU_XML)
@@ -149,7 +153,7 @@ def on_bus_acquired(connection, name):
         on_menu_get_property,
         None,
     )
-    print(f"[*] Registered /com/canonical/dbusmenu")
+    print("[*] Registered /com/canonical/dbusmenu")
 
 
 def on_name_acquired(connection, name):
@@ -174,7 +178,7 @@ def on_name_acquired(connection, name):
     except Exception as e:
         print(f"[*] Watcher registration skipped (normal if no watcher): {e}")
 
-    print(f"[*] Fake SNI item is running. Press Ctrl+C to quit.")
+    print("[*] Fake SNI item is running. Press Ctrl+C to quit.")
 
 
 def on_name_lost(connection, name):
