@@ -33,6 +33,11 @@ add_executable(dbus-proxy
     sni/proxy.cpp
 )
 
+target_include_directories(dbus-proxy PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/sni
+)
+
 target_compile_options(dbus-proxy PRIVATE -Wall -Wextra -g)
 
 target_link_libraries(dbus-proxy PRIVATE

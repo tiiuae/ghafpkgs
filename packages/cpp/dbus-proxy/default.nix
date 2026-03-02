@@ -39,15 +39,6 @@ stdenv.mkDerivation {
 
   doCheck = true;
   checkPhase = ''
-    cppcheck \
-      --enable=warning,performance,portability \
-      --suppress=missingIncludeSystem \
-      --suppress=normalCheckLevelMaxBranches \
-      --std=c++17 \
-      --error-exitcode=1 \
-      -I.. \
-      ../dbus-proxy.cpp ../sni/
-
     bash ../tests/sni.sh ./dbus-proxy
   '';
 

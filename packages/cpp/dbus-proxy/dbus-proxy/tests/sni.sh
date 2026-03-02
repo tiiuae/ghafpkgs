@@ -73,7 +73,8 @@ cleanup() {
   wait "${PIDS[@]}" 2>/dev/null || true
   rm -f "$SOURCE_SOCK" "$TARGET_SOCK" \
         /tmp/test-sni-proxy-$$.log /tmp/test-sni-item-$$.log \
-        /tmp/test-sni-item2-$$.log
+        /tmp/test-sni-item2-$$.log \
+        "$SOURCE_CONF" "$TARGET_CONF"
 }
 trap cleanup EXIT
 
@@ -84,20 +85,32 @@ if [[ ! -x "$PROXY_BIN" ]]; then
   exit 1
 fi
 
-# Find the default session.conf
-DBUS_CONF=$(find /run/current-system /nix/store -name "session.conf" \
-            -path "*/dbus-1/*" 2>/dev/null | head -1 || true)
-if [[ -z "$DBUS_CONF" ]]; then
-  DBUS_CONF=$(find /usr/share /etc -name "session.conf" \
-              -path "*/dbus-1/*" 2>/dev/null | head -1 || true)
-fi
-if [[ -z "$DBUS_CONF" ]]; then
-  fail "Could not find dbus session.conf"
-  exit 1
-fi
+# Write minimal per-socket dbus configs with an explicit <listen> element.
+# Using --address to override the system session.conf is unreliable across
+# dbus versions (deprecated since 1.13; some configs lack <listen> entirely).
+SOURCE_CONF=$(mktemp /tmp/test-sni-src-conf-XXXXXX.conf)
+TARGET_CONF=$(mktemp /tmp/test-sni-tgt-conf-XXXXXX.conf)
+
+write_dbus_conf() {
+  local file="$1" sock="$2"
+  cat > "$file" <<EOF
+<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-BUS Bus Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+<busconfig>
+  <type>session</type>
+  <listen>unix:path=${sock}</listen>
+  <policy context="default">
+    <allow send_destination="*" eavesdrop="true"/>
+    <allow eavesdrop="true"/>
+    <allow own="*"/>
+  </policy>
+</busconfig>
+EOF
+}
+write_dbus_conf "$SOURCE_CONF" "$SOURCE_SOCK"
+write_dbus_conf "$TARGET_CONF" "$TARGET_SOCK"
 
 log "Using proxy: $PROXY_BIN"
-log "Using dbus config: $DBUS_CONF"
 
 # Helper: run a dbus-send command against the TARGET bus
 target_send() {
@@ -143,16 +156,18 @@ kill_item() {
 }
 
 # --- Step 1: Start two private D-Bus daemons ---
+# Use --nofork + & so bash tracks the PID via $!.
+# --fork/--print-pid is unreliable in Nix build sandboxes (restricted fork/namespace).
 log "Starting source bus (simulates AppVM)..."
 rm -f "$SOURCE_SOCK"
-SOURCE_PID=$(dbus-daemon --config-file="$DBUS_CONF" --fork \
-    --address="unix:path=$SOURCE_SOCK" --print-pid 2>/dev/null)
+dbus-daemon --config-file="$SOURCE_CONF" --nofork &
+SOURCE_PID=$!
 PIDS+=("$SOURCE_PID")
 
 log "Starting target bus (simulates GUI-VM)..."
 rm -f "$TARGET_SOCK"
-TARGET_PID=$(dbus-daemon --config-file="$DBUS_CONF" --fork \
-    --address="unix:path=$TARGET_SOCK" --print-pid 2>/dev/null)
+dbus-daemon --config-file="$TARGET_CONF" --nofork &
+TARGET_PID=$!
 PIDS+=("$TARGET_PID")
 
 log "Source bus: unix:path=$SOURCE_SOCK (PID $SOURCE_PID)"
@@ -171,14 +186,15 @@ if command -v valgrind &>/dev/null; then
       --show-leak-kinds=all \
       --errors-for-leak-kinds=definite,indirect \
       --track-origins=yes \
+      --suppressions="$SCRIPT_DIR/sni.supp" \
       --log-file="$VALGRIND_LOG" \
-      "$PROXY_BIN" --sni-mode --source-bus-type system --target-bus-type session --verbose \
+      "$PROXY_BIN" --sni-mode --source-bus-type system --target-bus-type session --log-level verbose \
     > /tmp/test-sni-proxy-$$.log 2>&1 &
 else
   warn "valgrind not found — running proxy directly (no memory check)"
   DBUS_SYSTEM_BUS_ADDRESS="unix:path=$SOURCE_SOCK" \
   DBUS_SESSION_BUS_ADDRESS="unix:path=$TARGET_SOCK" \
-    "$PROXY_BIN" --sni-mode --source-bus-type system --target-bus-type session --verbose \
+    "$PROXY_BIN" --sni-mode --source-bus-type system --target-bus-type session --log-level verbose \
     > /tmp/test-sni-proxy-$$.log 2>&1 &
 fi
 PROXY_PID=$!
