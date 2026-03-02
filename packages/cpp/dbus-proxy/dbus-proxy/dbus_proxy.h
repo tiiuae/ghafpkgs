@@ -12,11 +12,6 @@
 #include <gio/gio.h>
 #include <glib.h>
 
-// Forward declaration for SniProxy (C++ class)
-#ifdef __cplusplus
-class SniProxy;
-#endif
-
 // Configuration structure
 typedef struct {
   gchar *source_bus_name;
@@ -53,9 +48,6 @@ typedef struct {
   guint sigint_source_id;
   guint sigterm_source_id;
   GMainLoop *main_loop;
-#ifdef __cplusplus
-  SniProxy *sni;
-#endif
 } ProxyState;
 
 struct ProxiedObject {

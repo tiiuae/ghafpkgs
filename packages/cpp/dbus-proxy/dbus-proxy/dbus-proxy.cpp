@@ -120,12 +120,10 @@ int main(int argc, gchar *argv[]) {
   // SNI mode: different initialization path
   if (proxy_state->config.sni_mode) {
     log_info("Starting SNI proxy mode");
-    proxy_state->sni =
-        new SniProxy(proxy_state->source_bus, proxy_state->target_bus);
-    if (!proxy_state->sni->init()) {
+    auto sni =
+        SniProxy::create(proxy_state->source_bus, proxy_state->target_bus);
+    if (!sni) {
       log_error("Failed to initialize SNI mode");
-      delete proxy_state->sni;
-      proxy_state->sni = nullptr;
       cleanup_proxy_state();
       return 1;
     }
@@ -134,8 +132,7 @@ int main(int argc, gchar *argv[]) {
     g_main_loop_run(proxy_state->main_loop);
 
     g_main_loop_unref(proxy_state->main_loop);
-    delete proxy_state->sni;
-    proxy_state->sni = nullptr;
+    sni.reset(); // destroy SniProxy before bus connections are closed
     cleanup_proxy_state();
     return 0;
   }
