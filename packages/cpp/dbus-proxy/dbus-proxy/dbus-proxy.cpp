@@ -14,6 +14,7 @@
  */
 
 #include "dbus_proxy.h"
+#include "./sni/proxy.h"
 
 int main(int argc, gchar *argv[]) {
   // Default configuration
@@ -22,6 +23,7 @@ int main(int argc, gchar *argv[]) {
                         .proxy_bus_name = nullptr,
                         .source_bus_type = G_BUS_TYPE_SYSTEM,
                         .target_bus_type = G_BUS_TYPE_SESSION,
+                        .sni_mode = FALSE,
                         .verbose = FALSE,
                         .info = FALSE};
 
@@ -40,6 +42,8 @@ int main(int argc, gchar *argv[]) {
        "Bus type of the source (system|session)", "TYPE"},
       {"target-bus-type", 0, 0, G_OPTION_ARG_STRING, &opt_target_bus_type,
        "Bus type of the proxy (system|session)", "TYPE"},
+      {"sni-mode", 0, 0, G_OPTION_ARG_NONE, &config.sni_mode,
+       "Enable SNI (StatusNotifierItem) proxy mode", nullptr},
       {"verbose", 0, 0, G_OPTION_ARG_NONE, &config.verbose,
        "Enable verbose output", nullptr},
       {"info", 0, 0, G_OPTION_ARG_NONE, &config.info, "Show additional info",
@@ -71,12 +75,25 @@ int main(int argc, gchar *argv[]) {
     g_free(opt_target_bus_type);
   }
 
-  if (!config.source_bus_name || config.source_bus_name[0] == '\0' ||
-      !config.source_object_path || config.source_object_path[0] == '\0' ||
-      !config.proxy_bus_name || config.proxy_bus_name[0] == '\0') {
-    log_error("Error: --source-bus-name, --source-object-path, and "
-              "--proxy-bus-name are required.");
-    return 1;
+  if (config.sni_mode) {
+    // SNI mode: proxy dynamic StatusNotifierItem services
+    if (!config.source_bus_name)
+      config.source_bus_name = g_strdup(SNI_WATCHER_BUS_NAME);
+    if (!config.source_object_path)
+      config.source_object_path = g_strdup(SNI_WATCHER_OBJECT_PATH);
+    if (!config.proxy_bus_name)
+      config.proxy_bus_name = g_strdup(SNI_WATCHER_BUS_NAME);
+  }
+
+  if (!config.sni_mode) {
+    // Ensure required parameters are provided
+    if (!config.source_bus_name || config.source_bus_name[0] == '\0' ||
+        !config.source_object_path || config.source_object_path[0] == '\0' ||
+        !config.proxy_bus_name || config.proxy_bus_name[0] == '\0') {
+      log_error("Error: --source-bus-name, --source-object-path, and "
+                "--proxy-bus-name are required unless --sni-mode is used.");
+      return 1;
+    }
   }
   validateProxyConfigOrExit(&config);
 
@@ -100,6 +117,30 @@ int main(int argc, gchar *argv[]) {
     return 1;
   }
 
+  // SNI mode: different initialization path
+  if (proxy_state->config.sni_mode) {
+    log_info("Starting SNI proxy mode");
+    proxy_state->sni =
+        new SniProxy(proxy_state->source_bus, proxy_state->target_bus);
+    if (!proxy_state->sni->init()) {
+      log_error("Failed to initialize SNI mode");
+      delete proxy_state->sni;
+      proxy_state->sni = nullptr;
+      cleanup_proxy_state();
+      return 1;
+    }
+
+    proxy_state->main_loop = g_main_loop_new(nullptr, FALSE);
+    g_main_loop_run(proxy_state->main_loop);
+
+    g_main_loop_unref(proxy_state->main_loop);
+    delete proxy_state->sni;
+    proxy_state->sni = nullptr;
+    cleanup_proxy_state();
+    return 0;
+  }
+
+  // Fetch introspection data from source
   if (!fetch_introspection_data()) {
     cleanup_proxy_state();
     return 1;
