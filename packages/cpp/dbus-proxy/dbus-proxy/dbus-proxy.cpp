@@ -18,6 +18,7 @@
  */
 
 #include "./gdbusprivate.h"
+#include "./sni/proxy.h"
 #include <gio/gio.h>
 #include <glib-unix.h>
 #include <glib.h>
@@ -31,6 +32,7 @@ typedef struct {
   GBusType source_bus_type;
   GBusType target_bus_type;
   gboolean nm_mode;
+  gboolean sni_mode;
   gboolean verbose;
   gboolean info;
 } ProxyConfig;
@@ -57,6 +59,7 @@ typedef struct {
   guint sigint_source_id;
   guint sigterm_source_id;
   GMainLoop *main_loop;
+  SniProxy *sni; // Non-null when sni_mode is active
 } ProxyState;
 
 // Structure to track proxied objects
@@ -65,6 +68,7 @@ typedef struct {
   GDBusNodeInfo *node_info;
   GHashTable *registration_ids; // interface_name -> registration_id
 } ProxiedObject;
+
 static ProxyState *proxy_state = nullptr;
 
 // Logging functions
@@ -1332,6 +1336,7 @@ int main(int argc, char *argv[]) {
                         .source_bus_type = G_BUS_TYPE_SYSTEM,
                         .target_bus_type = G_BUS_TYPE_SESSION,
                         .nm_mode = FALSE,
+                        .sni_mode = FALSE,
                         .verbose = FALSE,
                         .info = FALSE};
 
@@ -1353,6 +1358,8 @@ int main(int argc, char *argv[]) {
        "Bus type of the proxy (system|session)", "TYPE"},
       {"nm-mode", 0, 0, G_OPTION_ARG_NONE, &config.nm_mode,
        "Enable NetworkManager mode", nullptr},
+      {"sni-mode", 0, 0, G_OPTION_ARG_NONE, &config.sni_mode,
+       "Enable SNI (StatusNotifierItem) proxy mode", nullptr},
       {"verbose", 0, 0, G_OPTION_ARG_NONE, &config.verbose,
        "Enable verbose output", nullptr},
       {"info", 0, 0, G_OPTION_ARG_NONE, &config.info, "Show additional info",
@@ -1385,6 +1392,16 @@ int main(int argc, char *argv[]) {
     g_free(opt_target_bus_type);
   }
 
+  if (config.sni_mode) {
+    // SNI mode: proxy dynamic StatusNotifierItem services
+    if (!config.source_bus_name)
+      config.source_bus_name = g_strdup(SNI_WATCHER_BUS_NAME);
+    if (!config.source_object_path)
+      config.source_object_path = g_strdup(SNI_WATCHER_OBJECT_PATH);
+    if (!config.proxy_bus_name)
+      config.proxy_bus_name = g_strdup(SNI_WATCHER_BUS_NAME);
+  }
+
   if (config.nm_mode) {
     // In NetworkManager mode, we proxy NetworkManager's D-Bus interface
     if (!config.source_bus_name)
@@ -1393,14 +1410,16 @@ int main(int argc, char *argv[]) {
       config.source_object_path = g_strdup(DBUS_OBJECT_PATH_NETWORK_MANAGER);
     if (!config.proxy_bus_name)
       config.proxy_bus_name = g_strdup(DBUS_INTERFACE_NETWORK_MANAGER);
+  }
 
-  } else {
+  if (!config.sni_mode && !config.nm_mode) {
     // Ensure required parameters are provided
     if (!config.source_bus_name || config.source_bus_name[0] == '\0' ||
         !config.source_object_path || config.source_object_path[0] == '\0' ||
         !config.proxy_bus_name || config.proxy_bus_name[0] == '\0') {
       log_error("Error: --source-bus-name, --source-object-path, and "
-                "--proxy-bus-name are required unless --nm-mode is used.");
+                "--proxy-bus-name are required unless --nm-mode or --sni-mode "
+                "is used.");
       return 1;
     }
   }
@@ -1424,6 +1443,29 @@ int main(int argc, char *argv[]) {
   if (!connect_to_buses()) {
     cleanup_proxy_state();
     return 1;
+  }
+
+  // SNI mode: different initialization path
+  if (proxy_state->config.sni_mode) {
+    log_info("Starting SNI proxy mode");
+    proxy_state->sni =
+        new SniProxy(proxy_state->source_bus, proxy_state->target_bus);
+    if (!proxy_state->sni->init()) {
+      log_error("Failed to initialize SNI mode");
+      delete proxy_state->sni;
+      proxy_state->sni = nullptr;
+      cleanup_proxy_state();
+      return 1;
+    }
+
+    proxy_state->main_loop = g_main_loop_new(nullptr, FALSE);
+    g_main_loop_run(proxy_state->main_loop);
+
+    g_main_loop_unref(proxy_state->main_loop);
+    delete proxy_state->sni;
+    proxy_state->sni = nullptr;
+    cleanup_proxy_state();
+    return 0;
   }
 
   // Fetch introspection data from source
