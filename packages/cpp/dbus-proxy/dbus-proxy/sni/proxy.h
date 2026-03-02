@@ -53,8 +53,9 @@ public:
   SniProxy(GDBusConnection *source_bus, GDBusConnection *target_bus);
   ~SniProxy();
 
-  // Initialize SNI proxy (register watcher, subscribe to signals, scan)
-  gboolean init();
+  // Construct and initialize in one step; returns nullptr on failure.
+  static std::unique_ptr<SniProxy> create(GDBusConnection *source_bus,
+                                          GDBusConnection *target_bus);
 
   // Used by on_activate_before_event (file-level callback)
   static void method_reply_callback(GObject *source, GAsyncResult *res,
@@ -79,6 +80,9 @@ private:
   // Source bus monitoring
   guint name_owner_changed_sub_ = 0;
   int proxy_counter_ = 0; // counter for generated proxy bus names
+
+  // Set to true by constructor on successful initialization
+  bool initialized_ = false;
 
   // GDK Wayland display for XDG activation token generation
   GdkDisplay *wayland_display_ = nullptr;
@@ -298,8 +302,9 @@ private:
       "  </interface>"
       "</node>";
 
-  // Vtable for per-item interface registration
+  // Vtables for D-Bus interface registration
   static const GDBusInterfaceVTable item_vtable_;
+  static const GDBusInterfaceVTable watcher_vtable_;
 
   // Standard D-Bus interfaces to skip when registering
   static constexpr const char *standard_interfaces_[] = {

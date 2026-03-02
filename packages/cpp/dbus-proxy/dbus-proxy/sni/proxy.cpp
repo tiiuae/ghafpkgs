@@ -15,6 +15,13 @@ struct SniProxiedObject {
   std::string object_path;
   GNodeInfoPtr node_info;
   GHashTable *registration_ids = nullptr; // interface_name -> registration_id
+
+  SniProxiedObject(const char *path, GDBusNodeInfo *info)
+      : object_path(path), registration_ids(g_hash_table_new_full(
+                               g_str_hash, g_str_equal, g_free, nullptr)) {
+    node_info.reset(g_dbus_node_info_ref(info));
+  }
+
   ~SniProxiedObject() {
     if (registration_ids)
       g_hash_table_destroy(registration_ids);
@@ -27,6 +34,12 @@ const GDBusInterfaceVTable SniProxy::item_vtable_ = {
     .method_call = SniProxy::on_method_call,
     .get_property = SniProxy::on_get_property,
     .set_property = SniProxy::on_set_property,
+    .padding = {nullptr}};
+
+const GDBusInterfaceVTable SniProxy::watcher_vtable_ = {
+    .method_call = SniProxy::on_watcher_method_call,
+    .get_property = SniProxy::on_watcher_get_property,
+    .set_property = nullptr,
     .padding = {nullptr}};
 
 // --- Helper: async method call context ---
@@ -53,11 +66,19 @@ struct SniMethodCallContext {
 // direction by opening the window before the toggle event arrived).
 
 struct SniDeferredEventCtx {
-  GDBusConnection *source_bus = nullptr; // borrowed
+  GDBusConnection *source_bus; // borrowed — do not unref
   std::string source_bus_name;
   std::string dbusmenu_path;
-  GVariant *event_params = nullptr;            // owned
-  GDBusMethodInvocation *invocation = nullptr; // borrowed/nullptr (not owned)
+  GVariant *event_params; // owned — caller must pass a ref'd GVariant*
+  GDBusMethodInvocation *invocation; // borrowed/nullptr — do not unref
+
+  SniDeferredEventCtx(GDBusConnection *bus, std::string bus_name,
+                      std::string menu_path, GVariant *owned_params,
+                      GDBusMethodInvocation *inv)
+      : source_bus(bus), source_bus_name(std::move(bus_name)),
+        dbusmenu_path(std::move(menu_path)), event_params(owned_params),
+        invocation(inv) {}
+
   ~SniDeferredEventCtx() {
     if (event_params)
       g_variant_unref(event_params);
@@ -165,6 +186,45 @@ SniProxy::SniProxy(GDBusConnection *source_bus, GDBusConnection *target_bus)
   } else {
     SniLog::info() << "WAYLAND_DISPLAY not set - XDG activation unavailable";
   }
+
+  SniLog::info() << "Initializing SNI proxy";
+
+  sni_items_ =
+      g_hash_table_new_full(g_str_hash, g_str_equal, g_free, [](gpointer p) {
+        delete static_cast<SniItem *>(p);
+      });
+  registered_items_ = g_ptr_array_new_with_free_func(g_free);
+  pending_items_ =
+      g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+
+  // We are the host from source apps' perspective
+  host_registered_ = TRUE;
+
+  // Register watcher object on source bus (so apps on source side can register)
+  if (!register_watcher())
+    return;
+
+  // Subscribe to NameOwnerChanged BEFORE initial scan (race condition
+  // prevention)
+  if (!subscribe_name_owner_changed()) {
+    SniLog::error() << "Failed to subscribe to NameOwnerChanged";
+    return;
+  }
+
+  // Own watcher name (triggers initial_scan via callback)
+  if (!own_watcher_name())
+    return;
+
+  SniLog::info() << "SNI proxy initialized -- waiting for items";
+  initialized_ = true;
+}
+
+std::unique_ptr<SniProxy> SniProxy::create(GDBusConnection *source_bus,
+                                           GDBusConnection *target_bus) {
+  auto proxy = std::make_unique<SniProxy>(source_bus, target_bus);
+  if (!proxy->initialized_)
+    return nullptr;
+  return proxy;
 }
 
 // Lazy Wayland init: called on first dbusmenu.Event when the proxy runs as a
@@ -464,15 +524,9 @@ gboolean SniProxy::register_watcher() {
     return FALSE;
   }
 
-  static const GDBusInterfaceVTable watcher_vtable = {
-      .method_call = on_watcher_method_call,
-      .get_property = on_watcher_get_property,
-      .set_property = nullptr,
-      .padding = {nullptr}};
-
   watcher_reg_id_ = g_dbus_connection_register_object(
       source_bus_, SNI_WATCHER_OBJECT_PATH, watcher_node_info_->interfaces[0],
-      &watcher_vtable,
+      &watcher_vtable_,
       this, // user_data = SniProxy*
       nullptr, &error);
 
@@ -589,12 +643,10 @@ void SniProxy::on_method_call(G_GNUC_UNUSED GDBusConnection *connection,
       // responds.
       g_dbus_method_invocation_return_value(invocation, g_variant_new("()"));
 
-      auto deferred = std::make_unique<SniDeferredEventCtx>();
-      deferred->source_bus = fwd.proxy.source_bus_;
-      deferred->source_bus_name = fwd.source_bus_name;
-      deferred->dbusmenu_path = fwd.object_path;
-      deferred->event_params = parameters ? g_variant_ref(parameters) : nullptr;
-      deferred->invocation = nullptr; // already replied above
+      auto deferred = std::make_unique<SniDeferredEventCtx>(
+          fwd.proxy.source_bus_, fwd.source_bus_name, fwd.object_path,
+          parameters ? g_variant_ref(parameters) : nullptr,
+          nullptr /* already replied above */);
 
       SniLog::info() << "[XDG] Event 'clicked' for "
                      << fwd.source_bus_name.c_str()
@@ -737,11 +789,7 @@ gboolean SniProxy::register_path_with_xml(SniItem &item, const char *path,
     return FALSE;
   }
 
-  auto proxied_obj = std::make_unique<SniProxiedObject>();
-  proxied_obj->object_path = path;
-  proxied_obj->node_info.reset(g_dbus_node_info_ref(node_info));
-  proxied_obj->registration_ids =
-      g_hash_table_new_full(g_str_hash, g_str_equal, g_free, nullptr);
+  auto proxied_obj = std::make_unique<SniProxiedObject>(path, node_info);
 
   guint registered_count = 0;
 
@@ -833,12 +881,7 @@ gboolean SniProxy::introspect_and_register_path(SniItem &item,
     return FALSE;
   }
 
-  // Create proxied object
-  auto proxied_obj = std::make_unique<SniProxiedObject>();
-  proxied_obj->object_path = path;
-  proxied_obj->node_info.reset(g_dbus_node_info_ref(node_info));
-  proxied_obj->registration_ids =
-      g_hash_table_new_full(g_str_hash, g_str_equal, g_free, nullptr);
+  auto proxied_obj = std::make_unique<SniProxiedObject>(path, node_info);
 
   guint registered_count = 0;
 
@@ -1411,39 +1454,4 @@ void SniProxy::initial_scan() {
     }
   }
   g_variant_iter_free(iter);
-}
-
-// --- Top-level init ---
-
-gboolean SniProxy::init() {
-  SniLog::info() << "Initializing SNI proxy";
-
-  sni_items_ =
-      g_hash_table_new_full(g_str_hash, g_str_equal, g_free, [](gpointer p) {
-        delete static_cast<SniItem *>(p);
-      });
-  registered_items_ = g_ptr_array_new_with_free_func(g_free);
-  pending_items_ =
-      g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
-
-  // We are the host from source apps' perspective
-  host_registered_ = TRUE;
-
-  // Register watcher object on source bus (so apps on source side can register)
-  if (!register_watcher())
-    return FALSE;
-
-  // Subscribe to NameOwnerChanged BEFORE initial scan (race condition
-  // prevention)
-  if (!subscribe_name_owner_changed()) {
-    SniLog::error() << "Failed to subscribe to NameOwnerChanged";
-    return FALSE;
-  }
-
-  // Own watcher name (triggers initial_scan via callback)
-  if (!own_watcher_name())
-    return FALSE;
-
-  SniLog::info() << "SNI proxy initialized -- waiting for items";
-  return TRUE;
 }
