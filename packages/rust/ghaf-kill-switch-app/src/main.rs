@@ -390,7 +390,7 @@ impl KillSwitch {
             widget::row::with_capacity(3)
                 .push(icon_widget)
                 .push(text_column)
-                .push(widget::horizontal_space())
+                .push(widget::Space::new().width(Length::Fill))
                 .push(toggle)
                 .spacing(spacing.space_s),
         )
