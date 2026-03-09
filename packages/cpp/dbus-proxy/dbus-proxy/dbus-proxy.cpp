@@ -25,6 +25,7 @@ int main(int argc, gchar *argv[]) {
                         .source_bus_type = G_BUS_TYPE_SYSTEM,
                         .target_bus_type = G_BUS_TYPE_SESSION,
                         .sni_mode = FALSE,
+                        .renamer_mode = FALSE,
                         .verbose = FALSE,
                         .info = FALSE};
 
@@ -46,6 +47,10 @@ int main(int argc, gchar *argv[]) {
        "Bus type of the proxy (system|session)", "TYPE"},
       {"sni-mode", 0, 0, G_OPTION_ARG_NONE, &config.sni_mode,
        "Enable SNI (StatusNotifierItem) proxy mode", nullptr},
+      {"renamer-mode", 0, 0, G_OPTION_ARG_NONE, &config.renamer_mode,
+       "SNI renamer mode: register Watcher on local session bus and "
+       "acquire well-known names for unique-name SNI apps (implies --sni-mode)",
+       nullptr},
       {"log-level", 0, 0, G_OPTION_ARG_STRING, &opt_log_level,
        "Log level: verbose, info, error (default: info)", "LEVEL"},
       {"verbose", 0, 0, G_OPTION_ARG_NONE, &config.verbose,
@@ -90,6 +95,14 @@ int main(int argc, gchar *argv[]) {
       return 1;
     }
     g_free(opt_log_level);
+  }
+
+  if (config.renamer_mode) {
+    // Renamer mode implies SNI mode; both buses are the local session bus
+    config.sni_mode = TRUE;
+    config.source_bus_type = G_BUS_TYPE_SESSION;
+    config.target_bus_type = G_BUS_TYPE_SESSION;
+    Log::info() << "Renamer mode enabled: registering Watcher on local session bus";
   }
 
   if (config.sni_mode) {
@@ -140,7 +153,8 @@ int main(int argc, gchar *argv[]) {
   if (proxy_state->config.sni_mode) {
     Log::info() << "Starting SNI proxy mode";
     auto sni = SniProxy::create(proxy_state->source_bus, proxy_state->target_bus,
-                                proxy_state->config.target_bus_type);
+                                proxy_state->config.target_bus_type,
+                                proxy_state->config.renamer_mode);
     if (!sni) {
       Log::error() << "Failed to initialize SNI mode";
       cleanup_proxy_state();
