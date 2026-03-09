@@ -155,8 +155,9 @@ SniItem::~SniItem() {
 // --- Constructor / Destructor ---
 
 SniProxy::SniProxy(GDBusConnection* source_bus, GDBusConnection* target_bus,
-                   GBusType target_bus_type)
-    : source_bus_(source_bus), target_bus_(target_bus), target_bus_type_(target_bus_type) {
+                   GBusType target_bus_type, bool renamer_mode)
+    : source_bus_(source_bus), target_bus_(target_bus), target_bus_type_(target_bus_type),
+      renamer_mode_(renamer_mode) {
     // Initialize GTK/GDK for XDG activation token generation.
     // The proxy runs in GUI-VM which has WAYLAND_DISPLAY. Tokens allow Electron
     // apps to process dbusmenu.Event (Show/Hide, Quit) without throwing
@@ -208,8 +209,8 @@ SniProxy::SniProxy(GDBusConnection* source_bus, GDBusConnection* target_bus,
 }
 
 std::unique_ptr<SniProxy> SniProxy::create(GDBusConnection* source_bus, GDBusConnection* target_bus,
-                                           GBusType target_bus_type) {
-    auto proxy = std::make_unique<SniProxy>(source_bus, target_bus, target_bus_type);
+                                           GBusType target_bus_type, bool renamer_mode) {
+    auto proxy = std::make_unique<SniProxy>(source_bus, target_bus, target_bus_type, renamer_mode);
     if (!proxy->initialized_)
         return nullptr;
     return proxy;
@@ -293,6 +294,12 @@ SniProxy::~SniProxy() {
         g_hash_table_destroy(sni_items_);
         sni_items_ = nullptr;
     }
+
+    // Unsubscribe passive watcher signal monitors
+    if (passive_item_reg_sub_ && source_bus_)
+        g_dbus_connection_signal_unsubscribe(source_bus_, passive_item_reg_sub_);
+    if (passive_item_unreg_sub_ && source_bus_)
+        g_dbus_connection_signal_unsubscribe(source_bus_, passive_item_unreg_sub_);
 
     // Unregister watcher from source bus
     if (watcher_reg_id_ && source_bus_)
@@ -514,8 +521,66 @@ void SniProxy::on_watcher_name_acquired(G_GNUC_UNUSED GDBusConnection* conn, con
 }
 
 void SniProxy::on_watcher_name_lost(G_GNUC_UNUSED GDBusConnection* conn, const gchar* name,
-                                    G_GNUC_UNUSED gpointer user_data) {
-    Log::error() << "Lost watcher name: " << name << " -- another watcher running?";
+                                    gpointer user_data) {
+    Log::info() << "Lost watcher name: " << name
+                << " -- another watcher present, falling back to passive item monitoring";
+    // A watcher (e.g. the SNI renamer) is already running on the source bus.
+    // Subscribe to its StatusNotifierItemRegistered/Unregistered signals so we
+    // discover items reliably without depending on NameOwnerChanged forwarding
+    // (xdg-dbus-proxy uses arg0namespace for wildcard NameOwnerChanged tracking,
+    // which does not match hyphenated SNI names like org.kde.StatusNotifierItem-*).
+    SniProxy& self = *static_cast<SniProxy*>(user_data);
+    self.subscribe_to_passive_watcher_signals();
+    self.initial_scan();
+}
+
+void SniProxy::subscribe_to_passive_watcher_signals() {
+    passive_item_reg_sub_ = g_dbus_connection_signal_subscribe(
+        source_bus_, SNI_WATCHER_BUS_NAME, SNI_WATCHER_INTERFACE, SNI_SIGNAL_ITEM_REGISTERED,
+        SNI_WATCHER_OBJECT_PATH, nullptr, G_DBUS_SIGNAL_FLAGS_NONE, on_passive_item_registered,
+        this, nullptr);
+    if (!passive_item_reg_sub_)
+        Log::error() << "Failed to subscribe to StatusNotifierItemRegistered";
+
+    passive_item_unreg_sub_ = g_dbus_connection_signal_subscribe(
+        source_bus_, SNI_WATCHER_BUS_NAME, SNI_WATCHER_INTERFACE, SNI_SIGNAL_ITEM_UNREGISTERED,
+        SNI_WATCHER_OBJECT_PATH, nullptr, G_DBUS_SIGNAL_FLAGS_NONE, on_passive_item_unregistered,
+        this, nullptr);
+    if (!passive_item_unreg_sub_)
+        Log::error() << "Failed to subscribe to StatusNotifierItemUnregistered";
+
+    Log::info() << "Subscribed to passive watcher signals from " << SNI_WATCHER_BUS_NAME;
+}
+
+void SniProxy::on_passive_item_registered(G_GNUC_UNUSED GDBusConnection* connection,
+                                          G_GNUC_UNUSED const char* sender_name,
+                                          G_GNUC_UNUSED const char* object_path,
+                                          G_GNUC_UNUSED const char* interface_name,
+                                          G_GNUC_UNUSED const char* signal_name,
+                                          GVariant* parameters, gpointer user_data) {
+    SniProxy& self = *static_cast<SniProxy*>(user_data);
+    const char* item_name = nullptr;
+    g_variant_get(parameters, "(&s)", &item_name);
+    if (!item_name || item_name[0] == '\0')
+        return;
+    Log::info() << "Passive watcher: ItemRegistered -> " << item_name;
+    if (!g_hash_table_contains(self.sni_items_, item_name))
+        self.discover_and_proxy_item(item_name);
+}
+
+void SniProxy::on_passive_item_unregistered(G_GNUC_UNUSED GDBusConnection* connection,
+                                            G_GNUC_UNUSED const char* sender_name,
+                                            G_GNUC_UNUSED const char* object_path,
+                                            G_GNUC_UNUSED const char* interface_name,
+                                            G_GNUC_UNUSED const char* signal_name,
+                                            GVariant* parameters, gpointer user_data) {
+    SniProxy& self = *static_cast<SniProxy*>(user_data);
+    const char* item_name = nullptr;
+    g_variant_get(parameters, "(&s)", &item_name);
+    if (!item_name || item_name[0] == '\0')
+        return;
+    Log::info() << "Passive watcher: ItemUnregistered -> " << item_name;
+    self.remove_item(item_name);
 }
 
 gboolean SniProxy::own_watcher_name() {
@@ -963,52 +1028,66 @@ void SniProxy::on_item_name_acquired(G_GNUC_UNUSED GDBusConnection* conn, const 
 
     item->ready = TRUE;
 
-    // Add to source watcher's registered items list
-    g_ptr_array_add(self.registered_items_, g_strdup(item->source_bus_name.c_str()));
+    // In renamer mode, advertise the well-known proxy name so that downstream
+    // proxies (gui-vm dbus-proxy-sni) can discover the item through xdg-dbus-proxy.
+    // The proxy name (org.kde.StatusNotifierItem-proxy-*) is visible through the
+    // --talk=org.kde.StatusNotifierItem-* policy; the unique source name (:1.X) is not.
+    const char* registered_name =
+        self.renamer_mode_ ? item->target_bus_name.c_str() : item->source_bus_name.c_str();
 
-    // Emit StatusNotifierItemRegistered on source bus (for source-side tracking)
+    // Add to source watcher's registered items list
+    g_ptr_array_add(self.registered_items_, g_strdup(registered_name));
+
+    // Emit StatusNotifierItemRegistered on source bus
     g_autoptr(GError) error = nullptr;
     g_dbus_connection_emit_signal(self.source_bus_, nullptr, SNI_WATCHER_OBJECT_PATH,
                                   SNI_WATCHER_INTERFACE, SNI_SIGNAL_ITEM_REGISTERED,
-                                  g_variant_new("(s)", item->source_bus_name.c_str()), &error);
+                                  g_variant_new("(s)", registered_name), &error);
     if (error) {
-        Log::error() << "Failed to emit ItemRegistered for " << item->source_bus_name.c_str()
-                     << ": " << error->message;
+        Log::error() << "Failed to emit ItemRegistered for " << registered_name << ": "
+                     << error->message;
     }
 
-    // Register with the target bus's existing watcher (the desktop panel)
-    Log::info() << "[CALL] RegisterStatusNotifierItem('" << name << "') -> " << SNI_WATCHER_BUS_NAME
-                << " on target bus";
+    // In renamer mode we ARE the final watcher on the local session bus —
+    // there is no downstream watcher to forward the registration to.
+    if (!self.renamer_mode_) {
+        // Register with the target bus's existing watcher (the desktop panel)
+        Log::info() << "[CALL] RegisterStatusNotifierItem('" << name << "') -> "
+                    << SNI_WATCHER_BUS_NAME << " on target bus";
 
-    auto reg_ctx = std::make_unique<SniMethodCallContext>();
-    reg_ctx->invocation = nullptr; // no invocation to reply to
-    reg_ctx->forward_bus_name = SNI_WATCHER_BUS_NAME;
+        auto reg_ctx = std::make_unique<SniMethodCallContext>();
+        reg_ctx->invocation = nullptr; // no invocation to reply to
+        reg_ctx->forward_bus_name = SNI_WATCHER_BUS_NAME;
 
-    // IMPORTANT: call RegisterStatusNotifierItem from item->target_conn, NOT
-    // from target_bus_. The StatusNotifierWatcher tracks which D-Bus connection
-    // sent the registration and watches that connection for disappearance.
-    // When target_conn closes (on item removal), the watcher automatically
-    // detects the caller is gone and emits StatusNotifierItemUnregistered.
-    // Using target_bus_ would tie the lifetime to the proxy process itself.
-    g_dbus_connection_call(
-        item->target_conn.get(), SNI_WATCHER_BUS_NAME, SNI_WATCHER_OBJECT_PATH,
-        SNI_WATCHER_INTERFACE, "RegisterStatusNotifierItem", g_variant_new("(s)", name), nullptr,
-        G_DBUS_CALL_FLAGS_NONE, 5000, nullptr,
-        [](GObject* source, GAsyncResult* res, gpointer user_data) {
-            auto ctx = std::unique_ptr<SniMethodCallContext>(
-                static_cast<SniMethodCallContext*>(user_data));
-            GError* err = nullptr;
-            GVariant* result = g_dbus_connection_call_finish(G_DBUS_CONNECTION(source), res, &err);
-            if (result) {
-                Log::info() << "[REPLY] RegisterStatusNotifierItem to target watcher OK";
-                g_variant_unref(result);
-            } else {
-                Log::error() << "[REPLY] RegisterStatusNotifierItem to target watcher ";
-                g_clear_error(&err);
-            }
-            // ctx unique_ptr destructor frees forward_bus_name
-        },
-        reg_ctx.release());
+        // IMPORTANT: call RegisterStatusNotifierItem from item->target_conn, NOT
+        // from target_bus_. The StatusNotifierWatcher tracks which D-Bus connection
+        // sent the registration and watches that connection for disappearance.
+        // When target_conn closes (on item removal), the watcher automatically
+        // detects the caller is gone and emits StatusNotifierItemUnregistered.
+        // Using target_bus_ would tie the lifetime to the proxy process itself.
+        g_dbus_connection_call(
+            item->target_conn.get(), SNI_WATCHER_BUS_NAME, SNI_WATCHER_OBJECT_PATH,
+            SNI_WATCHER_INTERFACE, "RegisterStatusNotifierItem", g_variant_new("(s)", name),
+            nullptr, G_DBUS_CALL_FLAGS_NONE, 5000, nullptr,
+            [](GObject* source, GAsyncResult* res, gpointer user_data) {
+                auto ctx = std::unique_ptr<SniMethodCallContext>(
+                    static_cast<SniMethodCallContext*>(user_data));
+                GError* err = nullptr;
+                GVariant* result =
+                    g_dbus_connection_call_finish(G_DBUS_CONNECTION(source), res, &err);
+                if (result) {
+                    Log::info() << "[REPLY] RegisterStatusNotifierItem to target watcher OK";
+                    g_variant_unref(result);
+                } else {
+                    Log::error() << "[REPLY] RegisterStatusNotifierItem to target watcher failed";
+                    g_clear_error(&err);
+                }
+                // ctx unique_ptr destructor frees forward_bus_name
+            },
+            reg_ctx.release());
+    } else {
+        Log::info() << "[RENAMER] Item " << name << " registered (no downstream watcher)";
+    }
 
     Log::info() << "SNI item " << item->source_bus_name.c_str() << " -> " << name
                 << " fully proxied";
@@ -1065,7 +1144,7 @@ void SniProxy::discover_and_proxy_item(const char* bus_name, const char* object_
     // generated for unique names (fallback when PID resolution fails)
     if (bus_name[0] == ':') {
         g_autofree gchar* gen_name =
-            g_strdup_printf("org.kde.StatusNotifierItem-proxy-%d-%d", getpid(), ++proxy_counter_);
+            g_strdup_printf("org.kde.StatusNotifierItem.proxy_%d_%d", getpid(), ++proxy_counter_);
         item->target_bus_name = gen_name;
     } else {
         item->target_bus_name = bus_name;
@@ -1289,6 +1368,21 @@ void SniProxy::on_name_owner_changed(G_GNUC_UNUSED GDBusConnection* connection,
     if (appeared) {
         Log::info() << "SNI item appeared: " << name << " (owner: " << new_owner << ")";
 
+        // In renamer mode, well-known names we acquire ourselves
+        // (org.kde.StatusNotifierItem-proxy-*) appear on the same bus and would
+        // trigger recursive proxying.  Skip names we already own as target_bus_name.
+        if (self.renamer_mode_) {
+            GHashTableIter ci;
+            gpointer ck, cv;
+            g_hash_table_iter_init(&ci, self.sni_items_);
+            while (g_hash_table_iter_next(&ci, &ck, &cv)) {
+                if (static_cast<SniItem*>(cv)->target_bus_name == name) {
+                    Log::verbose() << "[RENAMER] Skipping own proxy name: " << name;
+                    return;
+                }
+            }
+        }
+
         // Check if this resolves a pending unique-name registration.
         // When an app registers with unique name (:1.XX) but we can't resolve it
         // immediately, we defer. Now NameOwnerChanged brings the well-known name.
@@ -1317,6 +1411,16 @@ gboolean SniProxy::subscribe_name_owner_changed() {
 // --- Initial scan for existing SNI items ---
 
 void SniProxy::initial_scan() {
+    // In renamer mode the well-known SNI names on the bus are names we own
+    // ourselves (org.kde.StatusNotifierItem-proxy-*).  Scanning for them would
+    // re-proxy our own items recursively.  Apps that started before the
+    // renamer will re-register when they detect the new watcher via
+    // NameOwnerChanged for org.kde.StatusNotifierWatcher.
+    if (renamer_mode_) {
+        Log::info() << "[RENAMER] initial_scan skipped (renamer mode)";
+        return;
+    }
+
     g_autoptr(GError) error = nullptr;
     g_autoptr(GVariant) result = g_dbus_connection_call_sync(
         source_bus_, DBUS_INTERFACE_DBUS, DBUS_OBJECT_PATH_DBUS, DBUS_INTERFACE_DBUS, "ListNames",

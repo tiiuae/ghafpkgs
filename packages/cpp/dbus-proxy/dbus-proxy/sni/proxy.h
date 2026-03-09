@@ -46,12 +46,14 @@ struct SniForwardContext {
 // SNI proxy class: manages StatusNotifierItem proxying between two buses
 class SniProxy {
   public:
-    SniProxy(GDBusConnection* source_bus, GDBusConnection* target_bus, GBusType target_bus_type);
+    SniProxy(GDBusConnection* source_bus, GDBusConnection* target_bus, GBusType target_bus_type,
+             bool renamer_mode = false);
     ~SniProxy();
 
     // Construct and initialize in one step; returns nullptr on failure.
     static std::unique_ptr<SniProxy> create(GDBusConnection* source_bus,
-                                            GDBusConnection* target_bus, GBusType target_bus_type);
+                                            GDBusConnection* target_bus, GBusType target_bus_type,
+                                            bool renamer_mode = false);
 
     // Used by on_activate_before_event (file-level callback)
     static void method_reply_callback(GObject* source, GAsyncResult* res, gpointer user_data);
@@ -77,8 +79,18 @@ class SniProxy {
     guint name_owner_changed_sub_ = 0;
     int proxy_counter_ = 0; // counter for generated proxy bus names
 
+    // Passive watcher signal subscriptions (used when we cannot own the watcher name)
+    guint passive_item_reg_sub_ = 0;
+    guint passive_item_unreg_sub_ = 0;
+
     // Set to true by constructor on successful initialization
     bool initialized_ = false;
+
+    // Renamer mode: register org.kde.StatusNotifierWatcher on the local
+    // session bus and acquire well-known org.kde.StatusNotifierItem-* names for
+    // apps that register with unique names (Electron/Element).  Both source and
+    // target bus are the same session bus.  No downstream watcher registration.
+    bool renamer_mode_ = false;
 
     // GDK Wayland display for XDG activation token generation
     GdkDisplay* wayland_display_ = nullptr;
@@ -98,6 +110,9 @@ class SniProxy {
     // --- Source bus monitoring ---
     gboolean subscribe_name_owner_changed();
 
+    // --- Passive watcher signal monitoring (when watcher name is taken) ---
+    void subscribe_to_passive_watcher_signals();
+
     // --- Wayland lazy init (for XDG activation when service lacks env) ---
     void try_lazy_wayland_init();
 
@@ -116,6 +131,15 @@ class SniProxy {
     static void on_watcher_name_acquired(GDBusConnection* conn, const gchar* name,
                                          gpointer user_data);
     static void on_watcher_name_lost(GDBusConnection* conn, const gchar* name, gpointer user_data);
+    // --- Static GDBus callbacks: passive watcher signal monitoring ---
+    static void on_passive_item_registered(GDBusConnection* connection, const char* sender_name,
+                                           const char* object_path, const char* interface_name,
+                                           const char* signal_name, GVariant* parameters,
+                                           gpointer user_data);
+    static void on_passive_item_unregistered(GDBusConnection* connection, const char* sender_name,
+                                             const char* object_path, const char* interface_name,
+                                             const char* signal_name, GVariant* parameters,
+                                             gpointer user_data);
     // --- Static GDBus callbacks: per-item (user_data = SniForwardContext*) ---
     static void on_method_call(GDBusConnection* connection, const char* sender,
                                const char* object_path, const char* interface_name,

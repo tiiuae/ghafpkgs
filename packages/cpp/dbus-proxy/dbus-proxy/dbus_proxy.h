@@ -20,6 +20,7 @@ typedef struct {
   GBusType source_bus_type;
   GBusType target_bus_type;
   gboolean sni_mode;
+  gboolean renamer_mode;
   gboolean verbose;
   gboolean info;
 } ProxyConfig;
