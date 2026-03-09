@@ -154,8 +154,9 @@ SniItem::~SniItem() {
 
 // --- Constructor / Destructor ---
 
-SniProxy::SniProxy(GDBusConnection* source_bus, GDBusConnection* target_bus)
-    : source_bus_(source_bus), target_bus_(target_bus) {
+SniProxy::SniProxy(GDBusConnection* source_bus, GDBusConnection* target_bus,
+                   GBusType target_bus_type)
+    : source_bus_(source_bus), target_bus_(target_bus), target_bus_type_(target_bus_type) {
     // Initialize GTK/GDK for XDG activation token generation.
     // The proxy runs in GUI-VM which has WAYLAND_DISPLAY. Tokens allow Electron
     // apps to process dbusmenu.Event (Show/Hide, Quit) without throwing
@@ -206,9 +207,9 @@ SniProxy::SniProxy(GDBusConnection* source_bus, GDBusConnection* target_bus)
     initialized_ = true;
 }
 
-std::unique_ptr<SniProxy> SniProxy::create(GDBusConnection* source_bus,
-                                           GDBusConnection* target_bus) {
-    auto proxy = std::make_unique<SniProxy>(source_bus, target_bus);
+std::unique_ptr<SniProxy> SniProxy::create(GDBusConnection* source_bus, GDBusConnection* target_bus,
+                                           GBusType target_bus_type) {
+    auto proxy = std::make_unique<SniProxy>(source_bus, target_bus, target_bus_type);
     if (!proxy->initialized_)
         return nullptr;
     return proxy;
@@ -391,7 +392,7 @@ char* SniProxy::resolve_unique_to_wellknown(const char* unique_name) {
 
 // --- Watcher: method call handler ---
 
-void SniProxy::on_watcher_method_call(G_GNUC_UNUSED GDBusConnection* connection, const char* sender,
+void SniProxy::on_watcher_method_call(GDBusConnection* connection, const char* sender,
                                       G_GNUC_UNUSED const char* object_path,
                                       G_GNUC_UNUSED const char* interface_name,
                                       const char* method_name, GVariant* parameters,
@@ -404,8 +405,6 @@ void SniProxy::on_watcher_method_call(G_GNUC_UNUSED GDBusConnection* connection,
         Log::info() << "RegisterStatusNotifierItem from " << sender << ": " << service;
 
         // Determine bus name and object path from service parameter.
-        // xdg-dbus-proxy call rules allow introspection and property access
-        // to any destination including unique names (:1.XX).
         if (service[0] == '/') {
             // service is an object path, use sender as bus name
             self.discover_and_proxy_item(sender, service);
@@ -427,9 +426,9 @@ void SniProxy::on_watcher_method_call(G_GNUC_UNUSED GDBusConnection* connection,
         g_dbus_connection_emit_signal(self.source_bus_, nullptr, SNI_WATCHER_OBJECT_PATH,
                                       SNI_WATCHER_INTERFACE, "StatusNotifierHostRegistered",
                                       nullptr, &error);
-        if (error) {
+        if (error)
             Log::error() << "Failed to emit StatusNotifierHostRegistered: " << error->message;
-        }
+
         g_dbus_method_invocation_return_value(invocation, nullptr);
 
     } else {
@@ -454,13 +453,15 @@ GVariant* SniProxy::on_watcher_get_property(G_GNUC_UNUSED GDBusConnection* conne
     if (g_strcmp0(property_name, "RegisteredStatusNotifierItems") == 0) {
         GVariantBuilder builder;
         g_variant_builder_init(&builder, G_VARIANT_TYPE("as"));
-        for (guint i = 0; i < self.registered_items_->len; i++) {
-            const char* item_name =
-                static_cast<const char*>(g_ptr_array_index(self.registered_items_, i));
-            Log::info() << "[WATCHER]   RegisteredItems[" << i << "] = " << item_name;
-            g_variant_builder_add(&builder, "s", item_name);
+        if (self.registered_items_) {
+            for (guint i = 0; i < self.registered_items_->len; i++) {
+                const char* item_name =
+                    static_cast<const char*>(g_ptr_array_index(self.registered_items_, i));
+                Log::info() << "[WATCHER]   RegisteredItems[" << i << "] = " << item_name;
+                g_variant_builder_add(&builder, "s", item_name);
+            }
+            Log::info() << "[WATCHER]   Total: " << self.registered_items_->len << " items";
         }
-        Log::info() << "[WATCHER]   Total: " << self.registered_items_->len << " items";
         return g_variant_builder_end(&builder);
 
     } else if (g_strcmp0(property_name, "IsStatusNotifierHostRegistered") == 0) {
@@ -1097,17 +1098,17 @@ void SniProxy::discover_and_proxy_item(const char* bus_name, const char* object_
     // register at /StatusNotifierItem without conflicting — GDBus only allows
     // one object per (path, interface) pair per connection.
     g_autoptr(GError) conn_err = nullptr;
-    g_autofree gchar* session_addr =
-        g_dbus_address_get_for_bus_sync(G_BUS_TYPE_SESSION, nullptr, &conn_err);
-    if (!session_addr) {
-        Log::error() << "Failed to get session bus address for " << bus_name << ": "
+    g_autofree gchar* target_addr =
+        g_dbus_address_get_for_bus_sync(target_bus_type_, nullptr, &conn_err);
+    if (!target_addr) {
+        Log::error() << "Failed to get target bus address for " << bus_name << ": "
                      << (conn_err ? conn_err->message : "Unknown");
         g_hash_table_remove(sni_items_, bus_name);
         return;
     }
 
     item->target_conn.reset(g_dbus_connection_new_for_address_sync(
-        session_addr,
+        target_addr,
         (GDBusConnectionFlags)(G_DBUS_CONNECTION_FLAGS_AUTHENTICATION_CLIENT |
                                G_DBUS_CONNECTION_FLAGS_MESSAGE_BUS_CONNECTION),
         nullptr, nullptr, &conn_err));

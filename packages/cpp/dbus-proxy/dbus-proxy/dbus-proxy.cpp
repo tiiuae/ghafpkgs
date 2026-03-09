@@ -139,7 +139,8 @@ int main(int argc, gchar *argv[]) {
   // SNI mode: different initialization path
   if (proxy_state->config.sni_mode) {
     Log::info() << "Starting SNI proxy mode";
-    auto sni = SniProxy::create(proxy_state->source_bus, proxy_state->target_bus);
+    auto sni = SniProxy::create(proxy_state->source_bus, proxy_state->target_bus,
+                                proxy_state->config.target_bus_type);
     if (!sni) {
       Log::error() << "Failed to initialize SNI mode";
       cleanup_proxy_state();

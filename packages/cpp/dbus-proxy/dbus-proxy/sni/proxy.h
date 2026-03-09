@@ -46,12 +46,12 @@ struct SniForwardContext {
 // SNI proxy class: manages StatusNotifierItem proxying between two buses
 class SniProxy {
   public:
-    SniProxy(GDBusConnection* source_bus, GDBusConnection* target_bus);
+    SniProxy(GDBusConnection* source_bus, GDBusConnection* target_bus, GBusType target_bus_type);
     ~SniProxy();
 
     // Construct and initialize in one step; returns nullptr on failure.
     static std::unique_ptr<SniProxy> create(GDBusConnection* source_bus,
-                                            GDBusConnection* target_bus);
+                                            GDBusConnection* target_bus, GBusType target_bus_type);
 
     // Used by on_activate_before_event (file-level callback)
     static void method_reply_callback(GObject* source, GAsyncResult* res, gpointer user_data);
@@ -60,8 +60,9 @@ class SniProxy {
     // Bus connections (not owned by this class)
     GDBusConnection* source_bus_;
     GDBusConnection* target_bus_;
+    GBusType target_bus_type_;
 
-    // Watcher state
+    // Watcher state (source bus)
     guint watcher_reg_id_ = 0;
     guint watcher_name_owner_id_ = 0;
     GNodeInfoPtr watcher_node_info_; // owns the parsed watcher introspection XML
@@ -86,7 +87,6 @@ class SniProxy {
     // --- Watcher implementation ---
     gboolean register_watcher();
     gboolean own_watcher_name();
-
     // --- Item lifecycle ---
     void discover_and_proxy_item(const char* bus_name, const char* object_path = nullptr);
     void remove_item(const char* bus_name);
@@ -116,7 +116,6 @@ class SniProxy {
     static void on_watcher_name_acquired(GDBusConnection* conn, const gchar* name,
                                          gpointer user_data);
     static void on_watcher_name_lost(GDBusConnection* conn, const gchar* name, gpointer user_data);
-
     // --- Static GDBus callbacks: per-item (user_data = SniForwardContext*) ---
     static void on_method_call(GDBusConnection* connection, const char* sender,
                                const char* object_path, const char* interface_name,
