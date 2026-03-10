@@ -19,12 +19,12 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GIO        REQUIRED IMPORTED_TARGET gio-2.0)
 pkg_check_modules(GLIB       REQUIRED IMPORTED_TARGET glib-2.0)
-pkg_check_modules(GDK_PIXBUF REQUIRED IMPORTED_TARGET gdk-pixbuf-2.0)
 pkg_check_modules(GTK4       REQUIRED IMPORTED_TARGET gtk4)
+pkg_check_modules(RSVG       REQUIRED IMPORTED_TARGET librsvg-2.0)
+pkg_check_modules(CAIRO      REQUIRED IMPORTED_TARGET cairo)
 
 add_executable(dbus-proxy
     dbus-proxy.cpp
-    logging.cpp
     handlers.cpp
     proxy_core.cpp
     callback-rules.cpp
@@ -43,8 +43,9 @@ target_compile_options(dbus-proxy PRIVATE -Wall -Wextra -g)
 target_link_libraries(dbus-proxy PRIVATE
     PkgConfig::GIO
     PkgConfig::GLIB
-    PkgConfig::GDK_PIXBUF
     PkgConfig::GTK4
+    PkgConfig::RSVG
+    PkgConfig::CAIRO
 )
 
 install(TARGETS dbus-proxy RUNTIME DESTINATION bin)

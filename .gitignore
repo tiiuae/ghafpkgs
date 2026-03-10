@@ -5,6 +5,8 @@
 
 .direnv/
 result
+result-*
+*.log
 target/
 .vscode/
 .serena/
