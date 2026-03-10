@@ -24,7 +24,6 @@ pkg_check_modules(GTK4       REQUIRED IMPORTED_TARGET gtk4)
 
 add_executable(dbus-proxy
     dbus-proxy.cpp
-    logging.cpp
     handlers.cpp
     proxy_core.cpp
     callback-rules.cpp
