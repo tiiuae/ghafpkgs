@@ -1,4 +1,4 @@
-# Copyright 2025 TII (SSRC) and the Ghaf contributors
+# Copyright 2026 TII (SSRC) and the Ghaf contributors
 # SPDX-License-Identifier: Apache-2.0
 
 # Compiler and flags
@@ -8,7 +8,7 @@ PKG_CONFIG_FLAGS := $(shell pkg-config --cflags --libs glib-2.0 gio-2.0)
 
 # Targets
 TARGET := dbus-proxy
-SRC := dbus-proxy.cpp
+SRC := $(wildcard *.cpp)
 OBJ := $(SRC:.cpp=.o)
 
 # Default target
