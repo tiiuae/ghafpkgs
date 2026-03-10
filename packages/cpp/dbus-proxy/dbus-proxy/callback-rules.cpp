@@ -5,8 +5,8 @@
 
 #include "dbus_proxy.h"
 
-const gchar *nm_agent_methods[] = {"GetSecrets", "CancelGetSecrets",
-                                   "SaveSecrets", "DeleteSecrets", nullptr};
+const gchar* nm_agent_methods[] = {"GetSecrets", "CancelGetSecrets", "SaveSecrets", "DeleteSecrets",
+                                   nullptr};
 
 const AgentRule callbacks_rules[] = {
     {.bus_name = DBUS_NETWORK_MANAGER_NAME,
@@ -29,20 +29,18 @@ const AgentRule callbacks_rules[] = {
      .client_object_path = DBUS_NM_AGENT_PATH,
      .client_interface = DBUS_INTERFACE_SECRET_AGENT,
      .client_methods = nm_agent_methods},
-    {nullptr, nullptr, nullptr, nullptr, nullptr, FALSE, nullptr, nullptr,
-     nullptr}};
+    {nullptr, nullptr, nullptr, nullptr, nullptr, FALSE, nullptr, nullptr, nullptr}};
 
-const AgentRule *get_callback_rule(const gchar *bus_name,
-                                   const gchar *interface_name,
-                                   const gchar *method_name) {
-  for (int i = 0; callbacks_rules[i].bus_name != nullptr; i++) {
-    const AgentRule *rule = &callbacks_rules[i];
-    if (g_strcmp0(rule->bus_name, bus_name) == 0 &&
-        g_strcmp0(rule->manager_interface, interface_name) == 0 &&
-        (g_strcmp0(rule->register_method, method_name) == 0 ||
-         g_strcmp0(rule->unregister_method, method_name) == 0)) {
-      return rule;
+const AgentRule* get_callback_rule(const gchar* bus_name, const gchar* interface_name,
+                                   const gchar* method_name) {
+    for (int i = 0; callbacks_rules[i].bus_name != nullptr; i++) {
+        const AgentRule* rule = &callbacks_rules[i];
+        if (g_strcmp0(rule->bus_name, bus_name) == 0 &&
+            g_strcmp0(rule->manager_interface, interface_name) == 0 &&
+            (g_strcmp0(rule->register_method, method_name) == 0 ||
+             g_strcmp0(rule->unregister_method, method_name) == 0)) {
+            return rule;
+        }
     }
-  }
-  return nullptr;
+    return nullptr;
 }

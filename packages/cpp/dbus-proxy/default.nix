@@ -5,9 +5,10 @@
   cmake,
   pkg-config,
   glib,
-  gdk-pixbuf,
   gtk4,
   util-linux,
+  librsvg,
+  cairo,
   cppcheck,
   valgrind,
   dbus,
@@ -32,9 +33,10 @@ stdenv.mkDerivation {
   ];
   buildInputs = [
     glib
-    gdk-pixbuf
     gtk4
     util-linux
+    librsvg
+    cairo
   ];
 
   doCheck = true;

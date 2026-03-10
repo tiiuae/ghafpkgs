@@ -1,5 +1,5 @@
 /*
- Copyright 2025 TII (SSRC) and the Ghaf contributors
+ Copyright 2026 TII (SSRC) and the Ghaf contributors
  SPDX-License-Identifier: Apache-2.0
  */
 
@@ -63,6 +63,23 @@ class Log {
     Log& operator=(const Log&) = delete;
 
     static void setLevel(Level l) { instance().log_level_ = l; }
+
+    // Returns false if the string is not a valid level.
+    static bool setLevelFromString(const char* s) {
+        if (g_strcmp0(s, "verbose") == 0) {
+            setLevel(Level::Verbose);
+            return true;
+        }
+        if (g_strcmp0(s, "info") == 0) {
+            setLevel(Level::Info);
+            return true;
+        }
+        if (g_strcmp0(s, "error") == 0) {
+            setLevel(Level::Error);
+            return true;
+        }
+        return false;
+    }
 
     static LogStream verbose() {
         if (instance().log_level_ > Level::Verbose)
