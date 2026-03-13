@@ -103,7 +103,8 @@ class SniProxy {
     void discover_and_proxy_item(const char* bus_name, const char* object_path = nullptr);
     void remove_item(const char* bus_name);
     void initial_scan();
-    gboolean register_path_with_xml(SniItem& item, const char* path, const char* xml);
+    gboolean register_path_with_xml(SniItem& item, const char* path, const char* xml,
+                                    const char* source_path = nullptr);
     gboolean introspect_and_register_path(SniItem& item, const char* path);
     void discover_menu_path(SniItem& item);
 
