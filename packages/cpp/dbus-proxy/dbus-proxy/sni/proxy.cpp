@@ -530,8 +530,65 @@ void SniProxy::on_watcher_name_lost(G_GNUC_UNUSED GDBusConnection* conn, const g
     // (xdg-dbus-proxy uses arg0namespace for wildcard NameOwnerChanged tracking,
     // which does not match hyphenated SNI names like org.kde.StatusNotifierItem-*).
     SniProxy& self = *static_cast<SniProxy*>(user_data);
+
+    // Purge any items that were registered with unique source names (:1.X).
+    // These are unreachable through xdg-dbus-proxy filter (only well-known names
+    // are allowed). The renamer on the source bus will re-register them under
+    // well-known proxy names, which we will pick up via passive watcher signals.
+    {
+        GPtrArray* to_remove = g_ptr_array_new_with_free_func(g_free);
+        GHashTableIter iter;
+        gpointer key, value;
+        g_hash_table_iter_init(&iter, self.sni_items_);
+        while (g_hash_table_iter_next(&iter, &key, &value)) {
+            SniItem* item = static_cast<SniItem*>(value);
+            if (item->source_bus_name[0] == ':')
+                g_ptr_array_add(to_remove, g_strdup(static_cast<const char*>(key)));
+        }
+        for (guint i = 0; i < to_remove->len; i++)
+            self.remove_item(static_cast<const char*>(g_ptr_array_index(to_remove, i)));
+        g_ptr_array_free(to_remove, TRUE);
+    }
+
     self.subscribe_to_passive_watcher_signals();
     self.initial_scan();
+
+    // Bootstrap from RegisteredStatusNotifierItems already known to the watcher.
+    // This covers the race where the renamer was already running and had registered
+    // items before we subscribed to passive signals above.
+    g_autoptr(GError) error = nullptr;
+    g_autoptr(GVariant) watcher_result = g_dbus_connection_call_sync(
+        self.source_bus_, SNI_WATCHER_BUS_NAME, SNI_WATCHER_OBJECT_PATH, DBUS_INTERFACE_PROPERTIES,
+        "Get", g_variant_new("(ss)", SNI_WATCHER_INTERFACE, "RegisteredStatusNotifierItems"),
+        G_VARIANT_TYPE("(v)"), G_DBUS_CALL_FLAGS_NONE, 5000, nullptr, &error);
+    if (watcher_result) {
+        GVariant* items_v = nullptr;
+        g_variant_get(watcher_result, "(v)", &items_v);
+        if (items_v && g_variant_is_of_type(items_v, G_VARIANT_TYPE("as"))) {
+            GVariantIter* items_iter;
+            const char* item_str;
+            g_variant_get(items_v, "as", &items_iter);
+            Log::info() << "Bootstrapping from watcher's RegisteredStatusNotifierItems";
+            while (g_variant_iter_next(items_iter, "&s", &item_str)) {
+                Log::info() << "  Watcher item: " << item_str;
+                const char* space = strchr(item_str, ' ');
+                if (space && space[1] == '/') {
+                    g_autofree gchar* bus_name = g_strndup(item_str, space - item_str);
+                    if (!g_hash_table_contains(self.sni_items_, bus_name))
+                        self.discover_and_proxy_item(bus_name, space + 1);
+                } else {
+                    if (!g_hash_table_contains(self.sni_items_, item_str))
+                        self.discover_and_proxy_item(item_str);
+                }
+            }
+            g_variant_iter_free(items_iter);
+        }
+        if (items_v)
+            g_variant_unref(items_v);
+    } else {
+        Log::info() << "Could not query watcher's RegisteredStatusNotifierItems: "
+                    << (error ? error->message : "unknown");
+    }
 }
 
 void SniProxy::subscribe_to_passive_watcher_signals() {
@@ -564,8 +621,17 @@ void SniProxy::on_passive_item_registered(G_GNUC_UNUSED GDBusConnection* connect
     if (!item_name || item_name[0] == '\0')
         return;
     Log::info() << "Passive watcher: ItemRegistered -> " << item_name;
-    if (!g_hash_table_contains(self.sni_items_, item_name))
-        self.discover_and_proxy_item(item_name);
+    // Parse "busname /path" format (renamer encodes non-default path after a space)
+    const char* space = strchr(item_name, ' ');
+    if (space && space[1] == '/') {
+        g_autofree gchar* bus_name = g_strndup(item_name, space - item_name);
+        const char* obj_path = space + 1;
+        if (!g_hash_table_contains(self.sni_items_, bus_name))
+            self.discover_and_proxy_item(bus_name, obj_path);
+    } else {
+        if (!g_hash_table_contains(self.sni_items_, item_name))
+            self.discover_and_proxy_item(item_name);
+    }
 }
 
 void SniProxy::on_passive_item_unregistered(G_GNUC_UNUSED GDBusConnection* connection,
@@ -585,8 +651,16 @@ void SniProxy::on_passive_item_unregistered(G_GNUC_UNUSED GDBusConnection* conne
 
 gboolean SniProxy::own_watcher_name() {
     watcher_name_owner_id_ = g_bus_own_name_on_connection(
-        source_bus_, SNI_WATCHER_BUS_NAME, G_BUS_NAME_OWNER_FLAGS_REPLACE, on_watcher_name_acquired,
-        on_watcher_name_lost,
+        source_bus_, SNI_WATCHER_BUS_NAME,
+        // In non-renamer mode, allow the appvm renamer to replace us if it starts
+        // after we already acquired the name.  Without ALLOW_REPLACEMENT the renamer
+        // cannot displace us and apps would register with their raw unique names (:1.X),
+        // which are blocked by the xdg-dbus-proxy filter.
+        // In renamer mode we ARE the intended owner — do not allow replacement.
+        renamer_mode_ ? G_BUS_NAME_OWNER_FLAGS_REPLACE
+                      : static_cast<GBusNameOwnerFlags>(G_BUS_NAME_OWNER_FLAGS_REPLACE |
+                                                        G_BUS_NAME_OWNER_FLAGS_ALLOW_REPLACEMENT),
+        on_watcher_name_acquired, on_watcher_name_lost,
         this, // user_data
         nullptr);
 
@@ -941,14 +1015,14 @@ gboolean SniProxy::introspect_and_register_path(SniItem& item, const char* path)
 // --- Discover dbusmenu path from Menu property ---
 
 void SniProxy::discover_menu_path(SniItem& item) {
-    Log::info() << "[CALL] Get " << SNI_ITEM_INTERFACE << ".Menu on " << SNI_ITEM_OBJECT_PATH
+    Log::info() << "[CALL] Get " << SNI_ITEM_INTERFACE << ".Menu on " << item.item_object_path
                 << " -> dest=" << item.source_bus_name.c_str();
 
     g_autoptr(GError) error = nullptr;
     g_autoptr(GVariant) result = g_dbus_connection_call_sync(
-        source_bus_, item.source_bus_name.c_str(), SNI_ITEM_OBJECT_PATH, DBUS_INTERFACE_PROPERTIES,
-        "Get", g_variant_new("(ss)", SNI_ITEM_INTERFACE, "Menu"), G_VARIANT_TYPE("(v)"),
-        G_DBUS_CALL_FLAGS_NONE, 5000, nullptr, &error);
+        source_bus_, item.source_bus_name.c_str(), item.item_object_path.c_str(),
+        DBUS_INTERFACE_PROPERTIES, "Get", g_variant_new("(ss)", SNI_ITEM_INTERFACE, "Menu"),
+        G_VARIANT_TYPE("(v)"), G_DBUS_CALL_FLAGS_NONE, 5000, nullptr, &error);
 
     if (!result) {
         Log::error() << "[REPLY] Get " << SNI_ITEM_INTERFACE << ".Menu FAILED on "
@@ -1038,13 +1112,22 @@ void SniProxy::on_item_name_acquired(G_GNUC_UNUSED GDBusConnection* conn, const 
     // Add to source watcher's registered items list
     g_ptr_array_add(self.registered_items_, g_strdup(registered_name));
 
-    // Emit StatusNotifierItemRegistered on source bus
+    // Emit StatusNotifierItemRegistered on source bus.
+    // If the item's object path differs from the default (/StatusNotifierItem),
+    // encode it as "busname /path" so passive watchers (gui-vm proxy) can
+    // discover the correct path without introspection.
     g_autoptr(GError) error = nullptr;
+    g_autofree gchar* signal_service = nullptr;
+    if (self.renamer_mode_ && item->item_object_path != SNI_ITEM_OBJECT_PATH) {
+        signal_service = g_strdup_printf("%s %s", registered_name, item->item_object_path.c_str());
+    } else {
+        signal_service = g_strdup(registered_name);
+    }
     g_dbus_connection_emit_signal(self.source_bus_, nullptr, SNI_WATCHER_OBJECT_PATH,
                                   SNI_WATCHER_INTERFACE, SNI_SIGNAL_ITEM_REGISTERED,
-                                  g_variant_new("(s)", registered_name), &error);
+                                  g_variant_new("(s)", signal_service), &error);
     if (error) {
-        Log::error() << "Failed to emit ItemRegistered for " << registered_name << ": "
+        Log::error() << "Failed to emit ItemRegistered for " << signal_service << ": "
                      << error->message;
     }
 
