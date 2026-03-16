@@ -29,6 +29,9 @@ struct SniItem {
     GHashTable* node_info_cache = nullptr;    // cache key -> GDBusNodeInfo*
     guint signal_subscription_id = 0;         // catch-all signal sub for this source
     gboolean ready = FALSE;                   // TRUE once introspection + registration done
+    std::string cached_icon_name;             // cached from IconName
+    std::string cached_menu_path; // cached from Menu property (used for ItemIsMenu fallback)
+    GVariantPtr cached_pixmap;    // synthesised IconPixmap (rendered once at registration)
 
     ~SniItem(); // defined in sni-proxy.cpp
 };

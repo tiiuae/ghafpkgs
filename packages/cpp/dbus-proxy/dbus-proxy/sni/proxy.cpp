@@ -6,9 +6,175 @@
 #include "proxy.h"
 #include "gdbusprivate.h"
 #include "log.h"
+#include <cairo.h>
 #include <glib/gprintf.h>
 #include <gtk/gtk.h>
+#include <librsvg/rsvg.h>
 #include <unistd.h>
+#include <vector>
+
+// Render an SVG file to a GdkPixbuf at the given size using librsvg directly.
+// Bypasses gdk-pixbuf's SVG loader (which requires GDK_PIXBUF_MODULE_FILE at runtime).
+static GdkPixbuf* load_svg_as_pixbuf(const char* path, int size) {
+    g_autoptr(GError) err = nullptr;
+    RsvgHandle* handle = rsvg_handle_new_from_file(path, &err);
+    if (!handle) {
+        Log::info() << "[ICON] SVG open failed (" << path
+                    << "): " << (err ? err->message : "unknown");
+        return nullptr;
+    }
+
+    cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, size, size);
+    cairo_t* cr = cairo_create(surface);
+
+    RsvgRectangle viewport = {0, 0, (gdouble)size, (gdouble)size};
+    g_autoptr(GError) render_err = nullptr;
+    if (!rsvg_handle_render_document(handle, cr, &viewport, &render_err)) {
+        Log::info() << "[ICON] SVG render failed (" << path
+                    << "): " << (render_err ? render_err->message : "unknown");
+        cairo_destroy(cr);
+        cairo_surface_destroy(surface);
+        g_object_unref(handle);
+        return nullptr;
+    }
+    cairo_surface_flush(surface);
+
+    // Convert Cairo ARGB32 (native-endian, premultiplied) → GdkPixbuf RGBA (non-premultiplied)
+    int stride = cairo_image_surface_get_stride(surface);
+    guchar* cairo_data = cairo_image_surface_get_data(surface);
+
+    GdkPixbuf* pixbuf = gdk_pixbuf_new(GDK_COLORSPACE_RGB, TRUE, 8, size, size);
+    if (pixbuf) {
+        int pb_rowstride = gdk_pixbuf_get_rowstride(pixbuf);
+        guchar* pb_pixels = gdk_pixbuf_get_pixels(pixbuf);
+        for (int y = 0; y < size; y++) {
+            guint32* cairo_row = (guint32*)(cairo_data + y * stride);
+            guchar* pb_row = pb_pixels + y * pb_rowstride;
+            for (int x = 0; x < size; x++) {
+                guint32 px = cairo_row[x];
+                guchar a = (px >> 24) & 0xff;
+                guchar r = (px >> 16) & 0xff;
+                guchar g = (px >> 8) & 0xff;
+                guchar b = (px) & 0xff;
+                if (a > 0) {
+                    r = (guchar)((r * 255 + a / 2) / a);
+                    g = (guchar)((g * 255 + a / 2) / a);
+                    b = (guchar)((b * 255 + a / 2) / a);
+                }
+                pb_row[x * 4 + 0] = r;
+                pb_row[x * 4 + 1] = g;
+                pb_row[x * 4 + 2] = b;
+                pb_row[x * 4 + 3] = a;
+            }
+        }
+    }
+
+    cairo_destroy(cr);
+    cairo_surface_destroy(surface);
+    g_object_unref(handle);
+    return pixbuf;
+}
+
+// --- IconPixmap conversion helper ---
+// Finds the icon file on disk (Flatpak export paths) and converts it to the
+// a(iiay) format expected by the SNI IconPixmap property (ARGB32, big-endian).
+static GVariant* icon_name_to_pixmap(const char* icon_name) {
+    if (!icon_name || !*icon_name)
+        return nullptr;
+
+    // For pixmap synthesis prefer the coloured icon over the monochrome symbolic
+    // variant.  If the name ends in "-symbolic", try the base name first so we
+    // pick up scalable/coloured versions before the symbolic/monochrome one.
+    std::vector<std::string> names;
+    if (g_str_has_suffix(icon_name, "-symbolic"))
+        names.emplace_back(icon_name, strlen(icon_name) - 9);
+    names.push_back(icon_name);
+
+    std::vector<std::string> base_dirs = {
+        "/var/lib/flatpak/exports/share/icons/hicolor",
+    };
+    const char* home = g_get_home_dir();
+    if (home)
+        base_dirs.push_back(std::string(home) +
+                            "/.local/share/flatpak/exports/share/icons/hicolor");
+
+    // Subdirectories and extensions to try, in priority order.
+    // svg_size > 0 means render the SVG at that size via gdk_pixbuf_new_from_file_at_size.
+    struct IconCandidate {
+        const char* subdir;
+        const char* ext;
+        int svg_size;
+    };
+    static const IconCandidate candidates[] = {
+        {"symbolic/apps", ".svg", 256}, {"scalable/apps", ".svg", 256}, {"256x256/apps", ".png", 0},
+        {"128x128/apps", ".png", 0},    {"512x512/apps", ".png", 0},    {"64x64/apps", ".png", 0},
+        {nullptr, nullptr, 0},
+    };
+
+    GdkPixbuf* pixbuf = nullptr;
+    for (const auto& name : names) {
+        for (int ci = 0; candidates[ci].subdir && !pixbuf; ci++) {
+            for (const auto& base : base_dirs) {
+                g_autofree gchar* path =
+                    g_strdup_printf("%s/%s/%s%s", base.c_str(), candidates[ci].subdir, name.c_str(),
+                                    candidates[ci].ext);
+                if (!g_file_test(path, G_FILE_TEST_EXISTS))
+                    continue;
+                if (candidates[ci].svg_size > 0)
+                    pixbuf = load_svg_as_pixbuf(path, candidates[ci].svg_size);
+                else {
+                    g_autoptr(GError) err = nullptr;
+                    pixbuf = gdk_pixbuf_new_from_file(path, &err);
+                }
+                if (pixbuf) {
+                    Log::info() << "[ICON] Loaded icon from: " << path;
+                    break;
+                }
+            }
+        }
+        if (pixbuf)
+            break;
+    }
+    if (!pixbuf) {
+        Log::info() << "[ICON] No icon file found for: " << icon_name;
+        return nullptr;
+    }
+
+    // Ensure RGBA (4 channels)
+    GdkPixbuf* rgba = pixbuf;
+    if (!gdk_pixbuf_get_has_alpha(pixbuf)) {
+        rgba = gdk_pixbuf_add_alpha(pixbuf, FALSE, 0, 0, 0);
+        g_object_unref(pixbuf);
+    }
+
+    int width = gdk_pixbuf_get_width(rgba);
+    int height = gdk_pixbuf_get_height(rgba);
+    int rowstride = gdk_pixbuf_get_rowstride(rgba);
+    guchar* pixels = gdk_pixbuf_get_pixels(rgba);
+
+    // Convert RGBA → ARGB big-endian (SNI wire format)
+    gsize n_bytes = (gsize)width * height * 4;
+    g_autofree guchar* argb = g_new(guchar, n_bytes);
+    for (int y = 0; y < height; y++) {
+        guchar* row = pixels + y * rowstride;
+        guchar* out = argb + y * width * 4;
+        for (int x = 0; x < width; x++) {
+            guchar* px = row + x * 4;
+            out[x * 4 + 0] = px[3]; // A
+            out[x * 4 + 1] = px[0]; // R
+            out[x * 4 + 2] = px[1]; // G
+            out[x * 4 + 3] = px[2]; // B
+        }
+    }
+    g_object_unref(rgba);
+
+    GVariant* bytes = g_variant_new_fixed_array(G_VARIANT_TYPE_BYTE, argb, n_bytes, 1);
+    GVariant* entry = g_variant_new("(ii@ay)", (gint32)width, (gint32)height, bytes);
+    GVariantBuilder ab;
+    g_variant_builder_init(&ab, G_VARIANT_TYPE("a(iiay)"));
+    g_variant_builder_add_value(&ab, entry);
+    return g_variant_builder_end(&ab);
+}
 
 // Proxied D-Bus object with its registered interfaces (local to SNI proxy)
 struct SniProxiedObject {
@@ -773,6 +939,25 @@ GVariant* SniProxy::on_get_property(G_GNUC_UNUSED GDBusConnection* connection,
                 << " -> dest=" << fwd.source_bus_name.c_str()
                 << " path=" << fwd.object_path.c_str();
 
+    // In renamer mode, serve cached/synthesised properties without forwarding.
+    // Flatpak icons are never in gui-vm's icon theme, so:
+    //   IconName   -> "" (forces COSMIC to use IconPixmap instead of a white placeholder)
+    //   IconPixmap -> cached pixmap rendered once at registration
+    if (fwd.proxy.renamer_mode_) {
+        SniItem* item = static_cast<SniItem*>(
+            g_hash_table_lookup(fwd.proxy.sni_items_, fwd.source_bus_name.c_str()));
+        if (item && item->cached_pixmap) {
+            if (g_strcmp0(property_name, "IconName") == 0) {
+                Log::info() << "[ICON] Returning empty IconName (pixmap cached)";
+                return g_variant_new_string("");
+            }
+            if (g_strcmp0(property_name, "IconPixmap") == 0) {
+                Log::info() << "[ICON] Returning cached IconPixmap";
+                return g_variant_ref(item->cached_pixmap.get());
+            }
+        }
+    }
+
     g_autoptr(GVariant) result = g_dbus_connection_call_sync(
         fwd.proxy.source_bus_, fwd.source_bus_name.c_str(), fwd.object_path.c_str(),
         DBUS_INTERFACE_PROPERTIES, "Get", g_variant_new("(ss)", interface_name, property_name),
@@ -793,6 +978,22 @@ GVariant* SniProxy::on_get_property(G_GNUC_UNUSED GDBusConnection* connection,
     Log::error() << "[REPLY] Get " << interface_name << "." << property_name << " FAILED on "
                  << fwd.object_path.c_str() << " (" << fwd.source_bus_name.c_str()
                  << "): " << ((error && *error) ? (*error)->message : "Unknown");
+
+    // In renamer mode, synthesise missing properties for libappindicator apps.
+    if (fwd.proxy.renamer_mode_) {
+        SniItem* item = static_cast<SniItem*>(
+            g_hash_table_lookup(fwd.proxy.sni_items_, fwd.source_bus_name.c_str()));
+
+        // ItemIsMenu: if absent but the app has a Menu path, return TRUE so that
+        // COSMIC shows the dbusmenu on click instead of calling Activate.
+        if (g_strcmp0(property_name, "ItemIsMenu") == 0 && item &&
+            !item->cached_menu_path.empty()) {
+            if (error && *error)
+                g_clear_error(error);
+            return g_variant_new_boolean(TRUE);
+        }
+    }
+
     return nullptr;
 }
 
@@ -838,6 +1039,28 @@ void SniProxy::on_signal_received(G_GNUC_UNUSED GDBusConnection* connection,
         Log::verbose() << "[SIGNAL] " << interface_name << "." << signal_name << " at "
                        << object_path << " from " << sender_name << " ignored (not proxied)";
         return;
+    }
+
+    // In renamer mode, refresh the cached pixmap before forwarding NewIcon so
+    // COSMIC gets the updated icon when it re-reads IconPixmap after the signal.
+    if (self.renamer_mode_ && g_strcmp0(signal_name, "NewIcon") == 0) {
+        g_autoptr(GError) icon_err = nullptr;
+        g_autoptr(GVariant) icon_result = g_dbus_connection_call_sync(
+            self.source_bus_, item->source_bus_name.c_str(), item->item_object_path.c_str(),
+            DBUS_INTERFACE_PROPERTIES, "Get", g_variant_new("(ss)", SNI_ITEM_INTERFACE, "IconName"),
+            G_VARIANT_TYPE("(v)"), G_DBUS_CALL_FLAGS_NONE, 2000, nullptr, &icon_err);
+        if (icon_result) {
+            GVariant* v = nullptr;
+            g_variant_get(icon_result, "(v)", &v);
+            item->cached_icon_name = g_variant_get_string(v, nullptr);
+            g_variant_unref(v);
+            GVariant* pix = icon_name_to_pixmap(item->cached_icon_name.c_str());
+            if (pix) {
+                item->cached_pixmap.reset(pix);
+                Log::info() << "[ICON] Refreshed cached pixmap on NewIcon for "
+                            << item->source_bus_name << " (" << item->cached_icon_name << ")";
+            }
+        }
     }
 
     g_autofree char* params_str = parameters ? g_variant_print(parameters, TRUE) : g_strdup("()");
@@ -1112,6 +1335,43 @@ void SniProxy::on_item_name_acquired(G_GNUC_UNUSED GDBusConnection* conn, const 
         nullptr);
 
     item->ready = TRUE;
+
+    // In renamer mode, cache IconName now so we can synthesise IconPixmap later
+    // for apps that only provide an icon name (e.g. Spotify via libappindicator).
+    if (self.renamer_mode_) {
+        g_autoptr(GError) icon_err = nullptr;
+        g_autoptr(GVariant) icon_result = g_dbus_connection_call_sync(
+            self.source_bus_, item->source_bus_name.c_str(), item->item_object_path.c_str(),
+            DBUS_INTERFACE_PROPERTIES, "Get", g_variant_new("(ss)", SNI_ITEM_INTERFACE, "IconName"),
+            G_VARIANT_TYPE("(v)"), G_DBUS_CALL_FLAGS_NONE, 2000, nullptr, &icon_err);
+        if (icon_result) {
+            GVariant* v = nullptr;
+            g_variant_get(icon_result, "(v)", &v);
+            item->cached_icon_name = g_variant_get_string(v, nullptr);
+            g_variant_unref(v);
+            Log::info() << "[ICON] Cached IconName for " << item->source_bus_name << ": "
+                        << item->cached_icon_name;
+            GVariant* pix = icon_name_to_pixmap(item->cached_icon_name.c_str());
+            if (pix) {
+                item->cached_pixmap.reset(pix);
+                Log::info() << "[ICON] Cached pixmap for " << item->source_bus_name;
+            }
+        }
+
+        g_autoptr(GError) menu_err = nullptr;
+        g_autoptr(GVariant) menu_result = g_dbus_connection_call_sync(
+            self.source_bus_, item->source_bus_name.c_str(), item->item_object_path.c_str(),
+            DBUS_INTERFACE_PROPERTIES, "Get", g_variant_new("(ss)", SNI_ITEM_INTERFACE, "Menu"),
+            G_VARIANT_TYPE("(v)"), G_DBUS_CALL_FLAGS_NONE, 2000, nullptr, &menu_err);
+        if (menu_result) {
+            GVariant* v = nullptr;
+            g_variant_get(menu_result, "(v)", &v);
+            item->cached_menu_path = g_variant_get_string(v, nullptr);
+            g_variant_unref(v);
+            Log::info() << "[ICON] Cached Menu path for " << item->source_bus_name << ": "
+                        << item->cached_menu_path;
+        }
+    }
 
     // In renamer mode, advertise the well-known proxy name so that downstream
     // proxies (gui-vm dbus-proxy-sni) can discover the item through xdg-dbus-proxy.

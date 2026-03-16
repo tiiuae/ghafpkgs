@@ -8,6 +8,8 @@
   gdk-pixbuf,
   gtk4,
   util-linux,
+  librsvg,
+  cairo,
   cppcheck,
   valgrind,
   dbus,
@@ -35,6 +37,8 @@ stdenv.mkDerivation {
     gdk-pixbuf
     gtk4
     util-linux
+    librsvg
+    cairo
   ];
 
   doCheck = true;
