@@ -879,8 +879,8 @@ gboolean SniProxy::register_path_with_xml(SniItem& item, const char* path, const
             if (g_strv_contains(standard_interfaces_, iface->name))
                 continue;
 
-            auto ctx = std::make_unique<SniForwardContext>(
-                source_path ? source_path : path, item.source_bus_name, *this);
+            auto ctx = std::make_unique<SniForwardContext>(source_path ? source_path : path,
+                                                           item.source_bus_name, *this);
 
             guint reg_id = g_dbus_connection_register_object(
                 item.target_conn.get(), path, iface, &item_vtable_, ctx.get(),
