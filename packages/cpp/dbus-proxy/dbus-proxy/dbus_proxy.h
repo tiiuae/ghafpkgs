@@ -41,8 +41,7 @@ typedef struct {
   guint catch_interfaces_removed_subscription_id;
   GHashTable *proxied_objects;
   GHashTable *node_info_cache;
-  GPtrArray *agents_registry; /* jarekk: temporary, to be replaced */
-  GHashTable *senders_registry;
+  GPtrArray *agents_registry;
   GRWLock rw_lock;
   guint sigint_source_id;
   guint sigterm_source_id;
@@ -141,8 +140,7 @@ GBusType parse_bus_type(const gchar *bus_str);
 void validateProxyConfigOrExit(const ProxyConfig *config);
 void method_call_reply_callback(GObject *source, GAsyncResult *res,
                                 gpointer user_data);
-GDBusInterfaceInfo *build_interface_info(const gchar *iface_name,
-                                         const gchar **methods);
+GDBusInterfaceInfo *build_interface_info(const AgentRule *rule);
 void free_interface_info(GDBusInterfaceInfo *iface);
 const gchar *get_agent_name(const gchar *object_path,
                             const gchar *interface_name,
@@ -157,16 +155,17 @@ gboolean handle_agent_register_call(const gchar *sender,
                                     const gchar *object_path,
                                     const gchar *interface_name,
                                     const gchar *method_name,
-                                    GVariant *parameters);
+                                    GVariant *parameters,
+                                    GDBusMethodInvocation *invocation);
 gboolean handle_agent_unregister_call(const gchar *sender,
                                       const gchar *object_path,
                                       const gchar *interface_name,
                                       const gchar *method_name,
-                                      GVariant *parameters);
+                                      GVariant *parameters,
+                                      GDBusMethodInvocation *invocation);
 void unregister_all_agent_registrations();
 void free_agent_callback_data(gpointer ptr);
 GDBusConnection *get_sender_dbus_connection(const gchar *sender_name);
-// jarekk gchar *get_sender_name_from_connection(GDBusConnection *connection);
 GHashTable *get_sender_callbacks(const gchar *sender_name);
 
 #endif // GHAF_DBUS_PROXY_H

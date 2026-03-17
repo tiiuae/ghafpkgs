@@ -41,9 +41,9 @@ void method_call_reply_callback(GObject *source, GAsyncResult *res,
               error ? error->message : "Unknown error");
     proxy_return_error(context->invocation, error);
     g_clear_error(&error);
+    g_object_unref(context->invocation);
   }
 
-  g_object_unref(context->invocation);
   g_free(context->forward_bus_name);
   g_free(context);
 }
@@ -56,7 +56,8 @@ void handle_method_call_generic(GDBusConnection *connection,
                                 GDBusMethodInvocation *invocation,
                                 gpointer user_data) {
 
-  const gchar *target_object_path = static_cast<const gchar *>(user_data);
+  const gchar *target_object_path =
+      user_data ? static_cast<const gchar *>(user_data) : object_path;
 
   log_verbose("Method call: %s.%s on %s from %s (forwarding to %s)",
               interface_name, method_name, object_path, sender,
@@ -71,25 +72,19 @@ void handle_method_call_generic(GDBusConnection *connection,
 
     // Handle Register/Unregister methods
     if (g_str_has_prefix(method_name, "Register")) {
-      // Add client's agent callback to our registry
-      // Skip forwarding the call if the agent is already registered
+      // Handle agent registration method, extract agent path from parameters,
+      // register callback and store in registry and handle call to
+      // the server if registration is successful
       if (handle_agent_register_call(sender, object_path, interface_name,
-                                     method_name, parameters)) {
-        // Generate DBus reply indicating success, predending we handled the
-        // registration
-        g_dbus_method_invocation_return_value(invocation, nullptr);
+                                     method_name, parameters, invocation)) {
+
         return;
       };
     } else if (g_str_has_prefix(method_name, "Unregister")) {
-      // Check if method name starts with Unregister
-      log_error("Method %s detected as unregistration method", method_name);
       // Remove client's agent callback from our registry
       // Skip forwarding the call if the agent is already unregistered
       if (handle_agent_unregister_call(sender, object_path, interface_name,
-                                       method_name, parameters)) {
-        // Generate DBus reply indicating success, predending we handled the
-        // unregistration
-        g_dbus_method_invocation_return_value(invocation, nullptr);
+                                       method_name, parameters, invocation)) {
         return;
       }
     }

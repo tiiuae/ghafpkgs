@@ -9,6 +9,12 @@
 #ifndef CALLBACK_RULES_H
 #define CALLBACK_RULES_H
 
+typedef struct {
+  const gchar *name;          // method name
+  const gchar *in_signature;  // e.g. "os", "a{sv}", "" (or nullptr)
+  const gchar *out_signature; // e.g. "", "b", "o"
+} GDBusMethodTable;
+
 struct AgentRule {
   const gchar *bus_name;     // "org.bluez"
   const gchar *manager_path; // "/org/freedesktop/NetworkManager/AgentManager"
@@ -21,7 +27,8 @@ struct AgentRule {
 
   const gchar *client_object_path; // "/org/bluez/agent"
   const gchar *client_interface;   // "org.bluez.Agent1"
-  const gchar **client_methods;    // NULL-terminated array of method names
+  const GDBusMethodTable
+      *client_methods; // NULL-terminated array of method tables
 };
 
 extern const AgentRule callbacks_rules[];

@@ -134,13 +134,23 @@ out:
   return result;
 }
 
+static const GDBusMethodTable *
+find_method_by_name_ptrs(const GDBusMethodTable *methods, const gchar *name) {
+  for (guint i = 0; methods[i].name != nullptr; ++i) {
+    if (g_strcmp0(methods[i].name, name) == 0) {
+      return &methods[i];
+    }
+  }
+  return nullptr;
+}
+
 const gchar *get_agent_name(const gchar *object_path,
                             const gchar *interface_name,
                             const gchar *method_name) {
   AgentData *result = find_registered_path(object_path);
   if (result &&
       g_strcmp0(result->rule->client_interface, interface_name) == 0 &&
-      !g_strv_contains(result->rule->client_methods, method_name)) {
+      !find_method_by_name_ptrs(result->rule->client_methods, method_name)) {
     log_error("No agent found for object path %s call %s.%s", object_path,
               interface_name, method_name);
     return nullptr;
@@ -161,8 +171,59 @@ void unregister_all_agent_registrations() {
   g_rw_lock_writer_unlock(&proxy_state->rw_lock);
 }
 
+static GDBusArgInfo **build_arg_info_list(const gchar *sig,
+                                          const gchar *prefix) {
+  if (!sig || sig[0] == '\0')
+    return nullptr;
+
+  GPtrArray *arr = g_ptr_array_new();
+  const gchar *p = sig;
+  guint idx = 0;
+
+  while (*p) {
+    const gchar *end = nullptr;
+    if (!g_variant_type_string_scan(p, nullptr, &end)) {
+      // invalid signature: free partial
+      for (guint i = 0; i < arr->len; ++i) {
+        auto *a = static_cast<GDBusArgInfo *>(g_ptr_array_index(arr, i));
+        g_free(a->name);
+        g_free(a->signature);
+        g_free(a);
+      }
+      g_ptr_array_free(arr, TRUE);
+      return nullptr;
+    }
+
+    GDBusArgInfo *arg = g_new0(GDBusArgInfo, 1);
+    arg->ref_count = 1;
+    arg->name = g_strdup_printf("%s%u", prefix, idx++); // in0, in1, out0...
+    arg->signature = g_strndup(p, end - p);
+    g_ptr_array_add(arr, arg);
+
+    p = end;
+  }
+
+  g_ptr_array_add(arr, nullptr); // NULL-terminate
+  return reinterpret_cast<GDBusArgInfo **>(g_ptr_array_free(arr, FALSE));
+}
+
+static void free_arg_info_list(GDBusArgInfo **args) {
+  if (!args)
+    return;
+  for (guint i = 0; args[i] != nullptr; ++i) {
+    g_free(args[i]->name);
+    g_free(args[i]->signature);
+    g_free(args[i]);
+  }
+  g_free(args);
+}
+
 void free_interface_info(GDBusInterfaceInfo *iface) {
+  if (!iface)
+    return;
   for (int i = 0; iface->methods && iface->methods[i]; i++) {
+    free_arg_info_list(iface->methods[i]->in_args);
+    free_arg_info_list(iface->methods[i]->out_args);
     g_free(iface->methods[i]->name);
     g_free(iface->methods[i]);
   }
@@ -171,19 +232,49 @@ void free_interface_info(GDBusInterfaceInfo *iface) {
   g_free(iface);
 }
 
-GDBusInterfaceInfo *build_interface_info(const gchar *iface_name,
-                                         const gchar **methods) {
+// Input: parameters is "(o)" or "(os)"
+// Output: new variant with first field replaced by unique_agent_path.
+// Caller owns returned GVariant* (g_variant_unref when done).
+static GVariant *
+replace_first_with_unique_agent_path(GVariant *parameters,
+                                     const gchar *unique_agent_path) {
+  if (!parameters || !unique_agent_path) {
+    return nullptr;
+  }
+
+  if (g_variant_is_of_type(parameters, G_VARIANT_TYPE("(o)"))) {
+    return g_variant_new("(o)", unique_agent_path);
+  }
+
+  if (g_variant_is_of_type(parameters, G_VARIANT_TYPE("(os)"))) {
+    const gchar *old_path = nullptr; // ignored
+    const gchar *s = nullptr;
+    g_variant_get(parameters, "(&o&s)", &old_path, &s);
+    return g_variant_new("(os)", unique_agent_path, s);
+  }
+
+  return nullptr; // unsupported type
+}
+
+GDBusInterfaceInfo *build_interface_info(const AgentRule *rule) {
   GDBusInterfaceInfo *iface = g_new0(GDBusInterfaceInfo, 1);
   iface->ref_count = 1;
-  iface->name = g_strdup(iface_name);
+  iface->name = g_strdup(rule->client_interface);
 
-  int n = g_strv_length(static_cast<gchar **>(const_cast<gchar **>(methods)));
-  iface->methods = g_new0(GDBusMethodInfo *, n + 1);
+  int method_count = 0;
+  for (int i = 0; rule->client_methods[i].name != nullptr; i++) {
+    method_count++;
+  }
+  iface->methods = g_new0(GDBusMethodInfo *, method_count + 1);
 
-  for (int i = 0; i < n; i++) {
+  for (int i = 0; i < method_count; i++) {
     GDBusMethodInfo *m = g_new0(GDBusMethodInfo, 1);
     m->ref_count = 1;
-    m->name = g_strdup(methods[i]);
+    m->name = g_strdup(rule->client_methods[i].name);
+    m->in_args =
+        build_arg_info_list(rule->client_methods[i].in_signature, "in");
+    m->out_args =
+        build_arg_info_list(rule->client_methods[i].out_signature, "out");
     iface->methods[i] = m;
   }
 
@@ -194,7 +285,8 @@ gboolean handle_agent_register_call(const gchar *sender,
                                     const gchar *object_path G_GNUC_UNUSED,
                                     const gchar *interface_name,
                                     const gchar *method_name,
-                                    GVariant *parameters) {
+                                    GVariant *parameters,
+                                    GDBusMethodInvocation *invocation) {
 
   const AgentRule *rule = get_callback_rule(proxy_state->config.source_bus_name,
                                             interface_name, method_name);
@@ -207,30 +299,34 @@ gboolean handle_agent_register_call(const gchar *sender,
 
   log_info("Handling register call for %s %s.%s", sender, interface_name,
            method_name);
-  // When the object path is customisable, the first parameter is expected
-  // to be a D-Bus object path (`&o` in the GVariant signature). This branch
-  // should be exercised with:
-  //   - correctly formatted object paths to confirm successful registration,
-  //   - missing or NULL parameters to verify that we log an error and return
-  //     FALSE without dereferencing invalid data,
-  //   - unusual but valid sender names to ensure that combining `agent_path`
-  //     and `sender` and then normalising with `g_strdelimit` still produces
-  //     a valid and unique D-Bus object path.
 
-  // Build unique agent path
+  // Generate unique object path for this registration, combining sender name
+  // and agent path from parameters if needed, to allow multiple registrations
+  // from the same sender
   gchar *unique_agent_path = NULL;
+  const gchar *agent_path = NULL;
 
   if (rule->object_path_customisable) {
-    // jarekk: test it
+    // Expect the first parameter to be an object path, extract it and combine
+    // with sender to create unique path for this registration. This allows
+    // multiple clients to register their agents with different paths, while
     // Extract agent path from parameters
-    const gchar *agent_path = NULL;
-    g_variant_get(parameters, "(&o)",
-                  &agent_path); // Assuming first param is object
+    GVariant *param = g_variant_get_child_value(parameters, 0);
+    if (g_variant_is_of_type(param, G_VARIANT_TYPE_OBJECT_PATH)) {
+      agent_path = g_variant_get_string(param, nullptr);
+    } else {
+      log_error("Expected first parameter to be an object path string, but got "
+                "different type");
+      g_variant_unref(param);
+      return FALSE;
+    }
+    g_variant_unref(param);
 
     if (!agent_path) {
       log_error("Failed to extract agent path from parameters");
       return FALSE;
     }
+    log_info("Extracted agent path from parameters: %s", agent_path);
 
     unique_agent_path = g_strdup_printf("%s/%s", agent_path, sender);
     g_strdelimit(unique_agent_path, ".:", '_');
@@ -238,7 +334,7 @@ gboolean handle_agent_register_call(const gchar *sender,
     unique_agent_path = g_strdup(rule->client_object_path);
   }
 
-  // Check if already registered
+  // Register a new object if already not registered
   AgentData *path_registered = find_registered_path(unique_agent_path);
   guint reg_id = 0;
   GDBusInterfaceInfo *iface = nullptr;
@@ -254,7 +350,7 @@ gboolean handle_agent_register_call(const gchar *sender,
   } else {
     // Register new object
     GError *error = NULL;
-    iface = build_interface_info(interface_name, rule->client_methods);
+    iface = build_interface_info(rule);
 
     static const GDBusInterfaceVTable vtable = {.method_call =
                                                     handle_method_call_generic,
@@ -264,8 +360,8 @@ gboolean handle_agent_register_call(const gchar *sender,
 
     reg_id = g_dbus_connection_register_object(
         proxy_state->source_bus, unique_agent_path, iface, &vtable,
-        g_strdup(unique_agent_path), // user_data
-        g_free,                      // free user_data
+        g_strdup(agent_path), // user_data
+        g_free,               // free user_data
         &error);
 
     if (reg_id == 0) {
@@ -279,6 +375,9 @@ gboolean handle_agent_register_call(const gchar *sender,
     }
   }
 
+  // Store registration in registry with sender and unique path, so we can
+  // properly handle multiple registrations from the same sender and cleanup on
+  // unregistration or NameOwnerChanged
   if (register_agent_callback(sender, rule->client_object_path,
                               unique_agent_path, interface_name, method_name,
                               reg_id, iface)) {
@@ -292,28 +391,58 @@ gboolean handle_agent_register_call(const gchar *sender,
     g_free(unique_agent_path);
     return FALSE;
   }
-  g_free(unique_agent_path);
 
   if (reg_id == 0) { // Inform caller to skip registration call on the server
                      // side, because this was just a registry update for an
                      // already registered path
+    g_dbus_method_invocation_return_value(invocation, nullptr);
+    g_free(unique_agent_path);
+    return TRUE;
+
+  } else {
+    GVariant *params =
+        replace_first_with_unique_agent_path(parameters, unique_agent_path);
+    g_free(unique_agent_path);
+    if (!params) {
+      log_error("Failed to build parameters for method call");
+      g_dbus_method_invocation_return_value(invocation, nullptr);
+      return TRUE;
+    }
+
+    MethodCallContext *context = g_new0(MethodCallContext, 1);
+    context->invocation = invocation;
+    context->forward_bus_name = g_strdup(proxy_state->config.source_bus_name);
+
+    g_object_ref(invocation);
+
+    // Forward the Register call to the server with the unique path as a
+    // parameter, so the server can identify the caller if needed. The reply
+    // will be handled in the generic method call handler, which will route it
+    // back to the correct invocation.
+    g_dbus_connection_call(proxy_state->source_bus,
+                           proxy_state->config.source_bus_name, object_path,
+                           interface_name, method_name, params, nullptr,
+                           G_DBUS_CALL_FLAGS_NONE, -1, nullptr,
+                           method_call_reply_callback, context);
     return TRUE;
   }
+
   return FALSE;
 }
 
 gboolean handle_agent_unregister_call(const gchar *sender,
-                                      const gchar *object_path G_GNUC_UNUSED,
-                                      const gchar *interface_name G_GNUC_UNUSED,
-                                      const gchar *method_name G_GNUC_UNUSED,
-                                      GVariant *parameters G_GNUC_UNUSED) {
+                                      const gchar *object_path,
+                                      const gchar *interface_name,
+                                      const gchar *method_name,
+                                      GVariant *parameters,
+                                      GDBusMethodInvocation *invocation) {
   log_info("Handling callback unregistration for %s at %s method %s", sender,
            object_path, method_name);
   /* Find registration ID for this sender by sender */
   g_rw_lock_writer_lock(&proxy_state->rw_lock);
   // Iterate over the agents registry to find all registrations for this sender
   // and remove them
-  gboolean secondary_agent = FALSE;
+  gboolean request_handled = FALSE;
   for (guint i = 0; i < proxy_state->agents_registry->len; i++) {
     AgentData *data = static_cast<AgentData *>(
         g_ptr_array_index(proxy_state->agents_registry, i));
@@ -327,14 +456,46 @@ gboolean handle_agent_unregister_call(const gchar *sender,
         log_info("This was a secondary registration for sender %s, skipping "
                  "unregistration on the server",
                  sender);
-        secondary_agent = TRUE;
+        g_dbus_method_invocation_return_value(invocation, nullptr);
+        request_handled = TRUE;
+      } else {
+        // We need to call Unregister method on the server for this callback to
+        // allow proper cleanup on the server side.
+        // Rewrite parameters with the unique agent path if needed, so server
+        // can identify the caller. This is needed in case of multiple
+        // registrations from the same sender, to allow proper unregistration of
+        // the correct callback on the server side.
+        GVariant *params = nullptr;
+        params = replace_first_with_unique_agent_path(parameters,
+                                                      data->unique_object_path);
+        g_variant_unref(parameters);
+
+        if (!params) {
+          log_error("Failed to build parameters for Unregister method call");
+          g_dbus_method_invocation_return_value(invocation, nullptr);
+          g_rw_lock_writer_unlock(&proxy_state->rw_lock);
+          return TRUE;
+        }
+
+        MethodCallContext *context = g_new0(MethodCallContext, 1);
+        context->invocation = invocation;
+        context->forward_bus_name =
+            g_strdup(proxy_state->config.source_bus_name);
+        g_object_ref(invocation);
+
+        g_dbus_connection_call(proxy_state->source_bus,
+                               proxy_state->config.source_bus_name, object_path,
+                               interface_name, method_name, params, nullptr,
+                               G_DBUS_CALL_FLAGS_NONE, -1, nullptr,
+                               method_call_reply_callback, context);
       }
       g_ptr_array_remove(proxy_state->agents_registry, data);
+      request_handled = TRUE;
       break;
     }
   }
   g_rw_lock_writer_unlock(&proxy_state->rw_lock);
-  return secondary_agent;
+  return request_handled;
 }
 
 static void on_name_owner_changed(GDBusConnection *connection G_GNUC_UNUSED,
@@ -365,7 +526,7 @@ static void on_name_owner_changed(GDBusConnection *connection G_GNUC_UNUSED,
   // Find and release all callbacks associated with the old owner
   g_rw_lock_writer_lock(&proxy_state->rw_lock);
 
-  // We are deeling usually with very few callbacks per sender, so iterating
+  // We are dealing usually with very few callbacks per sender, so iterating
   // over the array should be fine
   // We are dealing usually with very few callbacks per sender, so iterating
   for (guint i = 0; i < proxy_state->agents_registry->len; i++) {
@@ -382,10 +543,14 @@ static void on_name_owner_changed(GDBusConnection *connection G_GNUC_UNUSED,
       // Unregister it yet
       if (data->agent_object_reg_id) {
         GError *error = NULL;
+        GVariant *parameters = nullptr;
+        if (data->rule->object_path_customisable) {
+          parameters = g_variant_new("(o)", data->unique_object_path);
+        }
         g_dbus_connection_call_sync(
             proxy_state->source_bus, proxy_state->config.source_bus_name,
             data->rule->manager_path, data->rule->manager_interface,
-            data->rule->unregister_method, nullptr, nullptr,
+            data->rule->unregister_method, parameters, nullptr,
             G_DBUS_CALL_FLAGS_NONE, -1, nullptr, &error);
         if (error) {
           log_error("Failed to call Unregister method for sender %s: %s",

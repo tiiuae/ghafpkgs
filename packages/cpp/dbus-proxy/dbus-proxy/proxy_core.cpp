@@ -392,9 +392,8 @@ gboolean proxy_single_object(const gchar *object_path, GDBusNodeInfo *node_info,
 
     GError *error = nullptr;
     guint registration_id = g_dbus_connection_register_object(
-        proxy_state->target_bus, object_path, iface, &vtable,
-        g_strdup(object_path), // Pass object path as user_data for forwarding
-        g_free, &error);
+        proxy_state->target_bus, object_path, iface, &vtable, nullptr, g_free,
+        &error);
 
     if (registration_id == 0) {
       log_error("Failed to register interface %s on %s: %s", iface->name,
@@ -485,8 +484,8 @@ gboolean register_single_interface(const gchar *object_path,
                                               .padding = {nullptr}};
 
   guint registration_id = g_dbus_connection_register_object(
-      proxy_state->target_bus, object_path, iface_info, &vtable,
-      g_strdup(object_path), g_free, &error);
+      proxy_state->target_bus, object_path, iface_info, &vtable, nullptr,
+      g_free, &error);
 
   if (registration_id == 0) {
     log_error("Failed to register interface %s on %s: %s", interface_name,
@@ -689,10 +688,6 @@ void cleanup_proxy_state() {
   }
 
   unregister_all_agent_registrations();
-  if (proxy_state->senders_registry) {
-    g_hash_table_destroy(proxy_state->senders_registry);
-    proxy_state->senders_registry = nullptr;
-  }
 
   if (proxy_state->introspection_data) {
     g_dbus_node_info_unref(proxy_state->introspection_data);
