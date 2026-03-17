@@ -442,7 +442,6 @@ gboolean handle_agent_unregister_call(const gchar *sender,
   g_rw_lock_writer_lock(&proxy_state->rw_lock);
   // Iterate over the agents registry to find all registrations for this sender
   // and remove them
-  gboolean request_handled = FALSE;
   for (guint i = 0; i < proxy_state->agents_registry->len; i++) {
     AgentData *data = static_cast<AgentData *>(
         g_ptr_array_index(proxy_state->agents_registry, i));
@@ -457,7 +456,6 @@ gboolean handle_agent_unregister_call(const gchar *sender,
                  "unregistration on the server",
                  sender);
         g_dbus_method_invocation_return_value(invocation, nullptr);
-        request_handled = TRUE;
       } else {
         // We need to call Unregister method on the server for this callback to
         // allow proper cleanup on the server side.
@@ -490,12 +488,11 @@ gboolean handle_agent_unregister_call(const gchar *sender,
                                method_call_reply_callback, context);
       }
       g_ptr_array_remove(proxy_state->agents_registry, data);
-      request_handled = TRUE;
       break;
     }
   }
   g_rw_lock_writer_unlock(&proxy_state->rw_lock);
-  return request_handled;
+  return TRUE;
 }
 
 static void on_name_owner_changed(GDBusConnection *connection G_GNUC_UNUSED,
@@ -543,14 +540,14 @@ static void on_name_owner_changed(GDBusConnection *connection G_GNUC_UNUSED,
       // Unregister it yet
       if (data->agent_object_reg_id) {
         GError *error = NULL;
-        GVariant *parameters = nullptr;
+        GVariant *custom_parameters = nullptr;
         if (data->rule->object_path_customisable) {
-          parameters = g_variant_new("(o)", data->unique_object_path);
+          custom_parameters = g_variant_new("(o)", data->unique_object_path);
         }
         g_dbus_connection_call_sync(
             proxy_state->source_bus, proxy_state->config.source_bus_name,
             data->rule->manager_path, data->rule->manager_interface,
-            data->rule->unregister_method, parameters, nullptr,
+            data->rule->unregister_method, custom_parameters, nullptr,
             G_DBUS_CALL_FLAGS_NONE, -1, nullptr, &error);
         if (error) {
           log_error("Failed to call Unregister method for sender %s: %s",
