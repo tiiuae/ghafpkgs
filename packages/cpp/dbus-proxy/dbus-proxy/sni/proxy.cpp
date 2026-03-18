@@ -90,13 +90,26 @@ static GVariant* icon_name_to_pixmap(const char* icon_name) {
         names.emplace_back(icon_name, strlen(icon_name) - 9);
     names.push_back(icon_name);
 
-    std::vector<std::string> base_dirs = {
-        "/var/lib/flatpak/exports/share/icons/hicolor",
-    };
+    // Build icon search dirs: XDG data dirs first, then explicit Flatpak export
+    // paths as fallback (systemd services don't inherit the XDG_DATA_DIRS
+    // additions from /etc/profile.d/flatpak.sh).
+    std::vector<std::string> base_dirs;
+    const char* user_data = g_get_user_data_dir();
+    if (user_data)
+        base_dirs.push_back(std::string(user_data) + "/icons/hicolor");
+    const char* const* sys_dirs = g_get_system_data_dirs();
+    for (int i = 0; sys_dirs && sys_dirs[i]; i++)
+        base_dirs.push_back(std::string(sys_dirs[i]) + "/icons/hicolor");
+    // Flatpak system-wide and per-user export dirs (may not be in XDG_DATA_DIRS
+    // for a systemd service without the Flatpak environment hook).
+    base_dirs.emplace_back("/var/lib/flatpak/exports/share/icons/hicolor");
     const char* home = g_get_home_dir();
     if (home)
         base_dirs.push_back(std::string(home) +
                             "/.local/share/flatpak/exports/share/icons/hicolor");
+
+    for (const auto& d : base_dirs)
+        Log::verbose() << "[ICON] Search dir: " << d;
 
     // Subdirectories and extensions to try, in priority order.
     // svg_size > 0 means render the SVG at that size via gdk_pixbuf_new_from_file_at_size.
@@ -939,13 +952,14 @@ GVariant* SniProxy::on_get_property(G_GNUC_UNUSED GDBusConnection* connection,
                 << " -> dest=" << fwd.source_bus_name.c_str()
                 << " path=" << fwd.object_path.c_str();
 
+    SniItem* item = static_cast<SniItem*>(
+        g_hash_table_lookup(fwd.proxy.sni_items_, fwd.source_bus_name.c_str()));
+
     // In renamer mode, serve cached/synthesised properties without forwarding.
     // Flatpak icons are never in gui-vm's icon theme, so:
     //   IconName   -> "" (forces COSMIC to use IconPixmap instead of a white placeholder)
     //   IconPixmap -> cached pixmap rendered once at registration
     if (fwd.proxy.renamer_mode_) {
-        SniItem* item = static_cast<SniItem*>(
-            g_hash_table_lookup(fwd.proxy.sni_items_, fwd.source_bus_name.c_str()));
         if (item && item->cached_pixmap) {
             if (g_strcmp0(property_name, "IconName") == 0) {
                 Log::info() << "[ICON] Returning empty IconName (pixmap cached)";
@@ -958,6 +972,30 @@ GVariant* SniProxy::on_get_property(G_GNUC_UNUSED GDBusConnection* connection,
         }
     }
 
+    // In non-renamer (gui-vm) mode: synthesise ItemIsMenu/Menu for items that
+    // have a dbusmenu so COSMIC uses the dbusmenu path instead of Activate.
+    if (!fwd.proxy.renamer_mode_ && item && !item->cached_menu_path.empty()) {
+        // ItemIsMenu=true: tells COSMIC to use dbusmenu on click.
+        if (g_strcmp0(property_name, "ItemIsMenu") == 0) {
+            Log::info() << "[MENU] Synthesising ItemIsMenu=true (dbusmenu at "
+                        << item->cached_menu_path << ")";
+            return g_variant_new_boolean(TRUE);
+        }
+        // Menu: return the path where the proxy registered the dbusmenu interface.
+        // The raw source value is the app's internal path (e.g.
+        // /org/ayatana/NotificationItem/spotify_client/Menu) which is NOT registered
+        // on the target connection — the proxy registered dbusmenu at
+        // /com/canonical/dbusmenu and forwards calls from there to the real path.
+        // COSMIC follows the Menu property to call GetLayout; returning the wrong
+        // path would make those calls silently fail and right-click do nothing.
+        if (g_strcmp0(property_name, "Menu") == 0) {
+            static const char* DBUSMENU_PATH = "/com/canonical/dbusmenu";
+            Log::info() << "[MENU] Synthesising Menu=" << DBUSMENU_PATH
+                        << " (actual: " << item->cached_menu_path << ")";
+            return g_variant_new_object_path(DBUSMENU_PATH);
+        }
+    }
+
     g_autoptr(GVariant) result = g_dbus_connection_call_sync(
         fwd.proxy.source_bus_, fwd.source_bus_name.c_str(), fwd.object_path.c_str(),
         DBUS_INTERFACE_PROPERTIES, "Get", g_variant_new("(ss)", interface_name, property_name),
@@ -966,6 +1004,20 @@ GVariant* SniProxy::on_get_property(G_GNUC_UNUSED GDBusConnection* connection,
     if (result) {
         GVariant* value;
         g_variant_get(result, "(v)", &value);
+
+        // In non-renamer (gui-vm) mode: if source returns ItemIsMenu=false but the
+        // item has a dbusmenu, override to true so COSMIC calls dbusmenu
+        // Event/AboutToShow on click instead of Activate (which libappindicator
+        // apps like Spotify don't implement).
+        if (!fwd.proxy.renamer_mode_ && g_strcmp0(property_name, "ItemIsMenu") == 0 && item &&
+            !item->cached_menu_path.empty() &&
+            g_variant_is_of_type(value, G_VARIANT_TYPE_BOOLEAN) && !g_variant_get_boolean(value)) {
+            g_variant_unref(value);
+            Log::info() << "[MENU] Overriding ItemIsMenu=false -> true (item has dbusmenu at "
+                        << item->cached_menu_path << ")";
+            return g_variant_new_boolean(TRUE);
+        }
+
         g_autofree char* value_str = g_variant_print(value, TRUE);
         gboolean trunc = strlen(value_str) > 300;
         if (trunc)
@@ -979,19 +1031,16 @@ GVariant* SniProxy::on_get_property(G_GNUC_UNUSED GDBusConnection* connection,
                  << fwd.object_path.c_str() << " (" << fwd.source_bus_name.c_str()
                  << "): " << ((error && *error) ? (*error)->message : "Unknown");
 
-    // In renamer mode, synthesise missing properties for libappindicator apps.
-    if (fwd.proxy.renamer_mode_) {
-        SniItem* item = static_cast<SniItem*>(
-            g_hash_table_lookup(fwd.proxy.sni_items_, fwd.source_bus_name.c_str()));
-
-        // ItemIsMenu: if absent but the app has a Menu path, return TRUE so that
-        // COSMIC shows the dbusmenu on click instead of calling Activate.
-        if (g_strcmp0(property_name, "ItemIsMenu") == 0 && item &&
-            !item->cached_menu_path.empty()) {
-            if (error && *error)
-                g_clear_error(error);
-            return g_variant_new_boolean(TRUE);
-        }
+    // Source doesn't implement ItemIsMenu (e.g. libappindicator/Spotify returns
+    // "No such property").  If the item has a dbusmenu, synthesise true so COSMIC
+    // uses dbusmenu Event/AboutToShow on click instead of Activate.
+    if (!fwd.proxy.renamer_mode_ && g_strcmp0(property_name, "ItemIsMenu") == 0 && item &&
+        !item->cached_menu_path.empty()) {
+        g_clear_error(error);
+        Log::info() << "[MENU] ItemIsMenu not implemented by source, synthesising true "
+                       "(item has dbusmenu at "
+                    << item->cached_menu_path << ")";
+        return g_variant_new_boolean(TRUE);
     }
 
     return nullptr;
@@ -1320,11 +1369,44 @@ void SniProxy::on_item_name_acquired(G_GNUC_UNUSED GDBusConnection* conn, const 
         return;
     }
 
-    // Register dbusmenu at the standard path (used by most SNI apps)
+    // In renamer mode, fetch the app's actual dbusmenu path *before* registering
+    // the dbusmenu proxy object.  libappindicator apps (Spotify) expose their menu
+    // at a non-standard path (e.g. /org/ayatana/NotificationItem/spotify_client/Menu)
+    // rather than /com/canonical/dbusmenu.  Passing the real path as source_path
+    // makes SniForwardContext forward all dbusmenu calls to the correct destination.
+    if (self.renamer_mode_) {
+        g_autoptr(GError) menu_early_err = nullptr;
+        g_autoptr(GVariant) menu_early = g_dbus_connection_call_sync(
+            self.source_bus_, item->source_bus_name.c_str(), item->item_object_path.c_str(),
+            DBUS_INTERFACE_PROPERTIES, "Get", g_variant_new("(ss)", SNI_ITEM_INTERFACE, "Menu"),
+            G_VARIANT_TYPE("(v)"), G_DBUS_CALL_FLAGS_NONE, 2000, nullptr, &menu_early_err);
+        if (menu_early) {
+            GVariant* v = nullptr;
+            g_variant_get(menu_early, "(v)", &v);
+            if (g_variant_is_of_type(v, G_VARIANT_TYPE_OBJECT_PATH)) {
+                const char* mpath = g_variant_get_string(v, nullptr);
+                if (mpath && mpath[0] == '/' && g_strcmp0(mpath, "/") != 0) {
+                    item->cached_menu_path = mpath;
+                    Log::info() << "[MENU] Early-fetched menu path for " << item->source_bus_name
+                                << ": " << mpath;
+                }
+            }
+            g_variant_unref(v);
+        }
+    }
+
+    // Register dbusmenu at the standard path (used by most SNI apps).
+    // In renamer mode pass the app's actual menu path as source_path so that
+    // method/property calls are forwarded to the right object on the source bus.
     static const char* DBUSMENU_PATH = "/com/canonical/dbusmenu";
-    if (!self.register_path_with_xml(*item, DBUSMENU_PATH, DBUSMENU_ITEM_XML)) {
-        Log::info() << "dbusmenu registration at " << DBUSMENU_PATH << " failed for "
-                    << item->source_bus_name.c_str() << " (non-fatal)";
+    {
+        const char* menu_src = (self.renamer_mode_ && !item->cached_menu_path.empty())
+                                   ? item->cached_menu_path.c_str()
+                                   : nullptr;
+        if (!self.register_path_with_xml(*item, DBUSMENU_PATH, DBUSMENU_ITEM_XML, menu_src)) {
+            Log::info() << "dbusmenu registration at " << DBUSMENU_PATH << " failed for "
+                        << item->source_bus_name.c_str() << " (non-fatal)";
+        }
     }
 
     // Subscribe to all signals from this source name on source bus
@@ -1338,6 +1420,7 @@ void SniProxy::on_item_name_acquired(G_GNUC_UNUSED GDBusConnection* conn, const 
 
     // In renamer mode, cache IconName now so we can synthesise IconPixmap later
     // for apps that only provide an icon name (e.g. Spotify via libappindicator).
+    // cached_menu_path was already populated by the early fetch above.
     if (self.renamer_mode_) {
         g_autoptr(GError) icon_err = nullptr;
         g_autoptr(GVariant) icon_result = g_dbus_connection_call_sync(
@@ -1357,7 +1440,18 @@ void SniProxy::on_item_name_acquired(G_GNUC_UNUSED GDBusConnection* conn, const 
                 Log::info() << "[ICON] Cached pixmap for " << item->source_bus_name;
             }
         }
+        // cached_menu_path already set by early fetch; log if not set
+        if (item->cached_menu_path.empty())
+            Log::info() << "[MENU] No menu path for " << item->source_bus_name;
+        else
+            Log::info() << "[ICON] Cached Menu path for " << item->source_bus_name << ": "
+                        << item->cached_menu_path;
+    }
 
+    // In non-renamer (gui-vm proxy) mode, cache the Menu path so we can return
+    // ItemIsMenu=true for apps that use dbusmenu (libappindicator/Spotify).
+    // This makes COSMIC call dbusmenu Event/AboutToShow on click instead of Activate.
+    if (!self.renamer_mode_) {
         g_autoptr(GError) menu_err = nullptr;
         g_autoptr(GVariant) menu_result = g_dbus_connection_call_sync(
             self.source_bus_, item->source_bus_name.c_str(), item->item_object_path.c_str(),
@@ -1366,10 +1460,15 @@ void SniProxy::on_item_name_acquired(G_GNUC_UNUSED GDBusConnection* conn, const 
         if (menu_result) {
             GVariant* v = nullptr;
             g_variant_get(menu_result, "(v)", &v);
-            item->cached_menu_path = g_variant_get_string(v, nullptr);
+            if (g_variant_is_of_type(v, G_VARIANT_TYPE_OBJECT_PATH)) {
+                const char* mpath = g_variant_get_string(v, nullptr);
+                if (mpath && mpath[0] == '/' && g_strcmp0(mpath, "/") != 0) {
+                    item->cached_menu_path = mpath;
+                    Log::info() << "[MENU] Cached menu path for " << item->source_bus_name << ": "
+                                << mpath;
+                }
+            }
             g_variant_unref(v);
-            Log::info() << "[ICON] Cached Menu path for " << item->source_bus_name << ": "
-                        << item->cached_menu_path;
         }
     }
 
@@ -1554,6 +1653,34 @@ void SniProxy::discover_and_proxy_item(const char* bus_name, const char* object_
     }
 
     Log::info() << "Created per-item target connection for " << bus_name;
+
+    // Pre-fetch the Menu path before owning the target name.
+    // This eliminates a race where COSMIC queries ItemIsMenu the instant
+    // NameOwnerChanged fires (name acquired) but cached_menu_path is still
+    // empty inside on_item_name_acquired, causing a false ItemIsMenu=false.
+    if (!renamer_mode_) {
+        g_autoptr(GError) menu_prefetch_err = nullptr;
+        g_autoptr(GVariant) menu_prefetch = g_dbus_connection_call_sync(
+            source_bus_, bus_name, item->item_object_path.c_str(), DBUS_INTERFACE_PROPERTIES, "Get",
+            g_variant_new("(ss)", SNI_ITEM_INTERFACE, "Menu"), G_VARIANT_TYPE("(v)"),
+            G_DBUS_CALL_FLAGS_NONE, 2000, nullptr, &menu_prefetch_err);
+        if (menu_prefetch) {
+            GVariant* v = nullptr;
+            g_variant_get(menu_prefetch, "(v)", &v);
+            if (v && g_variant_is_of_type(v, G_VARIANT_TYPE_OBJECT_PATH)) {
+                const char* mpath = g_variant_get_string(v, nullptr);
+                if (mpath && mpath[0] == '/' && g_strcmp0(mpath, "/") != 0) {
+                    item->cached_menu_path = mpath;
+                    Log::info() << "[MENU] Pre-fetched menu path for " << bus_name << ": " << mpath;
+                }
+            }
+            if (v)
+                g_variant_unref(v);
+        } else {
+            Log::verbose() << "[MENU] Pre-fetch Menu for " << bus_name << " failed: "
+                           << (menu_prefetch_err ? menu_prefetch_err->message : "unknown");
+        }
+    }
 
     // Own the target bus name on the per-item connection
     item->target_name_owner_id = g_bus_own_name_on_connection(
