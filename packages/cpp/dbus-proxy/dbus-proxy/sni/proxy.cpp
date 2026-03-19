@@ -225,11 +225,86 @@ const GDBusInterfaceVTable SniProxy::watcher_vtable_ = {
 struct SniMethodCallContext {
     GDBusMethodInvocation* invocation = nullptr; // owned (caller must g_object_ref before storing)
     std::string forward_bus_name;
+    std::string method_name;
     ~SniMethodCallContext() {
         if (invocation)
             g_object_unref(invocation);
     }
 };
+
+// --- dbusmenu GetLayout reply transform ---
+//
+// libayatana-appindicator apps (e.g. Spotify) set visible=false on menu items
+// like "Minimize to Tray" when they don't detect an SNI host at startup.
+// Since our proxy IS the SNI host, force all such items visible so the user
+// can trigger them from the tray menu.
+
+static GVariant* force_menu_items_visible(GVariant* node) {
+    if (!node || !g_variant_is_of_type(node, G_VARIANT_TYPE("(ia{sv}av)")))
+        return node ? g_variant_ref(node) : nullptr;
+
+    gint32 id;
+    GVariant* props_var = nullptr;
+    GVariant* children_var = nullptr;
+    g_variant_get(node, "(i@a{sv}@av)", &id, &props_var, &children_var);
+
+    // Rebuild props dict, forcing visible=true wherever it was false.
+    GVariantBuilder props_b;
+    g_variant_builder_init(&props_b, G_VARIANT_TYPE("a{sv}"));
+    GVariantIter iter;
+    g_variant_iter_init(&iter, props_var);
+    const gchar* key;
+    GVariant* val;
+    while (g_variant_iter_next(&iter, "{&sv}", &key, &val)) {
+        if (g_strcmp0(key, "visible") == 0) {
+            g_variant_builder_add(&props_b, "{sv}", "visible", g_variant_new_boolean(TRUE));
+        } else {
+            g_variant_builder_add(&props_b, "{sv}", key, val);
+        }
+        g_variant_unref(val);
+    }
+
+    // Rebuild children array, recursing into each child.
+    GVariantBuilder children_b;
+    g_variant_builder_init(&children_b, G_VARIANT_TYPE("av"));
+    GVariantIter citer;
+    g_variant_iter_init(&citer, children_var);
+    GVariant* child_var;
+    while (g_variant_iter_next(&citer, "*", &child_var)) {
+        // Each element of av is a variant wrapping (ia{sv}av).
+        GVariant* child_inner = g_variant_get_variant(child_var);
+        GVariant* modified = force_menu_items_visible(child_inner);
+        g_variant_builder_add(&children_b, "v", modified);
+        g_variant_unref(modified);
+        g_variant_unref(child_inner);
+        g_variant_unref(child_var);
+    }
+
+    g_variant_unref(props_var);
+    g_variant_unref(children_var);
+    // Sink the new GVariant so callers always receive a non-floating ref.
+    // g_variant_builder_add("v", ...) uses g_variant_ref_sink internally: for a
+    // floating value it just clears the float flag (no refcount increment), so a
+    // subsequent g_variant_unref by the caller would reach refcount=0 and free it
+    // prematurely.  Sinking here makes the ref semantics uniform (refcount=1,
+    // non-floating) regardless of which return path is taken.
+    return g_variant_ref_sink(g_variant_new("(i@a{sv}@av)", id, g_variant_builder_end(&props_b),
+                                            g_variant_builder_end(&children_b)));
+}
+
+static GVariant* transform_get_layout_result(GVariant* result) {
+    if (!result || !g_variant_is_of_type(result, G_VARIANT_TYPE("(u(ia{sv}av))")))
+        return result ? g_variant_ref(result) : nullptr;
+
+    guint32 revision;
+    GVariant* root = nullptr;
+    g_variant_get(result, "(u@(ia{sv}av))", &revision, &root);
+    GVariant* modified_root = force_menu_items_visible(root);
+    g_variant_unref(root);
+    GVariant* new_result = g_variant_new("(u@(ia{sv}av))", revision, modified_root);
+    g_variant_unref(modified_root);
+    return new_result;
+}
 
 // --- XDG activation workaround for dbusmenu.Event ---
 // Electron/Chromium apps (Element, Teams, Discord) require an XDG activation
@@ -576,6 +651,38 @@ char* SniProxy::resolve_unique_to_wellknown(const char* unique_name) {
     return resolved;
 }
 
+// --- Helper: emit PropertiesChanged + StatusNotifierHostRegistered ---
+// libayatana-appindicator creates the watcher proxy with DO_NOT_LOAD_PROPERTIES,
+// so its GDBusProxy cache is empty.  When StatusNotifierHostRegistered fires,
+// AppIndicator calls g_dbus_proxy_get_cached_property("IsStatusNotifierHostRegistered").
+// Without a prior PropertiesChanged, the cache returns NULL and AppIndicator skips
+// enabling tray features (Minimize to Tray, hide-on-close).
+// Emitting PropertiesChanged first populates the cache; the signal then reads TRUE.
+static void emit_host_registered(GDBusConnection* conn) {
+    // 1. PropertiesChanged — populates GDBusProxy cache.
+    // Pass GVariant inline (no g_autoptr): emit_signal sinks the floating ref;
+    // a separate g_autoptr would cause a double-free / use-after-free.
+    GVariantBuilder props_b, inval_b;
+    g_variant_builder_init(&props_b, G_VARIANT_TYPE("a{sv}"));
+    g_variant_builder_add(&props_b, "{sv}", "IsStatusNotifierHostRegistered",
+                          g_variant_new_boolean(TRUE));
+    g_variant_builder_init(&inval_b, G_VARIANT_TYPE("as"));
+    g_autoptr(GError) props_err = nullptr;
+    g_dbus_connection_emit_signal(
+        conn, nullptr, SNI_WATCHER_OBJECT_PATH, "org.freedesktop.DBus.Properties",
+        "PropertiesChanged", g_variant_new("(sa{sv}as)", SNI_WATCHER_INTERFACE, &props_b, &inval_b),
+        &props_err);
+    if (props_err)
+        Log::error() << "Failed to emit PropertiesChanged: " << props_err->message;
+
+    // 2. StatusNotifierHostRegistered — triggers AppIndicator callback
+    g_autoptr(GError) sig_err = nullptr;
+    g_dbus_connection_emit_signal(conn, nullptr, SNI_WATCHER_OBJECT_PATH, SNI_WATCHER_INTERFACE,
+                                  "StatusNotifierHostRegistered", nullptr, &sig_err);
+    if (sig_err)
+        Log::error() << "Failed to emit StatusNotifierHostRegistered: " << sig_err->message;
+}
+
 // --- Watcher: method call handler ---
 
 void SniProxy::on_watcher_method_call(GDBusConnection* connection, const char* sender,
@@ -600,6 +707,16 @@ void SniProxy::on_watcher_method_call(GDBusConnection* connection, const char* s
         }
 
         g_dbus_method_invocation_return_value(invocation, nullptr);
+
+        // If a host is already registered (renamer synthetic or real), re-emit
+        // StatusNotifierHostRegistered so the newly registered app can receive it.
+        // Apps subscribe to this signal to enable "Minimize to Tray" behaviour;
+        // the initial emit at watcher name acquisition happens before the app
+        // connects its signal listener, so it must be replayed on registration.
+        if (self.host_registered_) {
+            emit_host_registered(connection);
+            Log::info() << "[WATCHER] Re-emitted StatusNotifierHostRegistered for " << sender;
+        }
 
     } else if (g_strcmp0(method_name, "RegisterStatusNotifierHost") == 0) {
         const char* service;
@@ -692,10 +809,22 @@ gboolean SniProxy::register_watcher() {
 
 // --- Watcher: name ownership callbacks ---
 
-void SniProxy::on_watcher_name_acquired(G_GNUC_UNUSED GDBusConnection* conn, const gchar* name,
+void SniProxy::on_watcher_name_acquired(GDBusConnection* conn, const gchar* name,
                                         gpointer user_data) {
     Log::info() << "Acquired watcher name: " << name;
     SniProxy& self = *static_cast<SniProxy*>(user_data);
+
+    // In renamer mode the COSMIC panel (tray host) lives on the gui-vm, so
+    // RegisterStatusNotifierHost is never called locally.  Pre-mark the host
+    // as registered and emit StatusNotifierHostRegistered so that apps like
+    // Spotify (libappindicator) see a live host, enable "Minimize to Tray",
+    // and hide to tray on window-close instead of quitting.
+    if (self.renamer_mode_) {
+        self.host_registered_ = TRUE;
+        emit_host_registered(conn);
+        Log::info() << "[RENAMER] Emitted StatusNotifierHostRegistered (synthetic host)";
+    }
+
     self.initial_scan();
 }
 
@@ -860,13 +989,24 @@ void SniProxy::method_reply_callback(GObject* source, GAsyncResult* res, gpointe
         g_dbus_connection_call_finish(G_DBUS_CONNECTION(source), res, &error);
 
     if (result) {
-        g_autofree char* result_str = g_variant_print(result, TRUE);
+        // For GetLayout replies: force all visible=false menu items to visible=true.
+        // libayatana-appindicator apps hide items (e.g. "Minimize to Tray") when
+        // they don't detect an SNI host at startup.  We are the host, so show them.
+        GVariant* reply = result;
+        GVariant* transformed = nullptr;
+        if (ctx->method_name == "GetLayout") {
+            transformed = transform_get_layout_result(result);
+            reply = transformed;
+        }
+        g_autofree char* result_str = g_variant_print(reply, TRUE);
         gboolean truncated = strlen(result_str) > 300;
         if (truncated)
             result_str[300] = '\0';
         Log::info() << "[REPLY] Method call to " << ctx->forward_bus_name.c_str()
                     << " OK: " << result_str << (truncated ? "..." : "");
-        g_dbus_method_invocation_return_value(ctx->invocation, result);
+        // return_value takes ownership via g_dbus_message_set_body → g_variant_ref_sink.
+        // Do NOT unref transformed here — return_value's message destructor handles it.
+        g_dbus_method_invocation_return_value(ctx->invocation, reply);
     } else {
         Log::error() << "[REPLY] Method call to " << ctx->forward_bus_name.c_str()
                      << " FAILED: " << (error ? error->message : "Unknown");
@@ -933,6 +1073,7 @@ void SniProxy::on_method_call(G_GNUC_UNUSED GDBusConnection* connection,
     ctx->invocation = invocation;
     g_object_ref(invocation); // ctx owns a ref via ~SniMethodCallContext()
     ctx->forward_bus_name = fwd.source_bus_name;
+    ctx->method_name = method_name;
 
     g_dbus_connection_call(fwd.proxy.source_bus_, fwd.source_bus_name.c_str(),
                            fwd.object_path.c_str(), interface_name, method_name, parameters,
