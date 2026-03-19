@@ -1,23 +1,49 @@
-# Copyright 2025 TII (SSRC) and the Ghaf contributors
+# Copyright 2026 TII (SSRC) and the Ghaf contributors
 # SPDX-License-Identifier: Apache-2.0
 {
   stdenv,
+  cmake,
   pkg-config,
   glib,
+  gdk-pixbuf,
+  gtk4,
+  util-linux,
+  librsvg,
+  cairo,
+  cppcheck,
+  valgrind,
+  dbus,
+  python3,
+  gobject-introspection,
   lib,
 }:
 stdenv.mkDerivation {
   pname = "dbus-proxy";
-  version = "0.1.0";
+  version = "0.1.2";
 
   src = ./dbus-proxy;
 
-  nativeBuildInputs = [ pkg-config ];
-  buildInputs = [ glib ];
+  nativeBuildInputs = [
+    cmake
+    pkg-config
+    cppcheck
+    valgrind
+    dbus
+    (python3.withPackages (ps: [ ps.pygobject3 ]))
+    gobject-introspection
+  ];
+  buildInputs = [
+    glib
+    gdk-pixbuf
+    gtk4
+    util-linux
+    librsvg
+    cairo
+  ];
 
-  installPhase = ''
-    mkdir -p $out/bin
-    install -Dm755 dbus-proxy $out/bin/dbus-proxy
+  doCheck = true;
+  checkPhase = ''
+    bash ../tests/sni.sh ./dbus-proxy
   '';
 
   meta = {
