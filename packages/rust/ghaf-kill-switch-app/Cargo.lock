@@ -678,7 +678,7 @@ dependencies = [
 [[package]]
 name = "clipboard_macos"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/window_clipboard.git?tag=sctk-0.20#3a7af79e54db6854d8aa9d9e2866a9288d0f95d5"
+source = "git+https://github.com/pop-os/window_clipboard.git?tag=sctk-0.20#f68595ee0e62fbd6589f4709b5aaa5c3c7ea5f6c"
 dependencies = [
  "objc",
  "objc-foundation",
@@ -688,7 +688,7 @@ dependencies = [
 [[package]]
 name = "clipboard_wayland"
 version = "0.2.2"
-source = "git+https://github.com/pop-os/window_clipboard.git?tag=sctk-0.20#3a7af79e54db6854d8aa9d9e2866a9288d0f95d5"
+source = "git+https://github.com/pop-os/window_clipboard.git?tag=sctk-0.20#f68595ee0e62fbd6589f4709b5aaa5c3c7ea5f6c"
 dependencies = [
  "dnd",
  "mime",
@@ -698,7 +698,7 @@ dependencies = [
 [[package]]
 name = "clipboard_x11"
 version = "0.4.2"
-source = "git+https://github.com/pop-os/window_clipboard.git?tag=sctk-0.20#3a7af79e54db6854d8aa9d9e2866a9288d0f95d5"
+source = "git+https://github.com/pop-os/window_clipboard.git?tag=sctk-0.20#f68595ee0e62fbd6589f4709b5aaa5c3c7ea5f6c"
 dependencies = [
  "thiserror 1.0.69",
  "x11rb",
@@ -839,7 +839,7 @@ dependencies = [
 [[package]]
 name = "cosmic-config"
 version = "1.0.0"
-source = "git+https://github.com/pop-os/libcosmic#ff6454248ff0f2ffe889798ef9610a1f8e5384e4"
+source = "git+https://github.com/pop-os/libcosmic#d7fd880ac6e3ea03b421541837d654bd036437ea"
 dependencies = [
  "atomicwrites",
  "cosmic-config-derive",
@@ -860,7 +860,7 @@ dependencies = [
 [[package]]
 name = "cosmic-config-derive"
 version = "1.0.0"
-source = "git+https://github.com/pop-os/libcosmic#ff6454248ff0f2ffe889798ef9610a1f8e5384e4"
+source = "git+https://github.com/pop-os/libcosmic#d7fd880ac6e3ea03b421541837d654bd036437ea"
 dependencies = [
  "quote",
  "syn",
@@ -883,7 +883,7 @@ dependencies = [
 [[package]]
 name = "cosmic-panel-config"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/cosmic-panel#6a783a18c3079955ff4cde1d00eaadf8e77b869c"
+source = "git+https://github.com/pop-os/cosmic-panel#d518c7d25ef96f1a9696aa8cce008656bf66ece4"
 dependencies = [
  "anyhow",
  "cosmic-config",
@@ -911,7 +911,7 @@ dependencies = [
 [[package]]
 name = "cosmic-settings-daemon"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/dbus-settings-bindings#0fa672f8dadb884001ef9a251b149ed432879629"
+source = "git+https://github.com/pop-os/dbus-settings-bindings#507e342c21d3ce6ae41b1d4f3fa2f0ad5ee23e75"
 dependencies = [
  "zbus",
 ]
@@ -919,7 +919,7 @@ dependencies = [
 [[package]]
 name = "cosmic-text"
 version = "0.18.2"
-source = "git+https://github.com/pop-os/cosmic-text.git#b6216ad123814c41c35943390727b4e7146cd143"
+source = "git+https://github.com/pop-os/cosmic-text.git#d5a972a2b63649fad11ea3a7e80f7dc4c592f01a"
 dependencies = [
  "bitflags 2.11.0",
  "fontdb",
@@ -942,7 +942,7 @@ dependencies = [
 [[package]]
 name = "cosmic-theme"
 version = "1.0.0"
-source = "git+https://github.com/pop-os/libcosmic#ff6454248ff0f2ffe889798ef9610a1f8e5384e4"
+source = "git+https://github.com/pop-os/libcosmic#d7fd880ac6e3ea03b421541837d654bd036437ea"
 dependencies = [
  "almost",
  "configparser",
@@ -1016,9 +1016,9 @@ checksum = "42aaeae719fd78ce501d77c6cdf01f7e96f26bcd5617a4903a1c2b97e388543a"
 
 [[package]]
 name = "csscolorparser"
-version = "0.8.2"
+version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64a878cfd6075649977f548ed439564cfdbe1f190a6656a00b48af7740f2f148"
+checksum = "199f851bd3cb5004c09474252c7f74e7c047441ed0979bf3688a7106a13da952"
 dependencies = [
  "num-traits",
  "phf 0.13.1",
@@ -1168,7 +1168,7 @@ dependencies = [
 [[package]]
 name = "dnd"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/window_clipboard.git?tag=sctk-0.20#3a7af79e54db6854d8aa9d9e2866a9288d0f95d5"
+source = "git+https://github.com/pop-os/window_clipboard.git?tag=sctk-0.20#f68595ee0e62fbd6589f4709b5aaa5c3c7ea5f6c"
 dependencies = [
  "bitflags 2.11.0",
  "mime",
@@ -1884,7 +1884,7 @@ dependencies = [
 [[package]]
 name = "iced"
 version = "0.14.0"
-source = "git+https://github.com/pop-os/libcosmic#ff6454248ff0f2ffe889798ef9610a1f8e5384e4"
+source = "git+https://github.com/pop-os/libcosmic#d7fd880ac6e3ea03b421541837d654bd036437ea"
 dependencies = [
  "dnd",
  "iced_accessibility",
@@ -1905,7 +1905,7 @@ dependencies = [
 [[package]]
 name = "iced_accessibility"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/libcosmic#ff6454248ff0f2ffe889798ef9610a1f8e5384e4"
+source = "git+https://github.com/pop-os/libcosmic#d7fd880ac6e3ea03b421541837d654bd036437ea"
 dependencies = [
  "accesskit",
  "accesskit_winit",
@@ -1914,7 +1914,7 @@ dependencies = [
 [[package]]
 name = "iced_core"
 version = "0.14.0"
-source = "git+https://github.com/pop-os/libcosmic#ff6454248ff0f2ffe889798ef9610a1f8e5384e4"
+source = "git+https://github.com/pop-os/libcosmic#d7fd880ac6e3ea03b421541837d654bd036437ea"
 dependencies = [
  "bitflags 2.11.0",
  "bytes",
@@ -1938,7 +1938,7 @@ dependencies = [
 [[package]]
 name = "iced_debug"
 version = "0.14.0"
-source = "git+https://github.com/pop-os/libcosmic#ff6454248ff0f2ffe889798ef9610a1f8e5384e4"
+source = "git+https://github.com/pop-os/libcosmic#d7fd880ac6e3ea03b421541837d654bd036437ea"
 dependencies = [
  "iced_core",
  "iced_futures",
@@ -1948,7 +1948,7 @@ dependencies = [
 [[package]]
 name = "iced_futures"
 version = "0.14.0"
-source = "git+https://github.com/pop-os/libcosmic#ff6454248ff0f2ffe889798ef9610a1f8e5384e4"
+source = "git+https://github.com/pop-os/libcosmic#d7fd880ac6e3ea03b421541837d654bd036437ea"
 dependencies = [
  "futures",
  "iced_core",
@@ -1962,7 +1962,7 @@ dependencies = [
 [[package]]
 name = "iced_graphics"
 version = "0.14.0"
-source = "git+https://github.com/pop-os/libcosmic#ff6454248ff0f2ffe889798ef9610a1f8e5384e4"
+source = "git+https://github.com/pop-os/libcosmic#d7fd880ac6e3ea03b421541837d654bd036437ea"
 dependencies = [
  "bitflags 2.11.0",
  "bytemuck",
@@ -1983,7 +1983,7 @@ dependencies = [
 [[package]]
 name = "iced_program"
 version = "0.14.0"
-source = "git+https://github.com/pop-os/libcosmic#ff6454248ff0f2ffe889798ef9610a1f8e5384e4"
+source = "git+https://github.com/pop-os/libcosmic#d7fd880ac6e3ea03b421541837d654bd036437ea"
 dependencies = [
  "iced_graphics",
  "iced_runtime",
@@ -1992,7 +1992,7 @@ dependencies = [
 [[package]]
 name = "iced_renderer"
 version = "0.14.0"
-source = "git+https://github.com/pop-os/libcosmic#ff6454248ff0f2ffe889798ef9610a1f8e5384e4"
+source = "git+https://github.com/pop-os/libcosmic#d7fd880ac6e3ea03b421541837d654bd036437ea"
 dependencies = [
  "iced_graphics",
  "iced_tiny_skia",
@@ -2004,7 +2004,7 @@ dependencies = [
 [[package]]
 name = "iced_runtime"
 version = "0.14.0"
-source = "git+https://github.com/pop-os/libcosmic#ff6454248ff0f2ffe889798ef9610a1f8e5384e4"
+source = "git+https://github.com/pop-os/libcosmic#d7fd880ac6e3ea03b421541837d654bd036437ea"
 dependencies = [
  "bytes",
  "cosmic-client-toolkit",
@@ -2019,7 +2019,7 @@ dependencies = [
 [[package]]
 name = "iced_tiny_skia"
 version = "0.14.0"
-source = "git+https://github.com/pop-os/libcosmic#ff6454248ff0f2ffe889798ef9610a1f8e5384e4"
+source = "git+https://github.com/pop-os/libcosmic#d7fd880ac6e3ea03b421541837d654bd036437ea"
 dependencies = [
  "bytemuck",
  "cosmic-text",
@@ -2036,7 +2036,7 @@ dependencies = [
 [[package]]
 name = "iced_wgpu"
 version = "0.14.0"
-source = "git+https://github.com/pop-os/libcosmic#ff6454248ff0f2ffe889798ef9610a1f8e5384e4"
+source = "git+https://github.com/pop-os/libcosmic#d7fd880ac6e3ea03b421541837d654bd036437ea"
 dependencies = [
  "as-raw-xcb-connection",
  "bitflags 2.11.0",
@@ -2067,7 +2067,7 @@ dependencies = [
 [[package]]
 name = "iced_widget"
 version = "0.14.2"
-source = "git+https://github.com/pop-os/libcosmic#ff6454248ff0f2ffe889798ef9610a1f8e5384e4"
+source = "git+https://github.com/pop-os/libcosmic#d7fd880ac6e3ea03b421541837d654bd036437ea"
 dependencies = [
  "cosmic-client-toolkit",
  "dnd",
@@ -2085,7 +2085,7 @@ dependencies = [
 [[package]]
 name = "iced_winit"
 version = "0.14.0"
-source = "git+https://github.com/pop-os/libcosmic#ff6454248ff0f2ffe889798ef9610a1f8e5384e4"
+source = "git+https://github.com/pop-os/libcosmic#d7fd880ac6e3ea03b421541837d654bd036437ea"
 dependencies = [
  "cosmic-client-toolkit",
  "cursor-icon",
@@ -2230,9 +2230,9 @@ dependencies = [
 
 [[package]]
 name = "image"
-version = "0.25.9"
+version = "0.25.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6506c6c10786659413faa717ceebcb8f70731c0a60cbae39795fdf114519c1a"
+checksum = "85ab80394333c02fe689eaf900ab500fbd0c2213da414687ebf995a65d5a6104"
 dependencies = [
  "bytemuck",
  "byteorder-lite",
@@ -2420,9 +2420,9 @@ dependencies = [
 
 [[package]]
 name = "known-folders"
-version = "1.4.1"
+version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "770919970f7d2f74fea948900d35e2ef64f44129e8ae4015f59de1f0aca7c2a5"
+checksum = "7a1886916523694cd6ea3d175f03a1e5010699a2a4cc13696d83d7bea1d80638"
 dependencies = [
  "windows-sys 0.61.2",
 ]
@@ -2483,7 +2483,7 @@ checksum = "6800badb6cb2082ffd7b6a67e6125bb39f18782f793520caee8cb8846be06112"
 [[package]]
 name = "libcosmic"
 version = "1.0.0"
-source = "git+https://github.com/pop-os/libcosmic#ff6454248ff0f2ffe889798ef9610a1f8e5384e4"
+source = "git+https://github.com/pop-os/libcosmic#d7fd880ac6e3ea03b421541837d654bd036437ea"
 dependencies = [
  "apply",
  "ashpd 0.12.3",
@@ -2513,7 +2513,6 @@ dependencies = [
  "log",
  "palette",
  "phf 0.13.1",
- "raw-window-handle",
  "rfd",
  "ron",
  "rust-embed",
@@ -2719,7 +2718,7 @@ dependencies = [
 [[package]]
 name = "mime"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/window_clipboard.git?tag=sctk-0.20#3a7af79e54db6854d8aa9d9e2866a9288d0f95d5"
+source = "git+https://github.com/pop-os/window_clipboard.git?tag=sctk-0.20#f68595ee0e62fbd6589f4709b5aaa5c3c7ea5f6c"
 dependencies = [
  "smithay-clipboard",
 ]
@@ -2748,9 +2747,9 @@ dependencies = [
 
 [[package]]
 name = "moxcms"
-version = "0.7.11"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac9557c559cd6fc9867e122e20d2cbefc9ca29d80d027a8e39310920ed2f0a97"
+checksum = "bb85c154ba489f01b25c0d36ae69a87e4a1c73a72631fc6c0eb6dde34a73e44b"
 dependencies = [
  "num-traits",
  "pxfm",
@@ -5109,7 +5108,7 @@ checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 [[package]]
 name = "window_clipboard"
 version = "0.4.1"
-source = "git+https://github.com/pop-os/window_clipboard.git?tag=sctk-0.20#3a7af79e54db6854d8aa9d9e2866a9288d0f95d5"
+source = "git+https://github.com/pop-os/window_clipboard.git?tag=sctk-0.20#f68595ee0e62fbd6589f4709b5aaa5c3c7ea5f6c"
 dependencies = [
  "clipboard-win",
  "clipboard_macos",
@@ -5901,7 +5900,7 @@ checksum = "2fb433233f2df9344722454bc7e96465c9d03bff9d77c248f9e7523fe79585b5"
 [[package]]
 name = "xdg-shell-wrapper-config"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/cosmic-panel#6a783a18c3079955ff4cde1d00eaadf8e77b869c"
+source = "git+https://github.com/pop-os/cosmic-panel#d518c7d25ef96f1a9696aa8cce008656bf66ece4"
 dependencies = [
  "serde",
  "wayland-protocols-wlr",
