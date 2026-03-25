@@ -15,6 +15,7 @@ use std::time::Duration;
 use systemd_journal_logger::JournalLog;
 
 const ID: &str = "ae.tii.CosmicAppletKillSwitch";
+const POPUP_WIDTH: f32 = 290.0;
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -108,19 +109,19 @@ impl Application for KillSwitch {
             let content = widget::column::with_capacity(6)
                 .push(
                     widget::container(widget::text("Privacy Controls").size(14))
-                        .width(Length::Fixed(280.0))
+                        .width(Length::Fixed(POPUP_WIDTH))
                         .padding([spacing.space_xs, spacing.space_m]),
                 )
                 .push(self.create_control_row(
                     "security-high-symbolic",
-                    "Block All",
+                    "Block / Enable All",
                     all_disabled,
                     Message::ToggleAll,
                     false,
                 ))
                 .push(
                     cosmic::iced::widget::container(cosmic::iced::widget::Rule::horizontal(1))
-                        .width(Length::Fixed(280.0)),
+                        .width(Length::Fixed(POPUP_WIDTH)),
                 )
                 .push(self.create_control_row(
                     "microphone-sensitivity-medium-symbolic",
@@ -241,9 +242,9 @@ impl Application for KillSwitch {
                     );
 
                     popup_settings.positioner.size_limits = Limits::NONE
-                        .min_width(180.0)
+                        .min_width(POPUP_WIDTH)
                         .min_height(250.0)
-                        .max_width(180.0)
+                        .max_width(POPUP_WIDTH)
                         .max_height(300.0);
 
                     get_popup(popup_settings)
@@ -372,6 +373,44 @@ impl KillSwitch {
     ) -> Element<'static, Message> {
         let spacing = self.core.system_theme().cosmic().spacing;
         let status_text = if enabled { "Enabled" } else { "Disabled" };
+        let tooltip_text = match label {
+            "Block / Enable All" => {
+                if enabled {
+                    "Enable all devices"
+                } else {
+                    "Block all devices"
+                }
+            }
+            "Microphone" => {
+                if enabled {
+                    "Disable microphone access"
+                } else {
+                    "Enable microphone access"
+                }
+            }
+            "Camera" => {
+                if enabled {
+                    "Disable camera access"
+                } else {
+                    "Enable camera access"
+                }
+            }
+            "Wi-Fi" => {
+                if enabled {
+                    "Disable Wi-Fi access"
+                } else {
+                    "Enable Wi-Fi access"
+                }
+            }
+            "Bluetooth" => {
+                if enabled {
+                    "Disable Bluetooth access"
+                } else {
+                    "Enable Bluetooth access"
+                }
+            }
+            _ => "Toggle device access",
+        };
 
         let icon_widget = widget::container(icon::from_name(icon_name).size(32))
             .width(Length::Fixed(40.0))
@@ -395,11 +434,11 @@ impl KillSwitch {
                 .spacing(spacing.space_s),
         )
         .padding([spacing.space_xs, spacing.space_m])
-        .width(Length::Fixed(280.0));
+        .width(Length::Fixed(POPUP_WIDTH));
 
         widget::tooltip(
             content,
-            widget::text(format!("Control {label} functionality")),
+            widget::text(tooltip_text).size(12),
             widget::tooltip::Position::Bottom,
         )
         .into()
