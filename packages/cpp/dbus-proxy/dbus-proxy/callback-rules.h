@@ -9,19 +9,27 @@
 #ifndef CALLBACK_RULES_H
 #define CALLBACK_RULES_H
 
+typedef struct {
+    const gchar* name;          // method name
+    const gchar* in_signature;  // e.g. "os", "a{sv}", "" (or nullptr)
+    const gchar* out_signature; // e.g. "", "b", "o"
+} GDBusMethodTable;
+
 struct AgentRule {
-    const gchar* bus_name;          // "org.bluez"
-    const gchar* manager_path;      // "/org/freedesktop/NetworkManager/AgentManager"
-    const gchar* manager_interface; // "org.bluez.AgentManager1"
-    const gchar* register_method;   // "RegisterAgent"
-    const gchar* unregister_method; // "UnregisterAgent"
+    const gchar* bus_name;                        // "org.bluez"
+    const gchar* manager_path;                    // "/org/freedesktop/NetworkManager/AgentManager"
+    const gchar* manager_interface;               // "org.bluez.AgentManager1"
+    const gchar* register_method;                 // "RegisterAgent"
+    const gchar* unregister_method;               // "UnregisterAgent"
+    const gboolean use_object_path_on_unregister; // whether to use the object path or unique path
+                                                  // for unregistration
     // set to true when client sends its agent object path
     // which can be customized
     const gboolean object_path_customisable;
 
-    const gchar* client_object_path; // "/org/bluez/agent"
-    const gchar* client_interface;   // "org.bluez.Agent1"
-    const gchar** client_methods;    // NULL-terminated array of method names
+    const gchar* client_object_path;        // "/org/bluez/agent"
+    const gchar* client_interface;          // "org.bluez.Agent1"
+    const GDBusMethodTable* client_methods; // NULL-terminated array of method tables
 };
 
 extern const AgentRule callbacks_rules[];
