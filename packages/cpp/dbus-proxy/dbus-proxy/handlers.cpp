@@ -17,6 +17,7 @@ static void proxy_return_error(GDBusMethodInvocation* invocation, GError* error)
 
     if (remote) {
         g_dbus_method_invocation_return_dbus_error(invocation, remote, error->message);
+        g_free((gpointer)remote);
     } else {
         g_dbus_method_invocation_return_gerror(invocation, error);
     }
@@ -29,17 +30,19 @@ void method_call_reply_callback(GObject* source, GAsyncResult* res, gpointer use
     GVariant* result = g_dbus_connection_call_finish(G_DBUS_CONNECTION(source), res, &error);
 
     if (result) {
-        Log::verbose() << "Method call successful, returning result";
+        Log::verbose() << "Method call [" << context->call_number
+                       << "] successful, returning result";
         g_dbus_method_invocation_return_value(context->invocation, result);
         g_variant_unref(result);
     } else {
-        Log::error() << "Method call failed: " << (error ? error->message : "Unknown error");
+        Log::error() << "Method call [" << context->call_number
+                     << "] failed: " << (error ? error->message : "Unknown error");
         proxy_return_error(context->invocation, error);
         g_clear_error(&error);
     }
 
     g_object_unref(context->invocation);
-    g_free(context->forward_bus_name);
+    g_free((gpointer)context->forward_bus_name);
     g_free(context);
 }
 
@@ -49,11 +52,13 @@ void handle_method_call_generic(GDBusConnection* connection, const gchar* sender
                                 const gchar* method_name, GVariant* parameters,
                                 GDBusMethodInvocation* invocation, gpointer user_data) {
 
-    const gchar* target_object_path = static_cast<const gchar*>(user_data);
+    const gchar* target_object_path =
+        user_data ? static_cast<const gchar*>(user_data) : object_path;
+    guint message_count = ++proxy_state->message_count; // Increment message count for logging
 
-    Log::verbose() << "Method call: " << interface_name << "." << method_name << " on "
-                   << object_path << " from " << sender << " (forwarding to " << target_object_path
-                   << ")";
+    Log::verbose() << "Method call [" << message_count << "]: " << interface_name << "."
+                   << method_name << " on " << object_path << " from " << sender
+                   << " (forwarding to " << target_object_path << ")";
 
     GDBusConnection* forward_bus = nullptr;
     gchar* forward_bus_name = nullptr;
@@ -64,27 +69,19 @@ void handle_method_call_generic(GDBusConnection* connection, const gchar* sender
 
         // Handle Register/Unregister methods
         if (g_str_has_prefix(method_name, "Register")) {
-            // Add client's agent callback to our registry
-            // Skip forwarding the call if the agent is already registered
+            // Handle agent registration method, extract agent path from parameters,
+            // register callback and store in registry and handle call to
+            // the server if registration is successful
             if (handle_agent_register_call(sender, object_path, interface_name, method_name,
-                                           parameters)) {
-                // Generate DBus reply indicating success, predending we handled the
-                // registration
-                g_dbus_method_invocation_return_value(invocation, nullptr);
+                                           parameters, invocation, message_count)) {
+
                 return;
             };
         } else if (g_str_has_prefix(method_name, "Unregister")) {
-            // Check if method name starts with Unregister
-            Log::error() << "Method " << method_name << " detected as unregistration method";
             // Remove client's agent callback from our registry
-            // Skip forwarding the call if the agent is already unregistered
-            if (handle_agent_unregister_call(sender, object_path, interface_name, method_name,
-                                             parameters)) {
-                // Generate DBus reply indicating success, predending we handled the
-                // unregistration
-                g_dbus_method_invocation_return_value(invocation, nullptr);
-                return;
-            }
+            handle_agent_unregister_call(sender, object_path, interface_name, method_name,
+                                         parameters, invocation, message_count);
+            return;
         }
     } else { // call comes from source bus, forward back to client
 
@@ -109,6 +106,7 @@ void handle_method_call_generic(GDBusConnection* connection, const gchar* sender
     MethodCallContext* context = g_new0(MethodCallContext, 1);
     context->invocation = invocation;
     context->forward_bus_name = forward_bus_name;
+    context->call_number = message_count; // Set call number for logging
 
     g_object_ref(invocation);
 

@@ -1665,15 +1665,15 @@ void SniProxy::on_item_name_acquired(G_GNUC_UNUSED GDBusConnection* conn, const 
             [](GObject* source, GAsyncResult* res, gpointer user_data) {
                 auto ctx = std::unique_ptr<SniMethodCallContext>(
                     static_cast<SniMethodCallContext*>(user_data));
-                GError* error = nullptr;
+                GError* err = nullptr;
                 GVariant* result =
-                    g_dbus_connection_call_finish(G_DBUS_CONNECTION(source), res, &error);
+                    g_dbus_connection_call_finish(G_DBUS_CONNECTION(source), res, &err);
                 if (result) {
                     Log::info() << "[REPLY] RegisterStatusNotifierItem to target watcher OK";
                     g_variant_unref(result);
                 } else {
                     Log::error() << "[REPLY] RegisterStatusNotifierItem to target watcher failed";
-                    g_clear_error(&error);
+                    g_clear_error(&err);
                 }
                 // ctx unique_ptr destructor frees forward_bus_name
             },

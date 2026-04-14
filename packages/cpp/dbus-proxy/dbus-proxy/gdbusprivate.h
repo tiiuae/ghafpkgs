@@ -19,10 +19,13 @@ constexpr const gchar* DBUS_NETWORK_MANAGER_NAME = "org.freedesktop.NetworkManag
 constexpr const gchar* DBUS_INTERFACE_SECRET_AGENT = "org.freedesktop.NetworkManager.SecretAgent";
 constexpr const gchar* DBUS_NM_AGENT_PATH = "/org/freedesktop/NetworkManager/SecretAgent";
 
-constexpr const gchar* DBUS_BT_AGENT_PATH = "/org/bluez/agent";
-constexpr const gchar* DBUS_INTERFACE_BT_AGENT = "org.bluez.Agent1";
+constexpr const gchar* DBUS_BLUEZ_NAME = "org.bluez";
+constexpr const gchar* DBUS_BLUEZ_AGENT_PATH = "/org/bluez/agent";
+constexpr const gchar* DBUS_BLUEZ_AGENT_INTERFACE = "org.bluez.Agent1";
 
-constexpr const gchar* DBUS_OBJECT_PATH_NETWORK_MANAGER = "/org/freedesktop/NetworkManager";
+constexpr const gchar* DBUS_OBEX_NAME = "org.bluez.obex";
+constexpr const gchar* DBUS_OBEX_AGENT_PATH = "/org/bluez/obex";
+constexpr const gchar* DBUS_OBEX_AGENT_INTERFACE = "org.bluez.obex.Agent";
 
 // SNI (StatusNotifierItem) protocol constants
 constexpr const gchar* SNI_WATCHER_INTERFACE = "org.kde.StatusNotifierWatcher";
