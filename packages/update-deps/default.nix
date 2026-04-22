@@ -12,7 +12,6 @@
   python3,
   # Node.js tools (for potential future use)
   nodejs,
-  nodePackages,
   # Generic tools
   git,
   findutils,
@@ -45,7 +44,6 @@ writeShellApplication {
     python3
     # Node.js ecosystem (for future packages)
     nodejs
-    nodePackages.npm
     # Nix tools
     nix
     nix-prefetch
