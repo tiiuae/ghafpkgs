@@ -7,8 +7,8 @@ go 1.25.0
 require github.com/mdlayher/vsock v1.2.1
 
 require (
-	github.com/mdlayher/socket v0.5.1 // indirect
-	golang.org/x/net v0.51.0 // indirect
-	golang.org/x/sync v0.19.0 // indirect
-	golang.org/x/sys v0.41.0 // indirect
+	github.com/mdlayher/socket v0.6.0 // indirect
+	golang.org/x/net v0.53.0 // indirect
+	golang.org/x/sync v0.20.0 // indirect
+	golang.org/x/sys v0.43.0 // indirect
 )
