@@ -139,7 +139,7 @@ writeShellApplication {
 
             if command -v cargo-upgrade >/dev/null 2>&1; then
               log "$YELLOW" "Running cargo upgrade..."
-              cargo upgrade
+              cargo upgrade || log "$RED" "cargo upgrade failed (upstream dependency conflicts?), continuing..."
             else
               log "$RED" "cargo-upgrade not available, falling back to manual upgrade"
               log "$YELLOW" "Consider installing cargo-edit: cargo install cargo-edit"
@@ -267,40 +267,19 @@ writeShellApplication {
         if [[ -f "pyproject.toml" ]]; then
           if [[ "$UPGRADE_SOURCE" == "true" ]]; then
             log "$PURPLE" "UPGRADE MODE: Upgrading source dependencies in pyproject.toml"
-
-            # Extract dependency names and upgrade them
-            if command -v uv >/dev/null 2>&1; then
-              log "$YELLOW" "Using uv to upgrade dependencies..."
-
-              # Try to upgrade dependencies using uv
-              if grep -q "dependencies" pyproject.toml; then
-                # Get dependency names (basic parsing)
-                local deps
-                deps=$(grep -A 20 "dependencies" pyproject.toml | grep -E '^\s*"[^"]+' | sed 's/.*"\([^"=<>!]*\).*/\1/' | head -10)
-
-                for dep in $deps; do
-                  if [[ -n "$dep" && "$dep" != "[" && "$dep" != "]" ]]; then
-                    log "$YELLOW" "Upgrading $dep..."
-                    uv add "$dep" --upgrade 2>/dev/null || log "$YELLOW" "Could not upgrade $dep, skipping..."
-                  fi
-                done
-              fi
+            log "$YELLOW" "Running uv lock --upgrade to upgrade all dependencies..."
+            if uv lock --upgrade 2>/dev/null; then
+              log "$GREEN" "Python dependencies upgraded with uv"
             else
-              log "$YELLOW" "uv not available, manual pyproject.toml review recommended"
+              log "$YELLOW" "uv lock --upgrade failed, trying uv sync --upgrade..."
+              uv sync --upgrade 2>/dev/null || log "$YELLOW" "uv sync --upgrade also failed, manual review recommended"
             fi
-          fi
-
-          log "$YELLOW" "Running uv sync to update lock files..."
-          if uv sync --upgrade 2>/dev/null || uv lock --upgrade 2>/dev/null; then
-            log "$GREEN" "Python dependencies updated with uv"
           else
-            log "$YELLOW" "uv sync/lock failed, trying manual approach..."
-
-            if grep -q "dependencies" pyproject.toml; then
-              log "$YELLOW" "Found dependencies in pyproject.toml - manual review recommended"
-              if [[ "$UPGRADE_SOURCE" == "true" ]]; then
-                log "$YELLOW" "For source upgrades, consider running: uv add --upgrade <package-name>"
-              fi
+            log "$YELLOW" "Running uv lock to update lock files..."
+            if uv lock 2>/dev/null; then
+              log "$GREEN" "Python lock file updated with uv"
+            else
+              log "$YELLOW" "uv lock failed, manual review recommended"
             fi
           fi
 
