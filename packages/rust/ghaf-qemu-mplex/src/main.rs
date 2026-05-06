@@ -773,7 +773,6 @@ impl Runtime {
             _ => return,
         };
 
-        let peer_label = describe_client_peer(&stream);
         let (sender, task) = client_task(client_id, stream, client_event_tx);
         self.client_tasks.spawn(task);
         self.clients.insert(
@@ -798,10 +797,9 @@ impl Runtime {
         }
 
         debug!(
-            "qemu_socket={} client_connected id={} peer={}",
+            "qemu_socket={} client_connected id={}",
             self.qemu_socket.display(),
             client_id,
-            peer_label
         );
     }
 
@@ -1152,21 +1150,6 @@ fn qmp_capabilities_request_from_greeting(greeting: &Value) -> Value {
             greeting_advertises_oob(greeting).then(|| ("arguments", json!({ "enable": ["oob"] }))),
         )
         .collect()
-}
-
-fn describe_client_peer(stream: &UnixStream) -> String {
-    let Ok(creds) = stream.peer_cred() else {
-        return String::from("peer credentials unavailable");
-    };
-
-    format!(
-        "pid={} uid={} gid={}",
-        creds
-            .pid()
-            .map_or_else(|| String::from("unknown"), |pid| pid.to_string()),
-        creds.uid(),
-        creds.gid()
-    )
 }
 
 trait ReadJsonExt {
