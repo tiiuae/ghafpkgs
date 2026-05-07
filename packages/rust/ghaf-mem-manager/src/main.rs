@@ -4,10 +4,14 @@
  */
 use anyhow::Result;
 use clap::Parser;
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 use tokio::sync::{RwLock, mpsc};
 use tokio::time::Instant;
-use tracing::{debug, trace, warn};
+use tracing::{debug, warn};
 
 mod qmp;
 mod vm;
@@ -63,7 +67,7 @@ impl MemManager {
         let mut err = false;
 
         for (m, data) in machines.iter_mut() {
-            min += m.minimum();
+            min += m.minimum().await;
             if let Ok(info) = m.preferred_memory_size(self.low, self.high).await {
                 mem += info.current;
                 reqd += info.preferred;
@@ -91,14 +95,13 @@ impl MemManager {
             warn!("Available memory {mem} is at or below configured VM minimum total {min}");
         }
 
-        let rounds: Vec<_> = machines
-            .keys()
-            .zip(infos)
-            .filter_map(|(machine, info)| {
-                let adjusted = machine.scale_preferred(info.preferred, scale);
-                (adjusted != info.current).then_some((machine, info, adjusted))
-            })
-            .collect();
+        let mut rounds = Vec::new();
+        for (machine, info) in machines.keys().zip(infos) {
+            let adjusted = machine.scale_preferred(info.preferred, scale).await;
+            if adjusted != info.current {
+                rounds.push((machine, info, adjusted));
+            }
+        }
 
         for (machine, info, adjusted) in rounds {
             let observed = info.observed_pressure.unwrap_or(u8::MAX);
@@ -132,10 +135,21 @@ fn balance_scale(available: u64, requested: u64, minimum_total: u64) -> f32 {
     }
 }
 
+fn vm_dbus_path(sock: &Path) -> Option<String> {
+    sock.file_prefix()
+        .filter(|fp| *fp != "microvm")
+        .or(sock
+            .parent()
+            .and_then(|p| p.components().last().map(|l| l.as_os_str())))
+        .and_then(std::ffi::OsStr::to_str)
+        .map(|s| format!("/{s}"))
+}
+
 #[zbus::interface(name = "ae.tii.MemManager", spawn = false)]
 impl MemManager {
     async fn attach_vm(
         &self,
+        #[zbus(object_server)] server: &zbus::ObjectServer,
         socket: PathBuf,
         minimum: u64,
         maximum: u64,
@@ -144,10 +158,12 @@ impl MemManager {
             "Attaching to {sock} with memory in range [{minimum}, {maximum}]",
             sock = socket.display()
         );
-        self.machines.write().await.insert(
-            vm::VM::new(socket, minimum, maximum, self.manage_trigger.clone()),
-            VMData::default(),
-        );
+        let vm_path = vm_dbus_path(&socket);
+        let vm = vm::VM::new(socket, minimum, maximum, self.manage_trigger.clone());
+        server
+            .at(vm_path.unwrap_or("/vm".to_owned()), vm.clone())
+            .await?;
+        self.machines.write().await.insert(vm, VMData::default());
         Ok(())
     }
 }

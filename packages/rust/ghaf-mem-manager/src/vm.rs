@@ -25,6 +25,31 @@ struct MemoryStats {
     available_memory: u64,
 }
 
+#[zbus::interface(name = "ae.tii.MemManager.VM", spawn = false)]
+impl VM {
+    #[zbus(property)]
+    pub async fn minimum(&self) -> u64 {
+        self.state.lock().await.minimum
+    }
+
+    #[zbus(property)]
+    pub async fn set_minimum(&mut self, value: u64) {
+        self.state.lock().await.minimum = value;
+        let _ = self.manage_trigger.send(());
+    }
+
+    #[zbus(property)]
+    pub async fn maximum(&self) -> u64 {
+        self.state.lock().await.maximum
+    }
+
+    #[zbus(property)]
+    pub async fn set_maximum(&mut self, value: u64) {
+        self.state.lock().await.maximum = value;
+        let _ = self.manage_trigger.send(());
+    }
+}
+
 impl MemoryStats {
     pub fn new(
         mem_info: &qmp::MemoryInfo,
@@ -104,16 +129,32 @@ struct Session {
     joinset: tokio::task::JoinSet<qmp::Result<()>>,
 }
 
-#[derive(Default)]
 struct VMState {
     session: Option<Session>,
     last_update: Option<(u64, u64)>,
-}
-
-pub(crate) struct VM {
-    endpoint: qmp::Endpoint,
     minimum: u64,
     maximum: u64,
+}
+
+impl VMState {
+    pub fn new(minimum: u64, maximum: u64) -> Self {
+        Self {
+            session: None,
+            last_update: None,
+            minimum,
+            maximum,
+        }
+    }
+
+    async fn clamp(&self, size: u64) -> u64 {
+        size.clamp(self.minimum, self.maximum)
+    }
+
+}
+
+#[derive(Clone)]
+pub(crate) struct VM {
+    endpoint: qmp::Endpoint,
     state: Arc<Mutex<VMState>>,
     manage_trigger: mpsc::UnboundedSender<()>,
 }
@@ -164,15 +205,9 @@ impl VM {
     ) -> Self {
         Self {
             endpoint: qmp::Endpoint::new(endpoint),
-            minimum,
-            maximum,
-            state: Arc::new(Mutex::new(VMState::default())),
+            state: Arc::new(Mutex::new(VMState::new(minimum, maximum))),
             manage_trigger,
         }
-    }
-
-    fn clamp(&self, size: u64) -> u64 {
-        size.clamp(self.minimum, self.maximum)
     }
 
     #[allow(
@@ -180,12 +215,9 @@ impl VM {
         clippy::cast_sign_loss,
         clippy::cast_precision_loss
     )]
-    pub fn scale_preferred(&self, preferred: u64, scale: f32) -> u64 {
-        ((preferred - self.minimum) as f32 * scale) as u64 + self.minimum
-    }
-
-    pub fn minimum(&self) -> u64 {
-        self.minimum
+    pub async fn scale_preferred(&self, preferred: u64, scale: f32) -> u64 {
+        let minimum = self.minimum().await;
+        ((preferred - minimum) as f32 * scale) as u64 + minimum
     }
 
     fn event_watcher(
@@ -231,7 +263,9 @@ impl VM {
                     conn: conn.clone(),
                     joinset,
                 }),
-                ..VMState::default()
+                last_update: None,
+                minimum: state.minimum,
+                maximum: state.maximum,
             };
             conn
         };
@@ -270,11 +304,17 @@ impl VM {
             .last_update
             .replace((mem_stats.last_update, balloon.actual));
 
+        let preferred = if let Some(preferred) = mem_stats
+            .window(low, high)
+            .filter(|_| last.is_none_or(|(ts, _)| ts < mem_stats.last_update))
+        {
+            state.clamp(preferred).await
+        } else {
+            mem_stats.balloon_size
+        };
+
         Ok(MemInfo {
-            preferred: mem_stats
-                .window(low, high)
-                .filter(|_| last.is_none_or(|(ts, _)| ts < mem_stats.last_update))
-                .map_or(mem_stats.balloon_size, |sz| self.clamp(sz)),
+            preferred,
             ..MemInfo::from(&mem_stats)
         })
     }
