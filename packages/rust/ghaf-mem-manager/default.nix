@@ -42,7 +42,6 @@ let
     }
   );
 
-  # Build the actual application
   ghaf-mem-manager = craneLib.buildPackage (
     commonArgs
     // {
@@ -64,8 +63,22 @@ let
         homepage = "https://ghaf.dev";
         license = lib.licenses.asl20;
         platforms = lib.platforms.linux;
-        mainProgram = "ghaf-mem-manager";
+        mainProgram = "ghaf-mem-managerd";
       };
+
+      postInstall = ''
+                mkdir -p $out/etc/dbus-1/system.d
+                cp ghaf-mem-manager.conf $out/etc/dbus-1/system.d
+
+                mkdir -p $out/share/dbus-1/system-services
+                cat <<END >$out/share/dbus-1/system-services/ae.tii.MemManager.service
+        [D-BUS Service]
+        Name=ae.tii.MemManager
+        Exec=$out/bin/ghaf-mem-managerd
+        User=root
+        SystemdService=ghaf-mem-manager.service
+        END
+      '';
     }
   );
 in

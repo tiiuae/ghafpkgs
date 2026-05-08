@@ -13,6 +13,7 @@
   valgrind,
   dbus,
   python3,
+  python3Packages,
   gobject-introspection,
   lib,
 }:
@@ -28,7 +29,8 @@ stdenv.mkDerivation {
     cppcheck
     valgrind
     dbus
-    (python3.withPackages (ps: [ ps.pygobject3 ]))
+    python3
+    python3Packages.pygobject3
     gobject-introspection
   ];
   buildInputs = [

@@ -4,7 +4,7 @@
 */
 use anyhow::{Context, anyhow, bail};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, path::PathBuf, result::Result as StdResult, time::Duration};
+use std::{path::PathBuf, result::Result as StdResult, time::Duration};
 use tokio::{
     io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufStream},
     net::UnixStream,
@@ -17,52 +17,51 @@ pub type Result<T> = anyhow::Result<T>;
 const TIMEOUT_SEC: u64 = 3;
 const TIMEOUT: Duration = Duration::from_secs(TIMEOUT_SEC);
 
-#[derive(Serialize, Debug)]
-#[serde(rename_all = "kebab-case")]
-pub struct QmpCommand {
-    execute: &'static str,
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    arguments: HashMap<&'static str, serde_json::Value>,
-}
-
-impl QmpCommand {
-    pub fn new(cmd: &'static str) -> Self {
-        Self {
-            execute: cmd,
-            arguments: HashMap::new(),
-        }
-    }
-
-    pub fn arg<T: Into<serde_json::Value>>(mut self, key: &'static str, v: T) -> Self {
-        self.arguments.insert(key, v.into());
-        self
-    }
+#[derive(Serialize, Debug, Clone, Copy)]
+#[serde(tag = "execute", content = "arguments", rename_all = "kebab-case")]
+pub enum Command {
+    #[serde(rename = "qmp_capabilities")]
+    QmpCapabilities,
+    QueryBalloon,
+    Balloon {
+        value: u64,
+    },
+    QomSet {
+        path: &'static str,
+        property: &'static str,
+        value: u64,
+    },
+    QomGet {
+        path: &'static str,
+        property: &'static str,
+    },
+    QueryMemorySizeSummary,
 }
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "kebab-case")]
 pub struct BalloonInfo {
-    pub actual: usize,
+    pub actual: u64,
 }
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "kebab-case")]
 pub struct MemoryInfo {
-    pub base_memory: usize,
-    pub plugged_memory: usize,
+    pub base_memory: u64,
+    pub plugged_memory: u64,
 }
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "kebab-case")]
 pub struct GuestMemoryStats {
-    pub stat_available_memory: usize,
-    pub stat_free_memory: usize,
+    pub stat_available_memory: u64,
+    pub stat_free_memory: u64,
 }
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "kebab-case")]
 pub struct GuestMemoryInfo {
-    pub last_update: usize,
+    pub last_update: u64,
     pub stats: GuestMemoryStats,
 }
 
@@ -70,69 +69,105 @@ pub struct GuestMemoryInfo {
 struct Empty {}
 
 type ReplyChannel = mpsc::Sender<StdResult<serde_json::Value, serde_json::Value>>;
-type CommandChannel = mpsc::Sender<(QmpCommand, ReplyChannel)>;
+type CommandChannel = mpsc::Sender<(Command, ReplyChannel)>;
 
-#[derive(Hash, PartialEq, Eq, Debug)]
-pub struct QmpEndpoint {
+#[derive(Hash, PartialEq, Eq, Debug, Clone)]
+pub struct Endpoint {
     path: PathBuf,
 }
 
-pub struct QmpConnection {
+#[derive(Clone)]
+pub struct Connection {
     channel: CommandChannel,
 }
 
-enum QmpResponse {
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "kebab-case")]
+enum Response {
     Return(serde_json::Value),
     Error(serde_json::Value),
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(untagged)]
+enum Message {
+    Response(Response),
+    Greeting {
+        #[serde(rename = "QMP")]
+        _qmp: serde_json::Value,
+    },
     Event(serde_json::Value),
 }
 
+#[derive(Deserialize, Debug)]
+#[allow(dead_code)]
+pub struct BalloonChange {
+    pub actual: u64,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[allow(dead_code)]
+pub struct Timestamp {
+    pub seconds: u64,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(tag = "event", rename_all = "SCREAMING_SNAKE_CASE")]
+#[allow(dead_code)]
+pub enum Event {
+    BalloonChange {
+        data: BalloonChange,
+        timestamp: Timestamp,
+    },
+}
+
 trait QmpStreamExt {
-    async fn send_cmd(&mut self, cmd: &QmpCommand) -> Result<()>;
-    async fn get_json(&mut self) -> Result<QmpResponse>;
+    async fn send_cmd(&mut self, cmd: Command) -> Result<()>;
+    async fn get_json(&mut self) -> Result<Message>;
+    async fn get_json_no_greeting(&mut self) -> Result<Message>;
 }
 
 impl<RW: AsyncWrite + AsyncRead + std::marker::Unpin> QmpStreamExt for BufStream<RW> {
-    async fn send_cmd(&mut self, cmd: &QmpCommand) -> Result<()> {
-        self.write_all(&serde_json::to_vec(cmd)?).await?;
+    async fn send_cmd(&mut self, cmd: Command) -> Result<()> {
+        self.write_all(&serde_json::to_vec(&cmd)?).await?;
         self.write_all(b"\n").await?;
         self.flush().await?;
         Ok(())
     }
 
-    async fn get_json(&mut self) -> Result<QmpResponse> {
+    async fn get_json(&mut self) -> Result<Message> {
         let mut buf = vec![];
         let len = self.read_until(b'\n', &mut buf).await?;
         if len == 0 {
             bail!("Connection closed unexpectedly");
         }
-        let serde_json::Value::Object(mut data) = serde_json::from_slice(&buf)? else {
-            bail!("Unexpceted reply type");
-        };
 
-        if let Some(ret) = data.remove("return") {
-            Ok(QmpResponse::Return(ret))
-        } else if let Some(err) = data.remove("error") {
-            Ok(QmpResponse::Error(err))
-        } else {
-            Ok(QmpResponse::Event(data.into()))
+        Ok(serde_json::from_slice(&buf)?)
+    }
+
+    async fn get_json_no_greeting(&mut self) -> Result<Message> {
+        loop {
+            match self.get_json().await? {
+                Message::Greeting { .. } => (),
+                msg => break Ok(msg),
+            }
         }
     }
 }
 
-impl QmpEndpoint {
-    pub fn new<P: Into<PathBuf>>(path: P) -> Self {
+impl Endpoint {
+    pub fn new(path: impl Into<PathBuf>) -> Self {
         Self { path: path.into() }
     }
 
     pub async fn connect(
         &self,
     ) -> Result<(
-        QmpConnection,
-        impl std::future::Future<Output = Result<()>>,
+        Connection,
+        impl std::future::Future<Output = Result<()>> + Send + 'static,
         mpsc::Receiver<serde_json::Value>,
     )> {
-        QmpConnection::new(
+        Connection::new(
             UnixStream::connect(&self.path)
                 .await
                 .context("Failed to connect to QMP socket")?,
@@ -141,18 +176,18 @@ impl QmpEndpoint {
     }
 }
 
-impl std::fmt::Display for QmpEndpoint {
+impl std::fmt::Display for Endpoint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> StdResult<(), std::fmt::Error> {
         self.path.display().fmt(f)
     }
 }
 
-impl QmpConnection {
-    pub(super) async fn new<S: AsyncRead + AsyncWrite + std::marker::Unpin>(
+impl Connection {
+    pub(super) async fn new<S: AsyncRead + AsyncWrite + std::marker::Unpin + Send + 'static>(
         stream: S,
     ) -> Result<(
-        QmpConnection,
-        impl std::future::Future<Output = Result<()>>,
+        Connection,
+        impl std::future::Future<Output = Result<()>> + Send + 'static,
         mpsc::Receiver<serde_json::Value>,
     )> {
         let mut stream = tokio::select! {
@@ -160,8 +195,8 @@ impl QmpConnection {
             r = async {
                 let mut stream = BufStream::new(stream);
                 stream.get_json().await.context("Handshake failed")?;
-                stream.send_cmd(&QmpCommand::new("qmp_capabilities")).await?;
-                stream.get_json().await.context("Capabilities query failed")?;
+                stream.send_cmd(Command::QmpCapabilities).await?;
+                stream.get_json_no_greeting().await.context("Capabilities query failed")?;
                 Ok(stream)
             } => r
         }?;
@@ -176,10 +211,11 @@ impl QmpConnection {
                     tokio::select! {
                         e = async {
                             loop {
-                                let reply = match stream.get_json().await? {
-                                    QmpResponse::Return(r) => Ok(r),
-                                    QmpResponse::Error(e) => Err(e),
-                                    QmpResponse::Event(e) => {
+                                let reply = match stream.get_json_no_greeting().await? {
+                                    Message::Response(Response::Return(r)) => Ok(r),
+                                    Message::Response(Response::Error(e)) => Err(e),
+                                    Message::Greeting { .. } => continue,
+                                    Message::Event(e) => {
                                         evsender.send(e).await?;
                                         continue;
                                     },
@@ -196,12 +232,12 @@ impl QmpConnection {
                     tokio::select! {
                         cmd = receiver.recv() => {
                             let Some((cmd, newtx)) = cmd else { break Result::Ok(()); };
-                            stream.send_cmd(&cmd).await?;
+                            stream.send_cmd(cmd).await?;
                             tx.replace((newtx, sleep(TIMEOUT)));
                         },
                         res = async {
-                            while let Ok(resp) = stream.get_json().await {
-                                let QmpResponse::Event(e) = resp else { continue; };
+                            while let Ok(resp) = stream.get_json_no_greeting().await {
+                                let Message::Event(e) = resp else { continue; };
                                 evsender.send(e).await?;
                             }
                             Result::Ok(())
@@ -211,47 +247,45 @@ impl QmpConnection {
             }
         };
 
-        Ok((QmpConnection { channel }, task, evreceiver))
+        Ok((Self { channel }, task, evreceiver))
     }
 
-    async fn send_command<T: for<'a> Deserialize<'a>>(&self, cmd: QmpCommand) -> Result<T> {
+    async fn send_command<T: for<'a> Deserialize<'a>>(&self, cmd: Command) -> Result<T> {
         let (tx, mut rx) = mpsc::channel(1);
         self.channel.send((cmd, tx)).await?;
-        Ok(serde_json::from_value(
-            rx.recv()
-                .await
-                .context("Invalid response")?
-                .map_err(|e| anyhow!("{}", e.to_string()))?,
-        )?)
+        let reply = rx.recv().await.context("Invalid response")?;
+        let reply = reply.map_err(|e| anyhow!("{e}"))?;
+        Ok(serde_json::from_value(reply)?)
     }
 
     pub async fn query_balloon(&self) -> Result<BalloonInfo> {
-        let cmd = QmpCommand::new("query-balloon");
-        self.send_command(cmd).await
+        self.send_command(Command::QueryBalloon).await
     }
 
-    pub async fn balloon(&self, size: usize) -> Result<()> {
-        let cmd = QmpCommand::new("balloon").arg("value", size);
+    pub async fn balloon(&self, value: u64) -> Result<()> {
+        let cmd = Command::Balloon { value };
         self.send_command::<Empty>(cmd).await.map(|_| ())
     }
 
     pub async fn query_memory(&self) -> Result<MemoryInfo> {
-        let cmd = QmpCommand::new("query-memory-size-summary");
+        let cmd = Command::QueryMemorySizeSummary;
         self.send_command(cmd).await
     }
 
     pub async fn set_stats_interval(&self, ival: std::time::Duration) -> Result<()> {
-        let cmd = QmpCommand::new("qom-set")
-            .arg("path", "/machine/peripheral/balloon0")
-            .arg("property", "guest-stats-polling-interval")
-            .arg("value", ival.as_secs());
+        let cmd = Command::QomSet {
+            path: "/machine/peripheral/balloon0",
+            property: "guest-stats-polling-interval",
+            value: ival.as_secs(),
+        };
         self.send_command::<Empty>(cmd).await.map(|_| ())
     }
 
     pub async fn query_stats(&self) -> Result<GuestMemoryInfo> {
-        let cmd = QmpCommand::new("qom-get")
-            .arg("path", "/machine/peripheral/balloon0")
-            .arg("property", "guest-stats");
+        let cmd = Command::QomGet {
+            path: "/machine/peripheral/balloon0",
+            property: "guest-stats",
+        };
         self.send_command(cmd).await
     }
 }
@@ -263,10 +297,24 @@ mod test {
 
     const TIMEOUT_SLOW: Duration = Duration::from_secs(TIMEOUT_SEC + 1);
     const TIMEOUT_SLOWER: Duration = Duration::from_secs(TIMEOUT_SEC + 2);
-    const EVENT_JSON: &[u8] = b"{\"event\":{}}\n";
+    const EVENT_JSON: &[u8] = b"{\"event\":\"EVENT\",\"data\":123}\n";
+    const GREETING_JSON: &[u8] = b"{\"QMP\":{\"version\":{\"qemu\":{\"major\":8,\"minor\":2,\"micro\":0},\"package\":\"\"},\"capabilities\":[]}}\n";
     const EMPTY_JSON: &[u8] = b"{}\n";
     const ERROR_JSON: &[u8] = b"{\"error\":\"something\"}\n";
     const BALLOON_RETURN_JSON: &[u8] = b"{\"return\":{\"actual\":123}}\n";
+
+    trait IsCmd {
+        fn expect_cmd(&self, cmd: &str) -> Result<()>;
+    }
+
+    impl IsCmd for serde_json::Value {
+        fn expect_cmd(&self, cmd: &str) -> Result<()> {
+            self.get("execute")
+                .filter(|c| c.as_str() == Some(cmd))
+                .map(|_| ())
+                .ok_or(anyhow!("Server received invalid command"))
+        }
+    }
 
     async fn read_json_line<S: AsyncRead + std::marker::Unpin>(
         stream: &mut S,
@@ -282,12 +330,19 @@ mod test {
         }
     }
 
+    async fn read_json_execute<S: AsyncRead + std::marker::Unpin>(
+        stream: &mut S,
+        cmd: &str,
+    ) -> Result<()> {
+        read_json_line(stream).await?.expect_cmd(cmd)
+    }
+
     async fn handshake<S: AsyncRead + AsyncWrite + std::marker::Unpin>(
         stream: &mut S,
     ) -> anyhow::Result<()> {
         match tokio::time::timeout(TIMEOUT_SLOWER, async move {
-            stream.write_all(EMPTY_JSON).await?;
-            read_json_line(stream).await?;
+            stream.write_all(GREETING_JSON).await?;
+            read_json_execute(stream, "qmp_capabilities").await?;
             stream.write_all(EMPTY_JSON).await?;
             Ok(())
         })
@@ -300,7 +355,7 @@ mod test {
 
     async fn harness(
         fs: impl AsyncFnOnce(tokio::io::DuplexStream) -> anyhow::Result<()>,
-        fc: impl AsyncFnOnce(QmpConnection, mpsc::Receiver<serde_json::Value>) -> anyhow::Result<()>,
+        fc: impl AsyncFnOnce(Connection, mpsc::Receiver<serde_json::Value>) -> anyhow::Result<()>,
         timeout: Duration,
     ) -> anyhow::Result<()> {
         let (client, mut server) = tokio::io::duplex(4096);
@@ -310,7 +365,7 @@ mod test {
                 std::future::pending::<()>().await;
                 unreachable!();
             } => e,
-            e = QmpConnection::new(client) => e,
+            e = Connection::new(client) => e,
         }?;
 
         tokio::select! {
@@ -330,7 +385,7 @@ mod test {
         let tmpd = tempfile::tempdir()?;
         let sockpath = tmpd.path().join("socket");
         let _listener = tokio::net::UnixListener::bind(&sockpath)?;
-        let qe = QmpEndpoint::new(sockpath);
+        let qe = Endpoint::new(sockpath);
 
         tokio::select! {
             e = qe.connect() => {
@@ -350,7 +405,7 @@ mod test {
         let tmpd = tempfile::tempdir()?;
         let sockpath = tmpd.path().join("socket");
         let listener = tokio::net::UnixListener::bind(&sockpath)?;
-        let qe = QmpEndpoint::new(sockpath);
+        let qe = Endpoint::new(sockpath);
 
         tokio::select! {
             e = async move {
@@ -378,7 +433,7 @@ mod test {
                 unreachable!();
             } => e,
             e = async move {
-                match tokio::time::timeout(TIMEOUT_SLOW, QmpConnection::new(client)).await {
+                match tokio::time::timeout(TIMEOUT_SLOW, Connection::new(client)).await {
                     Err(_) => bail!("Handshake did not time out in {} seconds", TIMEOUT_SLOW.as_secs()),
                     Ok(Ok(_)) => bail!("Handhake succeeded unxepectedly"),
                     _ => Ok(())
@@ -397,7 +452,32 @@ mod test {
                 unreachable!();
             } => e,
             e = async move {
-                match tokio::time::timeout(TIMEOUT_SLOW, QmpConnection::new(client)).await {
+                match tokio::time::timeout(TIMEOUT_SLOW, Connection::new(client)).await {
+                    Err(_) => bail!("Handshake timed out"),
+                    Ok(Ok(_)) => Ok(()),
+                    _ => bail!("Handshake failed"),
+                }
+            } => e,
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_handshake_ignores_greeting() -> anyhow::Result<()> {
+        let (client, mut server) = tokio::io::duplex(4096);
+        tokio::select! {
+            e = async move {
+                match tokio::time::timeout(TIMEOUT_SLOWER, async move {
+                    server.write_all(GREETING_JSON).await?;
+                    read_json_execute(&mut server, "qmp_capabilities").await?;
+                    server.write_all(EMPTY_JSON).await?;
+                    Ok(())
+                }).await {
+                    Ok(r) => r,
+                    _ => bail!("Handshake timed out"),
+                }
+            } => e,
+            e = async move {
+                match tokio::time::timeout(TIMEOUT_SLOW, Connection::new(client)).await {
                     Err(_) => bail!("Handshake timed out"),
                     Ok(Ok(_)) => Ok(()),
                     _ => bail!("Handshake failed"),
@@ -417,7 +497,7 @@ mod test {
                 unreachable!();
             } => e,
             e = async move {
-                match tokio::time::timeout(TIMEOUT_SLOW, QmpConnection::new(client)).await {
+                match tokio::time::timeout(TIMEOUT_SLOW, Connection::new(client)).await {
                     Err(_) => bail!("Handshake timed out"),
                     Ok(Ok(_)) => Ok(()),
                     _ => bail!("Handshake failed"),
@@ -430,15 +510,7 @@ mod test {
     async fn test_query_command() -> anyhow::Result<()> {
         harness(
             async move |mut server| {
-                let serde_json::Value::Object(cmd) = read_json_line(&mut server).await? else {
-                    bail!("Unexpected data");
-                };
-                if cmd
-                    .get("execute")
-                    .is_none_or(|e| e.as_str() != Some("query-balloon"))
-                {
-                    bail!("Missing or unexpected command");
-                }
+                read_json_execute(&mut server, "query-balloon").await?;
                 server.write_all(BALLOON_RETURN_JSON).await?;
                 Ok(())
             },
@@ -462,15 +534,7 @@ mod test {
     async fn test_command_error() -> anyhow::Result<()> {
         harness(
             async move |mut server| {
-                let serde_json::Value::Object(cmd) = read_json_line(&mut server).await? else {
-                    bail!("Unexpected data");
-                };
-                if cmd
-                    .get("execute")
-                    .is_none_or(|e| e.as_str() != Some("query-balloon"))
-                {
-                    bail!("Missing or unexpected command");
-                }
+                read_json_execute(&mut server, "query-balloon").await?;
                 server.write_all(ERROR_JSON).await?;
                 Ok(())
             },
@@ -493,18 +557,7 @@ mod test {
     #[tokio::test(flavor = "current_thread")]
     async fn test_command_timeout() -> anyhow::Result<()> {
         harness(
-            async move |mut server| {
-                let serde_json::Value::Object(cmd) = read_json_line(&mut server).await? else {
-                    bail!("Unexpected data");
-                };
-                if cmd
-                    .get("execute")
-                    .is_none_or(|e| e.as_str() != Some("query-balloon"))
-                {
-                    bail!("Missing or unexpected command");
-                }
-                Ok(())
-            },
+            async move |mut server| read_json_execute(&mut server, "query-balloon").await,
             async move |client, mut ev| {
                 tokio::select! {
                     _ = ev.recv() => bail!("Unexpected event"),
@@ -526,15 +579,7 @@ mod test {
         harness(
             async move |mut server| {
                 server.write_all(EVENT_JSON).await?;
-                let serde_json::Value::Object(cmd) = read_json_line(&mut server).await? else {
-                    bail!("Unexpected data");
-                };
-                if cmd
-                    .get("execute")
-                    .is_none_or(|e| e.as_str() != Some("query-balloon"))
-                {
-                    bail!("Missing or unexpected command");
-                }
+                read_json_execute(&mut server, "query-balloon").await?;
                 server.write_all(BALLOON_RETURN_JSON).await?;
                 Ok(())
             },

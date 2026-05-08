@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 TII (SSRC) and the Ghaf contributors
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "ghaf-qemu-mplex"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+default = ["systemd"]
+systemd = []
+
+[dependencies]
+anyhow = "1"
+env_logger = "0.11"
+futures = "0.3"
+log = "0.4"
+notify = "8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", default-features = false, features = ["rt", "macros", "io-util", "net", "sync", "time", "fs"] }
+
+[dev-dependencies]
+tempfile = "3"
