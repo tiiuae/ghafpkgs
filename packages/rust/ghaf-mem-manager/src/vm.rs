@@ -14,7 +14,8 @@ use crate::qmp;
 
 const GUEST_STATS_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Default, zbus::zvariant::SerializeDict, zbus::zvariant::Type)]
+#[zvariant(signature = "dict", rename_all = "PascalCase")]
 struct MemoryStats {
     pub last_update: u64,
     balloon_size: u64,
@@ -47,6 +48,15 @@ impl VM {
     pub async fn set_maximum(&mut self, value: u64) {
         self.state.lock().await.maximum = value;
         let _ = self.manage_trigger.send(());
+    }
+
+    async fn stats(&self) -> MemoryStats {
+        self.state
+            .lock()
+            .await
+            .last_update
+            .clone()
+            .unwrap_or_default()
     }
 }
 
@@ -131,7 +141,7 @@ struct Session {
 
 struct VMState {
     session: Option<Session>,
-    last_update: Option<(u64, u64)>,
+    last_update: Option<MemoryStats>,
     minimum: u64,
     maximum: u64,
 }
@@ -149,7 +159,6 @@ impl VMState {
     async fn clamp(&self, size: u64) -> u64 {
         size.clamp(self.minimum, self.maximum)
     }
-
 }
 
 #[derive(Clone)]
@@ -300,23 +309,20 @@ impl VM {
             });
         };
 
-        let last = state
-            .last_update
-            .replace((mem_stats.last_update, balloon.actual));
-
+        let last = state.last_update.as_ref().map(|last| last.last_update);
         let preferred = if let Some(preferred) = mem_stats
             .window(low, high)
-            .filter(|_| last.is_none_or(|(ts, _)| ts < mem_stats.last_update))
+            .filter(|_| last.is_none_or(|ts| ts < mem_stats.last_update))
         {
             state.clamp(preferred).await
         } else {
             mem_stats.balloon_size
         };
 
-        Ok(MemInfo {
-            preferred,
-            ..MemInfo::from(&mem_stats)
-        })
+        let base = MemInfo::from(&mem_stats);
+        state.last_update = Some(mem_stats);
+
+        Ok(MemInfo { preferred, ..base })
     }
 
     pub async fn adjust(&self, balloon: u64) -> Result<(), Error> {
@@ -497,7 +503,11 @@ mod test {
         let vm = VM::new("/tmp/test-vm.sock", 0, u64::MAX, manage_tx);
         {
             let mut state = vm.state.lock().await;
-            state.last_update = Some((7, 700));
+            state.last_update = Some(MemoryStats {
+                last_update: 7,
+                balloon_size: 700,
+                ..Default::default()
+            });
         }
         let (conn, qmp_task, server_task) =
             mock_connection_for_calc_preferred(900, 1024, 0, 7, 450, 200).await?;
@@ -507,7 +517,14 @@ mod test {
         assert_eq!(info.preferred, 900);
 
         let state = vm.state.lock().await;
-        assert_eq!(state.last_update, Some((7, 900)));
+        assert!(matches!(
+            state.last_update,
+            Some(MemoryStats {
+                last_update: 7,
+                balloon_size: 900,
+                ..
+            })
+        ));
         drop(state);
 
         let _ = server_task.await?;
