@@ -142,7 +142,14 @@ fn vm_dbus_path(sock: &Path) -> Option<String> {
             .parent()
             .and_then(|p| p.components().last().map(|l| l.as_os_str())))
         .and_then(std::ffi::OsStr::to_str)
-        .map(|s| format!("/{s}"))
+        .map(|s| {
+            std::iter::once('/')
+                .chain(
+                    s.chars()
+                        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }),
+                )
+                .collect()
+        })
 }
 
 #[zbus::interface(name = "ae.tii.MemManager", spawn = false)]
