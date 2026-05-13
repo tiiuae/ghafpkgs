@@ -28,7 +28,9 @@ stdenv.mkDerivation {
     cppcheck
     valgrind
     dbus
-    (python3.withPackages (ps: [ ps.pygobject3 ]))
+    # lowPrio so the devshell's buildEnv prefers the bare python3 pulled in
+    # by the Python packages and the two don't collide on bin/idle3.13 etc.
+    (lib.lowPrio (python3.withPackages (ps: [ ps.pygobject3 ])))
     gobject-introspection
   ];
   buildInputs = [

@@ -14,7 +14,7 @@ source = { editable = "." }
 dependencies = [
     { name = "pygobject", version = "3.48.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
     { name = "pygobject", version = "3.54.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.9.*'" },
-    { name = "pygobject", version = "3.56.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
+    { name = "pygobject", version = "3.56.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
 ]
 
 [package.metadata]
@@ -130,7 +130,7 @@ sdist = { url = "https://files.pythonhosted.org/packages/d3/a5/68f883df1d8442e3b
 
 [[package]]
 name = "pygobject"
-version = "3.56.2"
+version = "3.56.3"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
     "python_full_version >= '3.10'",
@@ -138,4 +138,4 @@ resolution-markers = [
 dependencies = [
     { name = "pycairo", version = "1.29.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a2/80/09247a2be28af2c2240132a0af6c1005a2b1d089242b13a2cd782d2de8d7/pygobject-3.56.2.tar.gz", hash = "sha256:b816098969544081de9eecedb94ad6ac59c77e4d571fe7051f18bebcec074313", size = 1409059, upload-time = "2026-03-25T16:14:04.008Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/da/61/978c5fbca34f10a90df362502fbb5a005637909e7b5a0e9212349ea9d010/pygobject-3.56.3.tar.gz", hash = "sha256:12760e4a0e3d04b6eb95e06f7a27e362c826d567ea613373a92c003b6c70d2d6", size = 1411853, upload-time = "2026-05-08T20:46:39.904Z" }
