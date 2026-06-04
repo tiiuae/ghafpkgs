@@ -15,7 +15,7 @@ use crate::qmp;
 const GUEST_STATS_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
 
 #[derive(Clone, Debug, Default, zbus::zvariant::SerializeDict, zbus::zvariant::Type)]
-#[zvariant(signature = "dict", rename_all = "PascalCase")]
+#[zvariant(signature = "a{st}", rename_all = "PascalCase")]
 struct MemoryStats {
     pub last_update: u64,
     balloon_size: u64,
@@ -24,6 +24,7 @@ struct MemoryStats {
     total_memory: u64,
     free_memory: u64,
     available_memory: u64,
+    cached: u64,
 }
 
 #[zbus::interface(name = "ae.tii.MemManager.VM", spawn = false)]
@@ -46,7 +47,7 @@ impl VM {
 
     #[zbus(property)]
     pub async fn set_maximum(&mut self, value: u64) {
-        self.state.lock().await.maximum = value;
+        self.state.lock().await.maximum = value.min(self.max_size);
         let _ = self.manage_trigger.send(());
     }
 
@@ -57,6 +58,11 @@ impl VM {
             .last_update
             .clone()
             .unwrap_or_default()
+    }
+
+    #[zbus(property)]
+    pub async fn max_size(&self) -> u64 {
+        self.max_size
     }
 }
 
@@ -85,6 +91,7 @@ impl MemoryStats {
             total_memory: mem_info.base_memory + mem_info.plugged_memory,
             free_memory,
             available_memory,
+            cached: guest_info.stats.stat_disk_caches,
         })
     }
 
@@ -166,6 +173,7 @@ pub(crate) struct VM {
     endpoint: qmp::Endpoint,
     state: Arc<Mutex<VMState>>,
     manage_trigger: mpsc::UnboundedSender<()>,
+    max_size: u64,
 }
 
 impl std::fmt::Display for VM {
@@ -216,6 +224,7 @@ impl VM {
             endpoint: qmp::Endpoint::new(endpoint),
             state: Arc::new(Mutex::new(VMState::new(minimum, maximum))),
             manage_trigger,
+            max_size: maximum,
         }
     }
 

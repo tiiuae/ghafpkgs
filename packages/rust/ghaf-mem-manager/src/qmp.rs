@@ -56,6 +56,7 @@ pub struct MemoryInfo {
 pub struct GuestMemoryStats {
     pub stat_available_memory: u64,
     pub stat_free_memory: u64,
+    pub stat_disk_caches: u64,
 }
 
 #[derive(Deserialize, Debug)]
