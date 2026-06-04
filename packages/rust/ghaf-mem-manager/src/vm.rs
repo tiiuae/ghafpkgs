@@ -460,7 +460,8 @@ mod test {
                         "last-update": last_update,
                         "stats": {
                             "stat-available-memory": stat_available_memory,
-                            "stat-free-memory": stat_free_memory
+                            "stat-free-memory": stat_free_memory,
+                            "stat-disk-caches": 0
                         }
                     }
                 }),
