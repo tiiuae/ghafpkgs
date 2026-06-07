@@ -21,6 +21,16 @@
 #define RECV_BUF_SIZE (1024 * 1024)
 #define STAT_INTERVAL 1.0
 
+static int verbose = 0;
+
+#define log_error(...) fprintf(stderr, __VA_ARGS__)
+#define log_info(...) printf(__VA_ARGS__)
+#define log_verbose(...)                                                       \
+  do {                                                                         \
+    if (verbose)                                                               \
+      printf(__VA_ARGS__);                                                     \
+  } while (0)
+
 struct client {
   int sock;
   int cid;
@@ -48,8 +58,8 @@ void close_connections(struct client *data) {
   if (data == NULL)
     return;
 
-  printf("Connection %d %s cid %d on port %d closed\n", data->sock,
-         data->rx ? "from" : "to", data->cid, data->port);
+  log_verbose("Connection %d %s cid %d on port %d closed\n", data->sock,
+              data->rx ? "from" : "to", data->cid, data->port);
   close(data->sock);
   if (data->sibling) {
     data->sibling->sibling = NULL;
@@ -66,7 +76,7 @@ int start_receive(struct client *data, int epfd) {
   rx_ev.events = EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLERR;
   rx_ev.data.ptr = data;
   if (epoll_ctl(epfd, EPOLL_CTL_ADD, data->sock, &rx_ev) == -1) {
-    printf("Failed to add to epoll: %s\n", strerror(errno));
+    log_error("Failed to add to epoll: %s\n", strerror(errno));
     close_connections(data);
     return 0;
   }
@@ -75,7 +85,7 @@ int start_receive(struct client *data, int epfd) {
   tx_ev.events = EPOLLIN | EPOLLRDHUP | EPOLLHUP | EPOLLERR;
   tx_ev.data.ptr = data->sibling;
   if (epoll_ctl(epfd, EPOLL_CTL_ADD, data->sibling->sock, &tx_ev) == -1) {
-    printf("Failed to add to epoll: %s\n", strerror(errno));
+    log_error("Failed to add to epoll: %s\n", strerror(errno));
     close_connections(data->sibling);
     return 0;
   }
@@ -92,7 +102,7 @@ int switch_mod(struct client *data, int epfd) {
     ev.events |= EPOLLOUT;
   ev.data.ptr = data;
   if (epoll_ctl(epfd, EPOLL_CTL_MOD, data->sock, &ev) == -1) {
-    printf("Failed to add to epoll: %s\n", strerror(errno));
+    log_error("Failed to add to epoll: %s\n", strerror(errno));
     close_connections(data);
     return 0;
   }
@@ -100,17 +110,20 @@ int switch_mod(struct client *data, int epfd) {
 }
 
 void show_stat(struct client *data, int now) {
+  if (!verbose || data == NULL)
+    return;
+
   double rxtime_spent = timespec_now() - data->rxbegin;
   double txtime_spent = timespec_now() - data->txbegin;
   if (now || (rxtime_spent >= STAT_INTERVAL)) {
-    printf("Connection %d RX %ld bytes in %.2f seconds, transfer rate %.2f "
-           "MB/s, rx total %ld\n",
-           data->sock, data->rxbytes, rxtime_spent,
-           data->rxbytes / rxtime_spent / 1000000, data->rxbytes_total);
-    printf("Connection %d TX %ld bytes in %.2f seconds, transfer rate %.2f "
-           "MB/s, tx total %ld\n",
-           data->sock, data->txbytes, txtime_spent,
-           data->txbytes / txtime_spent / 1000000, data->txbytes_total);
+    log_verbose("Connection %d RX %ld bytes in %.2f seconds, transfer rate "
+                "%.2f MB/s, rx total %ld\n",
+                data->sock, data->rxbytes, rxtime_spent,
+                data->rxbytes / rxtime_spent / 1000000, data->rxbytes_total);
+    log_verbose("Connection %d TX %ld bytes in %.2f seconds, transfer rate "
+                "%.2f MB/s, tx total %ld\n",
+                data->sock, data->txbytes, txtime_spent,
+                data->txbytes / txtime_spent / 1000000, data->txbytes_total);
     data->rxbytes = 0;
     data->rxbegin = timespec_now();
     data->txbytes = 0;
@@ -128,11 +141,14 @@ void signal_handler(int signal) {
 int main(int argc, char **argv) {
   int ret = EXIT_FAILURE;
 
-  if (argc < 5) {
-    printf("usage: vsockproxy <local_port> <remote_cid> <remote_port> "
-           "<allowed_cid>\n");
+  if (argc < 5 || argc > 6 ||
+      (argc == 6 && strcmp(argv[5], "-v") && strcmp(argv[5], "--verbose"))) {
+    log_error("usage: vsockproxy <local_port> <remote_cid> <remote_port> "
+              "<allowed_cid> [-v|--verbose]\n");
     return ret;
   }
+
+  verbose = (argc == 6);
 
   // Disable stdout buffering so that journald can show live data
   setvbuf(stdout, NULL, _IONBF, 0);
@@ -143,11 +159,11 @@ int main(int argc, char **argv) {
   sigemptyset(&sa.sa_mask);
   sa.sa_flags = 0;
   if (sigaction(SIGINT, &sa, NULL) == -1) {
-    printf("Failed to change SIGINT action: %s\n", strerror(errno));
+    log_error("Failed to change SIGINT action: %s\n", strerror(errno));
     return ret;
   }
   if (sigaction(SIGTERM, &sa, NULL) == -1) {
-    printf("Failed to change SIGTERM action: %s\n", strerror(errno));
+    log_error("Failed to change SIGTERM action: %s\n", strerror(errno));
     return ret;
   }
 
@@ -157,7 +173,7 @@ int main(int argc, char **argv) {
   sigaddset(&sigset, SIGINT);
   sigaddset(&sigset, SIGTERM);
   if (sigprocmask(SIG_BLOCK, &sigset, &oldset) == -1) {
-    printf("Failed to block signals: %s\n", strerror(errno));
+    log_error("Failed to block signals: %s\n", strerror(errno));
     return ret;
   }
 
@@ -165,13 +181,13 @@ int main(int argc, char **argv) {
   int remote_cid = atoi(argv[2]);
   int remote_port = atoi(argv[3]);
   int allowed_cid = atoi(argv[4]);
-  printf("vsockproxy started (local port %d, remote cid %d, remote port %d, "
-         "allowed_cid %d)\n",
-         local_port, remote_cid, remote_port, allowed_cid);
+  log_info("vsockproxy started (local port %d, remote cid %d, remote port %d, "
+           "allowed_cid %d)\n",
+           local_port, remote_cid, remote_port, allowed_cid);
 
   int listen_sock = socket(AF_VSOCK, SOCK_STREAM, 0);
   if (listen_sock == -1) {
-    printf("Failed to create socket: %s\n", strerror(errno));
+    log_error("Failed to create socket: %s\n", strerror(errno));
     return ret;
   }
 
@@ -180,24 +196,24 @@ int main(int argc, char **argv) {
   addr.svm_port = local_port;
   addr.svm_cid = VMADDR_CID_ANY;
   if (bind(listen_sock, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
-    printf("Failed to bind: %s\n", strerror(errno));
+    log_error("Failed to bind: %s\n", strerror(errno));
     return ret;
   }
 
   if (fcntl(listen_sock, F_SETFL,
             fcntl(listen_sock, F_GETFL, 0) | O_NONBLOCK) == -1) {
-    printf("Failed to set non block: %s\n", strerror(errno));
+    log_error("Failed to set non block: %s\n", strerror(errno));
     return ret;
   }
 
   if (listen(listen_sock, 10) == -1) {
-    printf("Failed to listen: %s\n", strerror(errno));
+    log_error("Failed to listen: %s\n", strerror(errno));
     return ret;
   }
 
   int epfd = epoll_create(1);
   if (epfd == -1) {
-    printf("Failed to create epoll: %s\n", strerror(errno));
+    log_error("Failed to create epoll: %s\n", strerror(errno));
     return ret;
   }
 
@@ -207,7 +223,7 @@ int main(int argc, char **argv) {
   listen_ev.events = EPOLLIN | EPOLLOUT;
   listen_ev.data.ptr = listen_data;
   if (epoll_ctl(epfd, EPOLL_CTL_ADD, listen_sock, &listen_ev) == -1) {
-    printf("Failed to add to epoll: %s\n", strerror(errno));
+    log_error("Failed to add to epoll: %s\n", strerror(errno));
     return ret;
   }
 
@@ -220,7 +236,7 @@ int main(int argc, char **argv) {
     if (nfds < 0) {
       if (errno == EINTR)
         continue;
-      printf("Failed to wait: %s\n", strerror(errno));
+      log_error("Failed to wait: %s\n", strerror(errno));
       ret = EXIT_FAILURE;
       break;
     }
@@ -235,23 +251,23 @@ int main(int argc, char **argv) {
         int rx_sock =
             accept(listen_sock, (struct sockaddr *)&clientaddr, &socklen);
         if (rx_sock == -1) {
-          printf("Failed to accept a new connection: %s\n", strerror(errno));
+          log_error("Failed to accept a new connection: %s\n", strerror(errno));
           break;
         }
 
-        printf("Accepted connection %d from cid %d on port %d \n", rx_sock,
-               clientaddr.svm_cid, ntohs(clientaddr.svm_port));
+        log_verbose("Accepted connection %d from cid %d on port %d \n", rx_sock,
+                    clientaddr.svm_cid, ntohs(clientaddr.svm_port));
 
         if (allowed_cid && (allowed_cid != clientaddr.svm_cid)) {
-          printf("Connection %d from cid %d is not allowed, closing.\n",
-                 rx_sock, clientaddr.svm_cid);
+          log_error("Connection %d from cid %d is not allowed, closing.\n",
+                    rx_sock, clientaddr.svm_cid);
           close(rx_sock);
           continue;
         }
 
         if (fcntl(rx_sock, F_SETFL, fcntl(rx_sock, F_GETFL, 0) | O_NONBLOCK) ==
             -1) {
-          printf("Failed to set non block: %s\n", strerror(errno));
+          log_error("Failed to set non block: %s\n", strerror(errno));
           close(rx_sock);
           break;
         }
@@ -270,14 +286,14 @@ int main(int argc, char **argv) {
         // Connect to uplink
         int tx_sock = socket(AF_VSOCK, SOCK_STREAM, 0);
         if (tx_sock == -1) {
-          printf("Failed to create remote socket: %s\n", strerror(errno));
+          log_error("Failed to create remote socket: %s\n", strerror(errno));
           close_connections(rx_data);
           continue;
         }
 
         if (fcntl(tx_sock, F_SETFL, fcntl(tx_sock, F_GETFL, 0) | O_NONBLOCK) ==
             -1) {
-          printf("Failed to set non block: %s\n", strerror(errno));
+          log_error("Failed to set non block: %s\n", strerror(errno));
           close(tx_sock);
           close_connections(rx_data);
           continue;
@@ -290,8 +306,8 @@ int main(int argc, char **argv) {
         int res = connect(tx_sock, (struct sockaddr *)&remoteaddr,
                           sizeof(remoteaddr));
         if (res < 0 && errno != EINPROGRESS) {
-          printf("Failed to connect to cid %d on port %d: %s\n", remote_cid,
-                 remote_port, strerror(errno));
+          log_error("Failed to connect to cid %d on port %d: %s\n", remote_cid,
+                    remote_port, strerror(errno));
           close(tx_sock);
           close_connections(rx_data);
           continue;
@@ -310,21 +326,22 @@ int main(int argc, char **argv) {
         rx_data->sibling = tx_data;
 
         if (res == 0) {
-          printf("Connection %d to cid %d on port %d has been established\n",
-                 tx_sock, remote_cid, remote_port);
+          log_verbose("Connection %d to cid %d on port %d has been "
+                      "established\n",
+                      tx_sock, remote_cid, remote_port);
           tx_data->connected = 1;
           if (!start_receive(rx_data, epfd))
             continue;
         } else {
-          printf("Connection %d to cid %d on port %d is in progress\n", tx_sock,
-                 remote_cid, remote_port);
+          log_verbose("Connection %d to cid %d on port %d is in progress\n",
+                      tx_sock, remote_cid, remote_port);
 
           // Connection status will be reported in EPOLLOUT
           struct epoll_event tx_ev;
           tx_ev.events = EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLHUP | EPOLLERR;
           tx_ev.data.ptr = tx_data;
           if (epoll_ctl(epfd, EPOLL_CTL_ADD, tx_sock, &tx_ev) == -1) {
-            printf("Failed to add to epoll: %s\n", strerror(errno));
+            log_error("Failed to add to epoll: %s\n", strerror(errno));
             close_connections(rx_data);
             continue;
           }
@@ -341,7 +358,7 @@ int main(int argc, char **argv) {
             break;
           } else if (bytes_read < 0) {
             if (errno != EAGAIN && errno != EWOULDBLOCK) {
-              printf("Read failed: %s\n", strerror(errno));
+              log_error("Read failed: %s\n", strerror(errno));
               close_connections(data);
             }
             continue;
@@ -354,8 +371,8 @@ int main(int argc, char **argv) {
                 send(data->sibling->sock, data->buf, data->buf_size, 0);
             if (bytes_sent <= 0) {
               if (errno != EAGAIN && errno != EWOULDBLOCK) {
-                printf("Failed to send from epollin (%d): %s\n", errno,
-                       strerror(errno));
+                log_error("Failed to send from epollin (%d): %s\n", errno,
+                          strerror(errno));
                 close_connections(data);
                 break;
               }
@@ -381,23 +398,25 @@ int main(int argc, char **argv) {
             socklen_t res_len = sizeof(res);
             if (getsockopt(data->sock, SOL_SOCKET, SO_ERROR, &res, &res_len) <
                 0) {
-              printf("Failed to get connection status: %s\n", strerror(errno));
+              log_error("Failed to get connection status: %s\n",
+                        strerror(errno));
               close_connections(data);
               continue;
             }
 
             if (res != 0) {
-              printf("Failed to connect to cid %d on port %d: %s\n", remote_cid,
-                     remote_port, strerror(errno));
+              log_error("Failed to connect to cid %d on port %d: %s\n",
+                        remote_cid, remote_port, strerror(res));
               close_connections(data);
               continue;
             }
 
-            printf("Connection %d to cid %d on port %d has been established\n",
-                   data->sock, remote_cid, remote_port);
+            log_verbose("Connection %d to cid %d on port %d has been "
+                        "established\n",
+                        data->sock, remote_cid, remote_port);
             data->connected = 1;
             if (epoll_ctl(epfd, EPOLL_CTL_DEL, data->sock, NULL) == -1) {
-              printf("Failed to delete from epoll: %s\n", strerror(errno));
+              log_error("Failed to delete from epoll: %s\n", strerror(errno));
               close_connections(data);
               continue;
             } else {
@@ -410,8 +429,8 @@ int main(int argc, char **argv) {
                                     data->sibling->buf_size, 0);
               if (bytes_sent <= 0) {
                 if (errno != EAGAIN && errno != EWOULDBLOCK) {
-                  printf("Failed to send from epollout (%d): %s\n", errno,
-                         strerror(errno));
+                  log_error("Failed to send from epollout (%d): %s\n", errno,
+                            strerror(errno));
                   close_connections(data);
                 }
                 continue;
@@ -442,6 +461,6 @@ int main(int argc, char **argv) {
     }
   }
   close(epfd);
-  printf("vsockproxy finished\n");
+  log_info("vsockproxy finished\n");
   return ret;
 }
