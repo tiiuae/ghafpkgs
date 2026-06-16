@@ -932,9 +932,10 @@ void SniProxy::on_passive_item_registered(G_GNUC_UNUSED GDBusConnection* connect
     const char* space = strchr(item_name, ' ');
     if (space && space[1] == '/') {
         g_autofree gchar* bus_name = g_strndup(item_name, space - item_name);
-        const char* obj_path = space + 1;
-        if (!g_hash_table_contains(self.sni_items_, bus_name))
+        if (!g_hash_table_contains(self.sni_items_, bus_name)) {
+            const char* obj_path = space + 1;
             self.discover_and_proxy_item(bus_name, obj_path);
+        }
     } else {
         if (!g_hash_table_contains(self.sni_items_, item_name))
             self.discover_and_proxy_item(item_name);
