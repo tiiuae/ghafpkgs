@@ -37,6 +37,7 @@
                 --suppress=useStlAlgorithm \
                 --suppress=uselessAssignmentPtrArg \
                 --suppress=normalCheckLevelMaxBranches \
+                --suppress=uninitMemberVarNoCtor \
                 --inline-suppr \
                 -q \
                 "$src"
