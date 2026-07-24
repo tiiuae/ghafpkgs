@@ -4,6 +4,12 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    groups:
+      # codeql-action sub-actions (init/analyze/upload-sarif) must be bumped
+      # together: analyze refuses to run against an init of a different version.
+      codeql-action:
+        patterns:
+          - "github/codeql-action*"
   - package-ecosystem: cargo
     directory: /packages/ghaf-mem-manager
     schedule:
