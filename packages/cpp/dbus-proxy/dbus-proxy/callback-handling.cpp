@@ -75,8 +75,13 @@ gboolean register_agent_callback(const gchar* sender, const gchar* object_path,
     data->agent_object_reg_id = agent_object_reg_id;
     data->rule = rule;
     data->iface = iface;
+    /* The sender must be pinned to the bus daemon. With a null sender any peer
+     * on the target bus can forge a NameOwnerChanged signal, and the old_owner
+     * it carries is the only thing this handler uses to decide whose agent
+     * registration to tear down -- letting an unprivileged client evict another
+     * client's agent and take its place. */
     data->name_change_reg_id = g_dbus_connection_signal_subscribe(
-        proxy_state->target_bus, nullptr, "org.freedesktop.DBus", "NameOwnerChanged",
+        proxy_state->target_bus, "org.freedesktop.DBus", "org.freedesktop.DBus", "NameOwnerChanged",
         "/org/freedesktop/DBus", nullptr, G_DBUS_SIGNAL_FLAGS_NONE, on_name_owner_changed,
         (gpointer)data->owner, nullptr);
 
@@ -481,9 +486,18 @@ static void on_name_owner_changed(GDBusConnection* connection G_GNUC_UNUSED,
                                   const gchar* signal_name G_GNUC_UNUSED, GVariant* parameters,
                                   gpointer user_data G_GNUC_UNUSED) {
 
-    const gchar* dbus_name;
-    const gchar* old_owner;
-    const gchar* new_owner;
+    const gchar* dbus_name = nullptr;
+    const gchar* old_owner = nullptr;
+    const gchar* new_owner = nullptr;
+
+    /* GDBus does not validate the body of a delivered signal against the
+     * expected signature. g_variant_get() bails out at its g_return_if_fail()
+     * without touching the varargs when the type does not match, which would
+     * leave these pointers holding stack garbage that is dereferenced below. */
+    if (parameters == nullptr || !g_variant_is_of_type(parameters, G_VARIANT_TYPE("(sss)"))) {
+        Log::error() << "Ignoring NameOwnerChanged signal with unexpected signature";
+        return;
+    }
     g_variant_get(parameters, "(&s&s&s)", &dbus_name, &old_owner, &new_owner);
 
     /* Ignore new client notification */

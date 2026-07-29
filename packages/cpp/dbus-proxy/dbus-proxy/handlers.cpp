@@ -200,8 +200,20 @@ void on_interfaces_added(GDBusConnection* connection G_GNUC_UNUSED,
                          const gchar* sender_name G_GNUC_UNUSED, const gchar* object_path,
                          const gchar* interface_name, const gchar* signal_name,
                          GVariant* parameters, gpointer user_data G_GNUC_UNUSED) {
-    const gchar* added_object_path;
-    GVariant* interfaces_and_properties;
+    const gchar* added_object_path = nullptr;
+    GVariant* interfaces_and_properties = nullptr;
+
+    /* The signal body comes from the proxied service and GDBus does not check
+     * it against the expected signature. g_variant_get() returns at its
+     * g_return_if_fail() without writing the varargs on a mismatch, which would
+     * leave interfaces_and_properties holding stack garbage that is walked and
+     * then passed to g_variant_unref() -- a refcount decrement through an
+     * uncontrolled pointer. */
+    if (parameters == nullptr ||
+        !g_variant_is_of_type(parameters, G_VARIANT_TYPE("(oa{sa{sv}})"))) {
+        Log::error() << "Ignoring InterfacesAdded signal with unexpected signature";
+        return;
+    }
 
     g_variant_get(parameters, "(&o@a{sa{sv}})", &added_object_path, &interfaces_and_properties);
 
@@ -231,11 +243,16 @@ void on_interfaces_removed(GDBusConnection* connection G_GNUC_UNUSED,
                            const gchar* interface_name G_GNUC_UNUSED,
                            const gchar* signal_name G_GNUC_UNUSED, GVariant* parameters,
                            gpointer user_data G_GNUC_UNUSED) {
-    const gchar* removed_object_path;
+    const gchar* removed_object_path = nullptr;
     gchar** removed_interfaces = nullptr;
 
     // InterfacesRemoved has signature: (oas)
     // object_path + array of interface names
+    if (parameters == nullptr || !g_variant_is_of_type(parameters, G_VARIANT_TYPE("(oas)"))) {
+        Log::error() << "Ignoring InterfacesRemoved signal with unexpected signature";
+        return;
+    }
+
     g_variant_get(parameters, "(&o^as)", &removed_object_path, &removed_interfaces);
 
     if (!removed_interfaces || removed_interfaces[0] == NULL) {

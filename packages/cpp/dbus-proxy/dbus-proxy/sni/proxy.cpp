@@ -666,6 +666,23 @@ static void emit_host_registered(GDBusConnection* conn) {
 
 // --- Watcher: method call handler ---
 
+// Returns TRUE when `name` is currently owned by `sender` on `conn`. The bus
+// daemon is the authority here, so a caller cannot claim a name it does not
+// hold.
+static gboolean name_owned_by_sender(GDBusConnection* conn, const char* name, const char* sender) {
+    g_autoptr(GError) error = nullptr;
+    g_autoptr(GVariant) result = g_dbus_connection_call_sync(
+        conn, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
+        "GetNameOwner", g_variant_new("(s)", name), G_VARIANT_TYPE("(s)"), G_DBUS_CALL_FLAGS_NONE,
+        2000, nullptr, &error);
+    if (!result)
+        return FALSE;
+
+    const char* owner = nullptr;
+    g_variant_get(result, "(&s)", &owner);
+    return g_strcmp0(owner, sender) == 0;
+}
+
 void SniProxy::on_watcher_method_call(GDBusConnection* connection, const char* sender,
                                       G_GNUC_UNUSED const char* object_path,
                                       G_GNUC_UNUSED const char* interface_name,
@@ -683,7 +700,34 @@ void SniProxy::on_watcher_method_call(GDBusConnection* connection, const char* s
             // service is an object path, use sender as bus name
             self.discover_and_proxy_item(sender, service);
         } else {
-            // service is a bus name (unique or well-known)
+            // service is a bus name (unique or well-known). It is later taken
+            // verbatim as the name to acquire on the target bus, which is the
+            // more trusted side, so a caller must not be able to nominate a
+            // name it does not hold: otherwise any app on the source bus can
+            // squat an unowned well-known name over there -- permanently
+            // blocking activation of the real service, since the name is taken
+            // without ALLOW_REPLACEMENT -- or have another app's tray identity
+            // proxied under its own.
+            if (!g_dbus_is_name(service)) {
+                Log::error() << "Rejecting RegisterStatusNotifierItem from " << sender << ": '"
+                             << service << "' is not a valid D-Bus name";
+                g_dbus_method_invocation_return_error_literal(invocation, G_DBUS_ERROR,
+                                                              G_DBUS_ERROR_INVALID_ARGS,
+                                                              "service is not a valid D-Bus name");
+                return;
+            }
+
+            if (g_strcmp0(service, sender) != 0 &&
+                !(g_str_has_prefix(service, SNI_ITEM_BUS_NAME_PREFIX) &&
+                  name_owned_by_sender(connection, service, sender))) {
+                Log::error() << "Rejecting RegisterStatusNotifierItem from " << sender
+                             << " for bus name " << service << ": not owned by the caller";
+                g_dbus_method_invocation_return_error_literal(
+                    invocation, G_DBUS_ERROR, G_DBUS_ERROR_ACCESS_DENIED,
+                    "service must be a bus name owned by the caller");
+                return;
+            }
+
             self.discover_and_proxy_item(service);
         }
 
@@ -1245,7 +1289,14 @@ void SniProxy::on_signal_received(G_GNUC_UNUSED GDBusConnection* connection,
         if (icon_result) {
             GVariant* v = nullptr;
             g_variant_get(icon_result, "(v)", &v);
-            item->cached_icon_name = g_variant_get_string(v, nullptr);
+            // Only the outer "(v)" is enforced by the call; the inner variant
+            // is whatever the untrusted application chose to return.
+            // g_variant_get_string() yields NULL for any non-string type, and
+            // assigning NULL to a std::string calls strlen(nullptr).
+            if (v != nullptr && g_variant_is_of_type(v, G_VARIANT_TYPE_STRING))
+                item->cached_icon_name = g_variant_get_string(v, nullptr);
+            else
+                item->cached_icon_name.clear();
             g_variant_unref(v);
             GVariant* pix = icon_name_to_pixmap(item->cached_icon_name.c_str());
             if (pix) {
@@ -1571,7 +1622,14 @@ void SniProxy::on_item_name_acquired(G_GNUC_UNUSED GDBusConnection* conn, const 
         if (icon_result) {
             GVariant* v = nullptr;
             g_variant_get(icon_result, "(v)", &v);
-            item->cached_icon_name = g_variant_get_string(v, nullptr);
+            // Only the outer "(v)" is enforced by the call; the inner variant
+            // is whatever the untrusted application chose to return.
+            // g_variant_get_string() yields NULL for any non-string type, and
+            // assigning NULL to a std::string calls strlen(nullptr).
+            if (v != nullptr && g_variant_is_of_type(v, G_VARIANT_TYPE_STRING))
+                item->cached_icon_name = g_variant_get_string(v, nullptr);
+            else
+                item->cached_icon_name.clear();
             g_variant_unref(v);
             Log::info() << "[ICON] Cached IconName for " << item->source_bus_name << ": "
                         << item->cached_icon_name;
