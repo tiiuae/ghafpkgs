@@ -46,11 +46,12 @@ impl Chromecast {
     ///
     /// Returns a new `Chromecast` instance that is initialized with the provided
     /// interface information and the necessary operations for interacting with it.
-    pub fn new(_ifaces: Ifaces) -> Self {
+    pub fn new(ifaces: Ifaces) -> Self {
         let shared_data = Arc::new(SharedData::new(
             cli::get_chromecast(),
             cli::get_chromecastvm_ip(),
             cli::get_chromecastvm_mac(),
+            ifaces.ext_ip,
             false,
             true,
         )); // Ensure shared_data is wrapped in Arc
@@ -85,6 +86,7 @@ struct SharedData {
     ssdp_ports: Mutex<VecDeque<(u16, SystemTime)>>, // Thread-safe vector of ports
     ip: IpNetwork,
     mac: MacAddr,
+    ext_ip: IpNetwork,
     ssdp_enabled: bool,
     mdns_enabled: bool,
 }
@@ -93,6 +95,7 @@ impl SharedData {
         enabled: bool,
         ip: IpNetwork,
         mac: MacAddr,
+        ext_ip: IpNetwork,
         ssdp_enabled: bool,
         mdns_enabled: bool,
     ) -> Self {
@@ -101,6 +104,7 @@ impl SharedData {
             ssdp_ports: Mutex::new(VecDeque::with_capacity(MAX_SSDP_PORTS)),
             ip,
             mac,
+            ext_ip,
             ssdp_enabled,
             mdns_enabled,
         }
@@ -193,7 +197,17 @@ impl ExternalOps {
             let dest_port = udp_packet.get_destination();
             let dest_ip = ipv4_packet.get_destination();
             let src_ip = ipv4_packet.get_source();
-            if self.shared_data.is_ssdp_port_available(dest_port).await {
+            // The pinhole opened by an outbound M-SEARCH only authorises the
+            // unicast reply to that search: it must be addressed to this
+            // forwarder's own external address, not to any host the
+            // promiscuous capture happens to see. The responder's address
+            // cannot be pinned down (the search went to a multicast group, so
+            // any device on the segment may answer), which is why the pinhole
+            // stays narrow in time and count.
+            if ssdp_enabled
+                && dest_ip == self.shared_data.ext_ip.ip()
+                && self.shared_data.is_ssdp_port_available(dest_port).await
+            {
                 info!("Ext to Int - Chromecast udp packet detected,port num: {dest_port}");
                 return Some((mac, ip));
             } else if mdns_enabled && dest_port == MDNS_PORT && dest_ip == MDNS_IP {
@@ -288,10 +302,18 @@ impl InternalOps {
                 let dest_ip = ipv4_packet.get_destination();
                 let dest_port = udp_packet.get_destination();
                 if dest_ip == SSDP_MULTICAST_ADDR && dest_port == SSDP_PORT {
+                    // Check the feature flag before recording the port, not
+                    // after: the entry added here is what authorises inbound
+                    // external->internal forwarding, so registering it while
+                    // SSDP is disabled leaves the ingress path open even
+                    // though nothing is forwarded outbound.
+                    if !ssdp_enabled {
+                        return false;
+                    }
                     let src_port = udp_packet.get_source();
                     self.shared_data.add_ssdp_port(src_port).await;
                     debug!("Added SSDP port {src_port} to the list of ports");
-                    return ssdp_enabled;
+                    return true;
                 } else if mdns_enabled
                     && src_ip == chrome_vm_ip.ip()
                     && dest_port == MDNS_PORT
