@@ -37,6 +37,7 @@ struct client {
   int port;
   int rx;
   int connected;
+  int closed;
   struct client *sibling;
   char *buf;
   int buf_size;
@@ -54,21 +55,46 @@ double timespec_now() {
   return (ts.tv_sec * 1000000000ull + ts.tv_nsec) / 1000000000.0;
 }
 
-void close_connections(struct client *data) {
-  if (data == NULL)
+// A connection closed while an epoll batch is being processed cannot be freed
+// straight away: the events[] array returned by epoll_pwait() may still hold
+// pointers to it (typically the sibling of the pair being torn down), and those
+// entries are dereferenced later in the same loop. Closed connections are
+// therefore marked, unhooked from epoll and pushed here, then freed by
+// flush_closed_connections() once the whole batch has been walked.
+//
+// Each iteration of the batch loop closes at most one rx/tx pair, so at most
+// two entries per event are ever queued.
+static struct client *closed_clients[2 * MAX_EVENTS + 2];
+static size_t closed_client_count = 0;
+
+static void queue_free(struct client *data) {
+  if (closed_client_count >= sizeof(closed_clients) / sizeof(closed_clients[0]))
+    return; // Cannot happen with the bound above; leak rather than free early.
+  closed_clients[closed_client_count++] = data;
+}
+
+void flush_closed_connections(void) {
+  for (size_t i = 0; i < closed_client_count; i++) {
+    free(closed_clients[i]->buf);
+    free(closed_clients[i]);
+  }
+  closed_client_count = 0;
+}
+
+void close_connections(struct client *data, int epfd) {
+  if (data == NULL || data->closed)
     return;
 
   log_verbose("Connection %d %s cid %d on port %d closed\n", data->sock,
               data->rx ? "from" : "to", data->cid, data->port);
+  data->closed = 1;
+  epoll_ctl(epfd, EPOLL_CTL_DEL, data->sock, NULL);
   close(data->sock);
-  if (data->sibling) {
-    data->sibling->sibling = NULL;
-    close_connections(data->sibling);
-  }
-  free(data->buf);
-  data->buf = NULL;
-  free(data);
-  data = NULL;
+  queue_free(data);
+
+  // The closed flag terminates the recursion, so the sibling link is left
+  // intact for any code still holding a pointer to either half of the pair.
+  close_connections(data->sibling, epfd);
 }
 
 int start_receive(struct client *data, int epfd) {
@@ -77,7 +103,7 @@ int start_receive(struct client *data, int epfd) {
   rx_ev.data.ptr = data;
   if (epoll_ctl(epfd, EPOLL_CTL_ADD, data->sock, &rx_ev) == -1) {
     log_error("Failed to add to epoll: %s\n", strerror(errno));
-    close_connections(data);
+    close_connections(data, epfd);
     return 0;
   }
 
@@ -86,7 +112,7 @@ int start_receive(struct client *data, int epfd) {
   tx_ev.data.ptr = data->sibling;
   if (epoll_ctl(epfd, EPOLL_CTL_ADD, data->sibling->sock, &tx_ev) == -1) {
     log_error("Failed to add to epoll: %s\n", strerror(errno));
-    close_connections(data->sibling);
+    close_connections(data->sibling, epfd);
     return 0;
   }
 
@@ -103,7 +129,7 @@ int switch_mod(struct client *data, int epfd) {
   ev.data.ptr = data;
   if (epoll_ctl(epfd, EPOLL_CTL_MOD, data->sock, &ev) == -1) {
     log_error("Failed to add to epoll: %s\n", strerror(errno));
-    close_connections(data);
+    close_connections(data, epfd);
     return 0;
   }
   return 1;
@@ -218,6 +244,7 @@ int main(int argc, char **argv) {
   }
 
   struct client *listen_data = malloc(sizeof(struct client));
+  memset(listen_data, 0, sizeof(struct client));
   listen_data->sock = listen_sock;
   struct epoll_event listen_ev;
   listen_ev.events = EPOLLIN | EPOLLOUT;
@@ -243,6 +270,12 @@ int main(int argc, char **argv) {
 
     for (int i = 0; i < nfds; i++) {
       struct client *data = (struct client *)events[i].data.ptr;
+
+      // An earlier event in this same batch may have torn down the pair this
+      // entry points at. The memory is still valid (the free is deferred to
+      // flush_closed_connections() below) but the connection is gone.
+      if (data->closed)
+        continue;
 
       if (data->sock == listen_sock) {
         // New connection
@@ -287,7 +320,7 @@ int main(int argc, char **argv) {
         int tx_sock = socket(AF_VSOCK, SOCK_STREAM, 0);
         if (tx_sock == -1) {
           log_error("Failed to create remote socket: %s\n", strerror(errno));
-          close_connections(rx_data);
+          close_connections(rx_data, epfd);
           continue;
         }
 
@@ -295,7 +328,7 @@ int main(int argc, char **argv) {
             -1) {
           log_error("Failed to set non block: %s\n", strerror(errno));
           close(tx_sock);
-          close_connections(rx_data);
+          close_connections(rx_data, epfd);
           continue;
         }
 
@@ -309,7 +342,7 @@ int main(int argc, char **argv) {
           log_error("Failed to connect to cid %d on port %d: %s\n", remote_cid,
                     remote_port, strerror(errno));
           close(tx_sock);
-          close_connections(rx_data);
+          close_connections(rx_data, epfd);
           continue;
         }
 
@@ -342,7 +375,7 @@ int main(int argc, char **argv) {
           tx_ev.data.ptr = tx_data;
           if (epoll_ctl(epfd, EPOLL_CTL_ADD, tx_sock, &tx_ev) == -1) {
             log_error("Failed to add to epoll: %s\n", strerror(errno));
-            close_connections(rx_data);
+            close_connections(rx_data, epfd);
             continue;
           }
         }
@@ -354,12 +387,12 @@ int main(int argc, char **argv) {
           int bytes_read = read(data->sock, data->buf + data->buf_size,
                                 RECV_BUF_SIZE - data->buf_size);
           if (bytes_read == 0) {
-            close_connections(data);
+            close_connections(data, epfd);
             break;
           } else if (bytes_read < 0) {
             if (errno != EAGAIN && errno != EWOULDBLOCK) {
               log_error("Read failed: %s\n", strerror(errno));
-              close_connections(data);
+              close_connections(data, epfd);
             }
             continue;
           } else {
@@ -373,7 +406,7 @@ int main(int argc, char **argv) {
               if (errno != EAGAIN && errno != EWOULDBLOCK) {
                 log_error("Failed to send from epollin (%d): %s\n", errno,
                           strerror(errno));
-                close_connections(data);
+                close_connections(data, epfd);
                 break;
               }
             } else {
@@ -400,14 +433,14 @@ int main(int argc, char **argv) {
                 0) {
               log_error("Failed to get connection status: %s\n",
                         strerror(errno));
-              close_connections(data);
+              close_connections(data, epfd);
               continue;
             }
 
             if (res != 0) {
               log_error("Failed to connect to cid %d on port %d: %s\n",
                         remote_cid, remote_port, strerror(res));
-              close_connections(data);
+              close_connections(data, epfd);
               continue;
             }
 
@@ -417,7 +450,7 @@ int main(int argc, char **argv) {
             data->connected = 1;
             if (epoll_ctl(epfd, EPOLL_CTL_DEL, data->sock, NULL) == -1) {
               log_error("Failed to delete from epoll: %s\n", strerror(errno));
-              close_connections(data);
+              close_connections(data, epfd);
               continue;
             } else {
               if (!start_receive(data, epfd))
@@ -431,7 +464,7 @@ int main(int argc, char **argv) {
                 if (errno != EAGAIN && errno != EWOULDBLOCK) {
                   log_error("Failed to send from epollout (%d): %s\n", errno,
                             strerror(errno));
-                  close_connections(data);
+                  close_connections(data, epfd);
                 }
                 continue;
               } else {
@@ -455,10 +488,13 @@ int main(int argc, char **argv) {
         if (events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {
           show_stat(data, 1);
           show_stat(data->sibling, 1);
-          close_connections(data);
+          close_connections(data, epfd);
         }
       }
     }
+
+    // Safe now: no pointer into this batch's events[] is live any more.
+    flush_closed_connections();
   }
   close(epfd);
   log_info("vsockproxy finished\n");
