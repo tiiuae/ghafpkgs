@@ -1,9 +1,19 @@
 # SPDX-FileCopyrightText: 2022-2026 TII (SSRC) and the Ghaf contributors
 # SPDX-License-Identifier: Apache-2.0
 import argparse
+import ssl
 import sys
 
-from ldap3 import ALL, GSSAPI, SASL, Connection, Server
+from ldap3 import (
+    ALL,
+    AUTO_BIND_NO_TLS,
+    AUTO_BIND_TLS_BEFORE_BIND,
+    GSSAPI,
+    SASL,
+    Connection,
+    Server,
+    Tls,
+)
 
 
 def main():
@@ -16,7 +26,21 @@ def main():
         formatter_class=argparse.RawTextHelpFormatter,
     )
     parser.add_argument(
-        "--server", required=True, help="Hostname of the Active Directory server."
+        "--server",
+        required=True,
+        help=(
+            "Hostname of the Active Directory server, optionally prefixed with\n"
+            "'ldaps://' for implicit TLS. A bare hostname (or 'ldap://') keeps\n"
+            "port 389 and negotiates StartTLS before binding."
+        ),
+    )
+    parser.add_argument(
+        "--ca-certs-file",
+        default=None,
+        help=(
+            "PEM bundle used to verify the server certificate.\n"
+            "Defaults to the system trust store."
+        ),
     )
     parser.add_argument(
         "--base-dn",
@@ -39,13 +63,46 @@ def main():
     )
     attributes_to_fetch = ["sAMAccountName", "displayName", "uidNumber", "gidNumber"]
 
+    # Split off the URL scheme so the transport is chosen explicitly rather
+    # than inferred.
+    scheme, separator, host = args.server.strip().rpartition("://")
+    if not separator:
+        scheme, host = "ldap", host
+    scheme = scheme.lower()
+    if scheme not in ("ldap", "ldaps"):
+        print(
+            f"Error: unsupported scheme '{scheme}://' for --server; "
+            "expected ldap:// or ldaps://.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if not host:
+        print("Error: --server does not name a host.", file=sys.stderr)
+        sys.exit(1)
+
+    # Everything this tool prints -- account names, uidNumber, gidNumber -- is
+    # consumed downstream for local account provisioning, so the channel must be
+    # confidential and tamper-proof. ldap3's GSSAPI SASL implementation
+    # negotiates NO_SECURITY_LAYER and so supplies neither; TLS with a verified
+    # certificate is the only thing standing between an on-path attacker and
+    # forged uid/gid values. Certificate validation is mandatory here: ldap3's
+    # default Tls object uses CERT_NONE, which would accept any certificate.
+    tls = Tls(
+        validate=ssl.CERT_REQUIRED,
+        version=ssl.PROTOCOL_TLS_CLIENT,
+        ca_certs_file=args.ca_certs_file,
+    )
+
     # Define the server and create a connection object using SASL with GSSAPI for Kerberos authentication
-    server = Server(args.server, get_info=ALL)
+    use_ssl = scheme == "ldaps"
+    server = Server(host, use_ssl=use_ssl, tls=tls, get_info=ALL)
     conn = Connection(
         server,
         authentication=SASL,
         sasl_mechanism=GSSAPI,
-        auto_bind=True,
+        # ldaps:// is already wrapped in TLS; otherwise StartTLS is negotiated
+        # before the bind. Both fail closed -- there is no plaintext fallback.
+        auto_bind=AUTO_BIND_NO_TLS if use_ssl else AUTO_BIND_TLS_BEFORE_BIND,
         read_only=True,
     )
 
