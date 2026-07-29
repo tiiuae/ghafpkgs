@@ -91,10 +91,25 @@ func parseSetDataOob(buf []byte) (uint32, error) {
 	if scmVal.Header.Type != syscall.SCM_RIGHTS || scmVal.Header.Level != syscall.SOL_SOCKET {
 		return 0, fmt.Errorf("expected SCM_RIGHTS socket control message, got: type = %x , level = %x", scmVal.Header.Type, scmVal.Header.Level)
 	}
-	if scmVal.Header.Len < 4 {
-		return 0, fmt.Errorf("socket control message length too short: %d", scmVal.Header.Len)
+
+	// The kernel has already installed every descriptor carried by this message
+	// into our descriptor table. Only one is adopted, so any others must be
+	// closed here -- otherwise a peer can attach hundreds per connection and
+	// exhaust RLIMIT_NOFILE, after which Accept and the backend dials fail.
+	fds, err := syscall.ParseUnixRights(&scmVal)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse SCM_RIGHTS message: %w", err)
 	}
-	return binary.NativeEndian.Uint32(scmVal.Data[:4]), nil
+	if len(fds) > 1 {
+		for _, extra := range fds[1:] {
+			syscall.Close(extra)
+		}
+	}
+	if len(fds) != 1 {
+		return 0, fmt.Errorf("expected exactly one file descriptor, got: %d", len(fds))
+	}
+
+	return uint32(fds[0]), nil
 }
 
 func (p *SwtpmProxy) handleQemuSetFd(backendControl io.ReadWriteCloser, qemuControl *net.UnixConn) (*TpmProxyChannels, error) {
@@ -237,6 +252,9 @@ func (p *SwtpmProxy) Start() error {
 			fmt.Printf("Error handling QEMU setfd command: %v\n", err)
 			swtpmControlConn.Close()
 			qemuControlConn.Close()
+			// handleQemuSetFd returns a nil *TpmProxyChannels on every error
+			// path, so this connection must be abandoned rather than proxied.
+			continue
 		}
 
 		fmt.Println("setfd parsed successfully")
@@ -252,6 +270,10 @@ func (p *SwtpmProxy) Start() error {
 }
 
 func (p *TpmProxyChannels) Proxy() error {
+	if p == nil {
+		return fmt.Errorf("no proxy channels to run")
+	}
+
 	errCh := make(chan error, 4)
 
 	proxy := func(dst io.WriteCloser, src io.ReadCloser) {
