@@ -360,18 +360,23 @@ void AudioControlBackend::onServerInfo(const pa_server_info& info)
         return true;
     };
 
-    if (m_defaultSinkName != info.default_sink_name)
-    {
-        Logger::info("AudioControlBackend::onServerInfo: default sink set to: {}", info.default_sink_name);
+    // libpulse leaves these null when the server has no default sink or source;
+    // comparing or assigning them to std::string would dereference nullptr.
+    const std::string defaultSinkName = info.default_sink_name == nullptr ? std::string{} : info.default_sink_name;
+    const std::string defaultSourceName = info.default_source_name == nullptr ? std::string{} : info.default_source_name;
 
-        m_defaultSinkName = info.default_sink_name;
+    if (m_defaultSinkName != defaultSinkName)
+    {
+        Logger::info("AudioControlBackend::onServerInfo: default sink set to: {}", defaultSinkName);
+
+        m_defaultSinkName = defaultSinkName;
     }
 
-    if (m_defaultSourceName != info.default_source_name)
+    if (m_defaultSourceName != defaultSourceName)
     {
-        Logger::info("AudioControlBackend::onServerInfo: default source set to: {}", info.default_source_name);
+        Logger::info("AudioControlBackend::onServerInfo: default source set to: {}", defaultSourceName);
 
-        m_defaultSourceName = info.default_source_name;
+        m_defaultSourceName = defaultSourceName;
     }
 }
 

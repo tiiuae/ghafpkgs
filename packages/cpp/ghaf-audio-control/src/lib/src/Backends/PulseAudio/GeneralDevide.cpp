@@ -8,18 +8,44 @@
 #include <GhafAudioControl/Backends/PulseAudio/Volume.hpp>
 
 #include <format>
+#include <optional>
+#include <string>
 
 namespace ghaf::AudioControl::Backend::PulseAudio
 {
 
 constexpr auto PropertyAppVmName = "application.process.host";
 
+namespace
+{
+
+// Every string PulseAudio hands us here originates from a client -- in this
+// deployment, a client in an app VM -- and libpulse returns nullptr for an
+// absent property, an unset name, or a value that is not valid UTF-8.
+// Constructing std::string from nullptr is undefined behaviour, so all of them
+// go through these two helpers.
+
+std::optional<std::string> toOptionalString(const char* value)
+{
+    if (value == nullptr)
+        return std::nullopt;
+
+    return std::optional<std::string>{value};
+}
+
+std::string toStringOrEmpty(const char* value)
+{
+    return value == nullptr ? std::string{} : std::string{value};
+}
+
+} // namespace
+
 GeneralDeviceImpl::GeneralDeviceImpl(const pa_sink_info& info, bool isDefault, pa_context& context)
     : m_index(info.index)
     , m_cardIndex(info.card)
     , m_isDefault(isDefault)
-    , m_name(info.name)
-    , m_description(info.description)
+    , m_name(toStringOrEmpty(info.name))
+    , m_description(toStringOrEmpty(info.description))
     , m_context(context)
     , m_channel_map(info.channel_map)
     , m_volume(info.volume)
@@ -31,8 +57,8 @@ GeneralDeviceImpl::GeneralDeviceImpl(const pa_source_info& info, bool isDefault,
     : m_index(info.index)
     , m_cardIndex(info.card)
     , m_isDefault(isDefault)
-    , m_name(info.name)
-    , m_description(info.description)
+    , m_name(toStringOrEmpty(info.name))
+    , m_description(toStringOrEmpty(info.description))
     , m_context(context)
     , m_channel_map(info.channel_map)
     , m_volume(info.volume)
@@ -43,8 +69,8 @@ GeneralDeviceImpl::GeneralDeviceImpl(const pa_source_info& info, bool isDefault,
 GeneralDeviceImpl::GeneralDeviceImpl(const pa_sink_input_info& info, pa_context& context)
     : m_index(info.index)
     , m_cardIndex(0)
-    , m_appVmName(pa_proplist_gets(info.proplist, PropertyAppVmName))
-    , m_name(info.name)
+    , m_appVmName(toOptionalString(pa_proplist_gets(info.proplist, PropertyAppVmName)))
+    , m_name(toStringOrEmpty(info.name))
     , m_context(context)
     , m_channel_map(info.channel_map)
     , m_volume(info.volume)
@@ -55,7 +81,7 @@ GeneralDeviceImpl::GeneralDeviceImpl(const pa_sink_input_info& info, pa_context&
 GeneralDeviceImpl::GeneralDeviceImpl(const pa_source_output_info& info, pa_context& context)
     : m_index(info.index)
     , m_cardIndex(0)
-    , m_name(info.name)
+    , m_name(toStringOrEmpty(info.name))
     , m_context(context)
     , m_channel_map(info.channel_map)
     , m_volume(info.volume)
@@ -139,8 +165,8 @@ void GeneralDeviceImpl::update(const pa_sink_info& info)
     const std::lock_guard l{m_mutex};
 
     m_cardIndex = info.card;
-    m_name = info.name;
-    m_description = info.description;
+    m_name = toStringOrEmpty(info.name);
+    m_description = toStringOrEmpty(info.description);
     m_channel_map = info.channel_map;
     m_volume = info.volume;
     m_isMuted = static_cast<bool>(info.mute);
@@ -151,8 +177,8 @@ void GeneralDeviceImpl::update(const pa_source_info& info)
     const std::lock_guard l{m_mutex};
 
     m_cardIndex = info.card;
-    m_name = info.name;
-    m_description = info.description;
+    m_name = toStringOrEmpty(info.name);
+    m_description = toStringOrEmpty(info.description);
     m_channel_map = info.channel_map;
     m_volume = info.volume;
     m_isMuted = static_cast<bool>(info.mute);
@@ -162,7 +188,7 @@ void GeneralDeviceImpl::update(const pa_sink_input_info& info)
 {
     const std::lock_guard l{m_mutex};
 
-    m_name = info.name;
+    m_name = toStringOrEmpty(info.name);
     m_channel_map = info.channel_map;
     m_volume = info.volume;
     m_isMuted = static_cast<bool>(info.mute);
@@ -172,7 +198,7 @@ void GeneralDeviceImpl::update(const pa_source_output_info& info)
 {
     const std::lock_guard l{m_mutex};
 
-    m_name = info.name;
+    m_name = toStringOrEmpty(info.name);
     m_channel_map = info.channel_map;
     m_volume = info.volume;
     m_isMuted = static_cast<bool>(info.mute);
