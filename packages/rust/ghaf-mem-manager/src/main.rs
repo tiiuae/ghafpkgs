@@ -57,17 +57,35 @@ struct MemoryStats {
 }
 
 impl MemoryStats {
+    /// Both `balloon_size` (QMP `query-balloon`) and `available_memory` (the
+    /// virtio-balloon stats queue) are written by the guest, so neither can be
+    /// trusted to be in range. A guest reporting `available_memory` above the
+    /// balloon size used to underflow the subtraction, and release builds have
+    /// overflow checks off, so the wrap silently produced an attacker-chosen
+    /// pressure value that steered the ballooning decision; a balloon size of
+    /// zero panicked on the division. Clamp both instead.
     #[allow(clippy::cast_possible_truncation)]
     pub fn pressure(&self) -> u8 {
-        ((201 * self.balloon_size - 200 * self.available_memory) / self.balloon_size / 2) as u8
+        if self.balloon_size == 0 {
+            return 100;
+        }
+        // Equivalent to (201 * balloon - 200 * available) / balloon / 2 for
+        // in-range inputs, but evaluated in u128 so the intermediate products
+        // cannot overflow. The result is bounded by 100, so the cast is exact.
+        let used = self.reserved() as u128;
+        let balloon = self.balloon_size as u128;
+        ((used * 200 + balloon) / (balloon * 2)) as u8
     }
 
     pub fn reserved(&self) -> usize {
-        self.balloon_size - self.available_memory
+        self.balloon_size.saturating_sub(self.available_memory)
     }
 
     pub fn adjusted(&self, target: u8) -> usize {
-        self.reserved() * 100 / target as usize
+        if target == 0 {
+            return self.balloon_size;
+        }
+        self.reserved().saturating_mul(100) / target as usize
     }
 
     pub fn window(&self, min: u8, max: u8) -> Option<usize> {
@@ -184,4 +202,56 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
     let args = Args::parse();
     monitor_memory(args).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MemoryStats;
+
+    fn stats(balloon_size: usize, available_memory: usize) -> MemoryStats {
+        MemoryStats {
+            balloon_size,
+            base_memory: 0,
+            plugged_memory: 0,
+            total_memory: 0,
+            free_memory: 0,
+            available_memory,
+        }
+    }
+
+    #[test]
+    fn pressure_matches_the_original_formula_for_sane_input() {
+        for (balloon, available) in [
+            (1024_usize, 512_usize),
+            (4096, 4000),
+            (8192, 1),
+            (1000, 999),
+        ] {
+            let expected = ((201 * balloon - 200 * available) / balloon / 2) as u8;
+            assert_eq!(stats(balloon, available).pressure(), expected);
+        }
+    }
+
+    #[test]
+    fn pressure_is_bounded_and_never_panics_on_guest_reported_values() {
+        // available > balloon: used to underflow and wrap in release builds.
+        assert_eq!(stats(1024, 2048).pressure(), 0);
+        assert_eq!(stats(1024, usize::MAX).pressure(), 0);
+        // A zero balloon used to divide by zero.
+        assert_eq!(stats(0, 0).pressure(), 100);
+        assert_eq!(stats(0, usize::MAX).pressure(), 100);
+        // No input can push the value past 100.
+        assert_eq!(stats(usize::MAX, 0).pressure(), 100);
+    }
+
+    #[test]
+    fn reserved_and_adjusted_saturate() {
+        assert_eq!(stats(1024, 2048).reserved(), 0);
+        assert_eq!(stats(2048, 1024).reserved(), 1024);
+        // A zero target would otherwise divide by zero.
+        assert_eq!(stats(2048, 1024).adjusted(0), 2048);
+        assert_eq!(stats(2048, 1024).adjusted(50), 2048);
+        // The multiplication cannot overflow.
+        assert_eq!(stats(usize::MAX, 0).adjusted(100), usize::MAX / 100);
+    }
 }
