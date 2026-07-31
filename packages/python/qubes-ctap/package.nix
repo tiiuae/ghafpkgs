@@ -31,6 +31,10 @@ buildPythonApplication {
 
   patches = [
     ./0001-fix-ghaf-Allow-changing-qrexec-path-from-cli.patch
+    # Upstream still calls asyncio.get_event_loop() before a loop exists, which
+    # Python 3.14 no longer tolerates. Drop this once upstream creates the loop
+    # explicitly.
+    ./0002-fix-ghaf-Create-the-event-loop-explicitly-for-Python.patch
   ];
 
   postInstall = ''

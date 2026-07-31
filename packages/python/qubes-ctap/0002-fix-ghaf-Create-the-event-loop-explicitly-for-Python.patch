@@ -1,0 +1,120 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Brian McGillion <brian.mcgillion@tii.ae>
+Date: Fri, 31 Jul 2026 18:00:00 +0400
+SPDX-FileCopyrightText: 2026 TII (SSRC) and the Ghaf contributors
+SPDX-License-Identifier: GPL-2.0-or-later
+Subject: [PATCH] fix(ghaf): Create the event loop explicitly for Python 3.14
+
+Every console-script entry point obtained its loop with
+asyncio.get_event_loop() before any loop was running. Implicit loop
+creation there was deprecated in Python 3.10 and removed in 3.14, which
+now raises:
+
+    RuntimeError: There is no current event loop in thread 'MainThread'.
+
+On Ghaf this took out ctapproxy.service on every appvm with the yubikey
+proxy enabled; the other qctap-* entry points fail the same way when
+run.
+
+Create the loop explicitly instead. set_event_loop() matters as much as
+new_event_loop(): CTAPHIDDevice, uhid and mux still resolve their
+default loop through get_event_loop(), which only succeeds once a
+current loop is set for the thread. The remaining get_event_loop() call
+in util.systemd_notify() is inside a coroutine, where a loop is already
+running, so it is left alone.
+
+Behaviour is unchanged on older interpreters.
+
+---
+  qubesctap/client/qctap_proxy.py            | 3 ++-
+  qubesctap/sys_usb/qctap_client_pin.py      | 3 ++-
+  qubesctap/sys_usb/qctap_dump.py            | 3 ++-
+  qubesctap/sys_usb/qctap_get_assertion.py   | 3 ++-
+  qubesctap/sys_usb/qctap_get_info.py        | 3 ++-
+  qubesctap/sys_usb/qctap_make_credential.py | 3 ++-
+  6 files changed, 12 insertions(+), 6 deletions(-)
+
+diff --git a/qubesctap/client/qctap_proxy.py b/qubesctap/client/qctap_proxy.py
+index 74840b0..9ec9ec3 100644
+--- a/qubesctap/client/qctap_proxy.py
++++ b/qubesctap/client/qctap_proxy.py
+@@ -276,7 +276,8 @@ def main(args=None):
+         level=sum(args.loglevel),
+     )
+ 
+-    loop = asyncio.get_event_loop()
++    loop = asyncio.new_event_loop()
++    asyncio.set_event_loop(loop)
+ 
+     device = CTAPHIDQrexecDevice(args.vmname,
+                                  name=args.hid_name,
+diff --git a/qubesctap/sys_usb/qctap_client_pin.py b/qubesctap/sys_usb/qctap_client_pin.py
+index 81db9c9..51f2d45 100644
+--- a/qubesctap/sys_usb/qctap_client_pin.py
++++ b/qubesctap/sys_usb/qctap_client_pin.py
+@@ -31,7 +31,8 @@ def main():
+     """Main routine of ``ctap.ClientPin`` qrexec call"""
+ 
+     sys_usb.setup_logging()
+-    loop = asyncio.get_event_loop()
++    loop = asyncio.new_event_loop()
++    asyncio.set_event_loop(loop)
+     loop.run_until_complete(mux(sys.stdin.buffer.read()))
+ 
+ 
+diff --git a/qubesctap/sys_usb/qctap_dump.py b/qubesctap/sys_usb/qctap_dump.py
+index 6ec4c3f..0195b59 100644
+--- a/qubesctap/sys_usb/qctap_dump.py
++++ b/qubesctap/sys_usb/qctap_dump.py
+@@ -247,7 +247,8 @@ parser.set_defaults(bus=0, device=-1)
+ def main(args=None):
+     # pylint: disable=missing-docstring
+     args = parser.parse_args(args)
+-    loop = asyncio.get_event_loop()
++    loop = asyncio.new_event_loop()
++    asyncio.set_event_loop(loop)
+ 
+     fut = loop.create_task(ctap_monitor(args.bus, args.device))
+     for signame in ('SIGINT', 'SIGTERM'):
+diff --git a/qubesctap/sys_usb/qctap_get_assertion.py b/qubesctap/sys_usb/qctap_get_assertion.py
+index 0e726c7..7ca25c6 100644
+--- a/qubesctap/sys_usb/qctap_get_assertion.py
++++ b/qubesctap/sys_usb/qctap_get_assertion.py
+@@ -40,7 +40,8 @@ def main(args=None, mux=default_mux):
+ 
+     args = parser.parse_args(args)
+     sys_usb.setup_logging()
+-    loop = asyncio.get_event_loop()
++    loop = asyncio.new_event_loop()
++    asyncio.set_event_loop(loop)
+ 
+     untrusted_request = sys.stdin.buffer.read()
+ 
+diff --git a/qubesctap/sys_usb/qctap_get_info.py b/qubesctap/sys_usb/qctap_get_info.py
+index 0b9f2a2..82c9cf3 100644
+--- a/qubesctap/sys_usb/qctap_get_info.py
++++ b/qubesctap/sys_usb/qctap_get_info.py
+@@ -31,7 +31,8 @@ def main():
+     """Main routine of ``ctap.GetInfo`` qrexec call"""
+ 
+     sys_usb.setup_logging()
+-    loop = asyncio.get_event_loop()
++    loop = asyncio.new_event_loop()
++    asyncio.set_event_loop(loop)
+     loop.run_until_complete(mux(sys.stdin.buffer.read()))
+ 
+ 
+diff --git a/qubesctap/sys_usb/qctap_make_credential.py b/qubesctap/sys_usb/qctap_make_credential.py
+index 9cc4bfb..95a13ee 100644
+--- a/qubesctap/sys_usb/qctap_make_credential.py
++++ b/qubesctap/sys_usb/qctap_make_credential.py
+@@ -34,7 +34,8 @@ def main(mux=default_mux):
+     """Main routine of ``u2f.Register`` qrexec call"""
+ 
+     sys_usb.setup_logging()
+-    loop = asyncio.get_event_loop()
++    loop = asyncio.new_event_loop()
++    asyncio.set_event_loop(loop)
+ 
+     response = loop.run_until_complete(mux(sys.stdin.buffer.read()))
+ 
