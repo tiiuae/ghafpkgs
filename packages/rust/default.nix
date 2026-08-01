@@ -1,7 +1,19 @@
 # SPDX-FileCopyrightText: 2022-2026 TII (SSRC) and the Ghaf contributors
 # SPDX-License-Identifier: Apache-2.0
-{ callPackage, crane }:
 {
+  callPackage,
+  crane,
+  ghafFortivpnSrc,
+}:
+{
+  ghaf-fortivpn = callPackage ./ghaf-fortivpn {
+    inherit crane ghafFortivpnSrc;
+    component = "gui";
+  };
+  ghaf-fortivpn-service = callPackage ./ghaf-fortivpn {
+    inherit crane ghafFortivpnSrc;
+    component = "service";
+  };
   ghaf-kill-switch = callPackage ./ghaf-kill-switch { inherit crane; };
   ghaf-usb-passthrough-applet = callPackage ./ghaf-usb-passthrough-applet { inherit crane; };
   ghaf-mem-manager = callPackage ./ghaf-mem-manager { inherit crane; };

@@ -11,6 +11,11 @@
       url = "github:ipetkov/crane";
     };
 
+    ghaf-fortivpn = {
+      url = "github:tiiuae/ghaf-fortivpn/main";
+      flake = false;
+    };
+
     devshell = {
       url = "github:numtide/devshell";
       inputs.nixpkgs.follows = "nixpkgs";
