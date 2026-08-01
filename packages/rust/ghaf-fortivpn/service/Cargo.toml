@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 TII (SSRC) and the Ghaf contributors
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "ghaf-fortivpn-service"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[dependencies]
+openssl = "0.10.73"
+tempfile = "3.21.0"
+tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "signal"] }
+uuid = { version = "1.18.0", features = ["v4"] }
+zbus = { version = "5.16.0", default-features = false, features = ["tokio"] }
+zeroize = "1.8.2"
