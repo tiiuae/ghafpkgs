@@ -86,6 +86,23 @@
         "type": "github"
       }
     },
+    "ghaf-fortivpn": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1795089415,
+        "narHash": "sha256-hu7elth53S+DWkvc/WS2+ZCV8GQlvUFkfI+u6bxSk6k=",
+        "owner": "tiiuae",
+        "repo": "ghaf-fortivpn",
+        "rev": "24e17b571d1ea3888d0b8d248bdef0ed5447e33b",
+        "type": "github"
+      },
+      "original": {
+        "owner": "tiiuae",
+        "ref": "main",
+        "repo": "ghaf-fortivpn",
+        "type": "github"
+      }
+    },
     "git-hooks-nix": {
       "inputs": {
         "flake-compat": [
@@ -132,6 +149,7 @@
         "flake-compat": "flake-compat",
         "flake-parts": "flake-parts",
         "flake-root": "flake-root",
+        "ghaf-fortivpn": "ghaf-fortivpn",
         "git-hooks-nix": "git-hooks-nix",
         "nixpkgs": "nixpkgs",
         "treefmt-nix": "treefmt-nix"

@@ -12,7 +12,11 @@ let
   # recursion when the overlay is composed with other overlays via
   # `composeManyExtensions`).
   mkGhafpkgs =
-    { pkgs, crane }:
+    {
+      pkgs,
+      crane,
+      ghafFortivpnSrc,
+    }:
     let
       inherit (pkgs) callPackage python3Packages;
 
@@ -23,10 +27,16 @@ let
       rustPackages = import ./rust {
         inherit callPackage;
         inherit crane;
+        inherit ghafFortivpnSrc;
       };
       cppPackages = import ./cpp { inherit callPackage; };
 
       utilityPackages = {
+        ghaf-networkmanager-openconnect =
+          (pkgs.networkmanager-openconnect.override { withGnome = false; }).overrideAttrs
+            (old: {
+              patches = old.patches ++ [ (ghafFortivpnSrc + "/integrations/fortivpn-openconnect.patch") ];
+            });
         update-deps = callPackage ./update-deps { };
       };
     in
@@ -46,8 +56,20 @@ in
       packages = mkGhafpkgs {
         inherit pkgs;
         inherit (inputs) crane;
+        ghafFortivpnSrc = inputs.ghaf-fortivpn;
       };
     };
+
+  flake.overlays.fortivpn-desktop = _final: prev: {
+    cosmic-settings-daemon = prev.cosmic-settings-daemon.overrideAttrs (old: {
+      postPatch = (old.postPatch or "") + ''
+        cp ${inputs.ghaf-fortivpn}/integrations/cosmic-settings-daemon.rs src/fortivpn.rs
+        substituteInPlace src/main.rs \
+          --replace-fail 'mod greeter;' 'mod greeter; mod fortivpn;' \
+          --replace-fail 'let (varlink_daemon, varlink_backend)' 'task::spawn_local(fortivpn::watch()); let (varlink_daemon, varlink_backend)'
+      '';
+    });
+  };
 
   # Overlay for use by downstream consumers
   # Provides all ghafpkgs packages when applied to a nixpkgs set
@@ -56,5 +78,6 @@ in
     mkGhafpkgs {
       pkgs = prev;
       inherit (inputs) crane;
+      ghafFortivpnSrc = inputs.ghaf-fortivpn;
     };
 }
