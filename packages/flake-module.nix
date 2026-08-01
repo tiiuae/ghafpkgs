@@ -12,7 +12,11 @@ let
   # recursion when the overlay is composed with other overlays via
   # `composeManyExtensions`).
   mkGhafpkgs =
-    { pkgs, crane }:
+    {
+      pkgs,
+      crane,
+      ghafFortivpnSrc,
+    }:
     let
       inherit (pkgs) callPackage python3Packages;
 
@@ -22,6 +26,7 @@ let
       rustPackages = import ./rust {
         inherit callPackage;
         inherit crane;
+        inherit ghafFortivpnSrc;
       };
       cppPackages = import ./cpp { inherit callPackage; };
 
@@ -38,6 +43,7 @@ in
       packages = mkGhafpkgs {
         inherit pkgs;
         inherit (inputs) crane;
+        ghafFortivpnSrc = inputs.ghaf-fortivpn;
       };
     };
 
@@ -48,5 +54,6 @@ in
     mkGhafpkgs {
       pkgs = prev;
       inherit (inputs) crane;
+      ghafFortivpnSrc = inputs.ghaf-fortivpn;
     };
 }
