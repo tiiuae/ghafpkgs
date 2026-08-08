@@ -2,8 +2,8 @@
  * SPDX-FileCopyrightText: 2022-2026 TII (SSRC) and the Ghaf contributors
  * SPDX-License-Identifier: Apache-2.0
  */
-use anyhow::Result;
-use clap::Parser;
+use anyhow::{Result, bail};
+use clap::{Parser, ValueEnum};
 use std::{
     collections::HashMap,
     path::PathBuf,
@@ -11,15 +11,32 @@ use std::{
 };
 use tracing::{debug, info, warn};
 
+mod crosvm;
 mod qmp;
+use crosvm::CrosvmEndpoint;
 use qmp::QmpEndpoint;
+
+#[derive(Clone, Copy, Debug, Default, ValueEnum)]
+enum Hypervisor {
+    Crosvm,
+    #[default]
+    Qemu,
+}
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// Path to QMP socket
+    /// Path to the VM control socket
     #[arg(short, long)]
     socket: Vec<PathBuf>,
+
+    /// Hypervisor control protocol
+    #[arg(long, value_enum, default_value_t)]
+    hypervisor: Hypervisor,
+
+    /// Path to the crosvm executable
+    #[arg(long, default_value = "crosvm")]
+    crosvm_binary: PathBuf,
 
     /// Monitoring interval in seconds
     #[arg(short, long, default_value_t = 1)]
@@ -121,7 +138,7 @@ impl std::fmt::Display for MemoryStats {
     }
 }
 
-async fn monitor_memory(args: Args) -> Result<()> {
+async fn monitor_qemu(args: &Args) -> Result<()> {
     let mut qmps: HashMap<_, (_, Option<Instant>)> = args
         .socket
         .iter()
@@ -194,6 +211,88 @@ async fn monitor_memory(args: Args) -> Result<()> {
                 errors = 0;
             }
         }
+    }
+}
+
+async fn monitor_crosvm(args: &Args) -> Result<()> {
+    if args.maximum == usize::MAX {
+        bail!("--maximum is required for the crosvm backend");
+    }
+
+    let mut endpoints: HashMap<_, Option<Instant>> = args
+        .socket
+        .iter()
+        .map(|path| {
+            (
+                CrosvmEndpoint::new(&args.crosvm_binary, path),
+                None::<Instant>,
+            )
+        })
+        .collect();
+    let dur = Duration::from_secs(args.interval);
+    let bival = Duration::from_secs(args.balloon_interval);
+    let mut ival = tokio::time::interval(dur);
+    let mut errors = 0;
+    ival.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+    loop {
+        ival.tick().await;
+        for (endpoint, last_balloon) in &mut endpoints {
+            let result = async {
+                let balloon = endpoint.query_balloon().await?;
+                let visible_memory = args.maximum.saturating_sub(balloon.balloon_actual);
+                let stats = MemoryStats {
+                    balloon_size: visible_memory,
+                    base_memory: args.maximum,
+                    plugged_memory: 0,
+                    total_memory: args.maximum,
+                    free_memory: balloon.free_memory,
+                    available_memory: balloon.available_memory,
+                };
+
+                debug!(
+                    "Stats for {endpoint}: {stats}, pressure: {}%, reclaimed: {} MiB",
+                    stats.pressure(),
+                    balloon.balloon_actual / 1024 / 1024
+                );
+                if let Some(target) = stats
+                    .window(args.low, args.high)
+                    .map(|t| t.clamp(args.minimum, args.maximum))
+                    .filter(|&t| t != stats.balloon_size)
+                    .filter(|_| last_balloon.is_none_or(|last| last.elapsed() >= bival))
+                {
+                    info!(
+                        "Adjusting {endpoint} visible memory from {} to {target}",
+                        stats.balloon_size
+                    );
+                    endpoint.set_visible_memory(target, args.maximum).await?;
+                    last_balloon.replace(Instant::now());
+                }
+                Result::Ok(())
+            }
+            .await;
+
+            if let Err(error) = result {
+                errors += 1;
+                if errors >= 5 {
+                    return Err(error);
+                }
+                warn!("Got error {error} with {endpoint} for the {errors}th time");
+            } else {
+                errors = 0;
+            }
+        }
+    }
+}
+
+async fn monitor_memory(args: Args) -> Result<()> {
+    if args.minimum > args.maximum {
+        bail!("--minimum cannot exceed --maximum");
+    }
+
+    match args.hypervisor {
+        Hypervisor::Crosvm => monitor_crosvm(&args).await,
+        Hypervisor::Qemu => monitor_qemu(&args).await,
     }
 }
 

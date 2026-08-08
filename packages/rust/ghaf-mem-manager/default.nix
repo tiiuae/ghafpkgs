@@ -59,7 +59,7 @@ let
           A memory management service for the Ghaf framework that provides
           memory monitoring, allocation tracking, and resource management
           for virtualized environments. Features include memory usage monitoring,
-          QEMU integration, and resource optimization.
+          QEMU and Crosvm integration, and resource optimization.
         '';
         homepage = "https://ghaf.dev";
         license = lib.licenses.asl20;

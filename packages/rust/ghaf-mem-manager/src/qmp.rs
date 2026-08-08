@@ -221,7 +221,7 @@ impl QmpConnection {
             rx.recv()
                 .await
                 .context("Invalid response")?
-                .map_err(|e| anyhow!("{}", e.to_string()))?,
+                .map_err(|e| anyhow!("{e}"))?,
         )?)
     }
 
