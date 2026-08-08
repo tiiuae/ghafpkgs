@@ -23,6 +23,27 @@ enum Hypervisor {
     Qemu,
 }
 
+const MAX_CONSECUTIVE_ERRORS: usize = 5;
+
+#[derive(Debug, Default)]
+struct CrosvmEndpointState {
+    last_balloon: Option<Instant>,
+    ready: bool,
+    consecutive_errors: usize,
+}
+
+impl CrosvmEndpointState {
+    fn record_success(&mut self) {
+        self.ready = true;
+        self.consecutive_errors = 0;
+    }
+
+    fn record_error(&mut self) -> bool {
+        self.consecutive_errors += 1;
+        self.ready && self.consecutive_errors >= MAX_CONSECUTIVE_ERRORS
+    }
+}
+
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Args {
@@ -219,25 +240,24 @@ async fn monitor_crosvm(args: &Args) -> Result<()> {
         bail!("--maximum is required for the crosvm backend");
     }
 
-    let mut endpoints: HashMap<_, Option<Instant>> = args
+    let mut endpoints: HashMap<_, CrosvmEndpointState> = args
         .socket
         .iter()
         .map(|path| {
             (
                 CrosvmEndpoint::new(&args.crosvm_binary, path),
-                None::<Instant>,
+                CrosvmEndpointState::default(),
             )
         })
         .collect();
     let dur = Duration::from_secs(args.interval);
     let bival = Duration::from_secs(args.balloon_interval);
     let mut ival = tokio::time::interval(dur);
-    let mut errors = 0;
     ival.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
     loop {
         ival.tick().await;
-        for (endpoint, last_balloon) in &mut endpoints {
+        for (endpoint, state) in &mut endpoints {
             let result = async {
                 let balloon = endpoint.query_balloon().await?;
                 let visible_memory = args.maximum.saturating_sub(balloon.balloon_actual);
@@ -259,27 +279,37 @@ async fn monitor_crosvm(args: &Args) -> Result<()> {
                     .window(args.low, args.high)
                     .map(|t| t.clamp(args.minimum, args.maximum))
                     .filter(|&t| t != stats.balloon_size)
-                    .filter(|_| last_balloon.is_none_or(|last| last.elapsed() >= bival))
+                    .filter(|_| {
+                        state
+                            .last_balloon
+                            .is_none_or(|last| last.elapsed() >= bival)
+                    })
                 {
                     info!(
                         "Adjusting {endpoint} visible memory from {} to {target}",
                         stats.balloon_size
                     );
                     endpoint.set_visible_memory(target, args.maximum).await?;
-                    last_balloon.replace(Instant::now());
+                    state.last_balloon.replace(Instant::now());
                 }
                 Result::Ok(())
             }
             .await;
 
             if let Err(error) = result {
-                errors += 1;
-                if errors >= 5 {
+                if state.record_error() {
                     return Err(error);
                 }
-                warn!("Got error {error} with {endpoint} for the {errors}th time");
+                if state.ready {
+                    warn!(
+                        "Got error {error} with {endpoint} for the {}th time",
+                        state.consecutive_errors
+                    );
+                } else {
+                    warn!("Crosvm endpoint {endpoint} is not ready: {error}; trying again");
+                }
             } else {
-                errors = 0;
+                state.record_success();
             }
         }
     }
@@ -305,7 +335,22 @@ async fn main() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::MemoryStats;
+    use super::{CrosvmEndpointState, MAX_CONSECUTIVE_ERRORS, MemoryStats};
+
+    #[test]
+    fn crosvm_startup_errors_do_not_exhaust_runtime_budget() {
+        let mut state = CrosvmEndpointState::default();
+
+        for _ in 0..(MAX_CONSECUTIVE_ERRORS * 2) {
+            assert!(!state.record_error());
+        }
+
+        state.record_success();
+        for _ in 1..MAX_CONSECUTIVE_ERRORS {
+            assert!(!state.record_error());
+        }
+        assert!(state.record_error());
+    }
 
     fn stats(balloon_size: usize, available_memory: usize) -> MemoryStats {
         MemoryStats {
