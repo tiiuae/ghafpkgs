@@ -53,11 +53,30 @@ impl CrosvmEndpoint {
         command.args(arguments).kill_on_drop(true);
         let output = timeout(TIMEOUT, command.output())
             .await
-            .context("crosvm control command timed out")??;
+            .with_context(|| {
+                format!(
+                    "crosvm `{}` timed out after {TIMEOUT:?}",
+                    arguments.join(" ")
+                )
+            })?
+            .with_context(|| {
+                format!("failed to execute crosvm binary {}", self.binary.display())
+            })?;
         if !output.status.success() {
+            // Crosvm reports some control failures on stdout, including
+            // unexpected VM responses and failed balloon statistics requests.
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let detail = match (stderr.trim(), stdout.trim()) {
+                ("", "") => "<no output>".to_owned(),
+                ("", out) => out.to_owned(),
+                (err, "") => err.to_owned(),
+                (err, out) => format!("{err}; stdout: {out}"),
+            };
             bail!(
-                "crosvm control command failed: {}",
-                String::from_utf8_lossy(&output.stderr).trim()
+                "crosvm `{}` exited with {}: {detail}",
+                arguments.join(" "),
+                output.status
             );
         }
         Ok(output)
@@ -117,14 +136,20 @@ mod tests {
 
     const MIB: usize = 1024 * 1024;
 
+    /// These tests write an executable and immediately exec it. A concurrent
+    /// fork in a sibling test can inherit the still-open write descriptor and
+    /// make execve fail with ETXTBSY, so serialise those sections.
+    static EXEC_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
     #[tokio::test(flavor = "current_thread")]
     async fn parses_stats_and_translates_visible_memory_target() -> Result<()> {
+        let _guard = EXEC_LOCK.lock().await;
         let directory = tempfile::tempdir()?;
         let binary = directory.path().join("crosvm");
         let log = directory.path().join("arguments");
         let script = format!(
             r#"#!/bin/sh
-printf '%s\n' "$*" >> '{}'
+printf '%s\n' "$@" >> '{}'
 if [ "$1" = balloon_stats ]; then
     printf '%s\n' '{{"BalloonStats":{{"stats":{{"available_memory":2147483648,"free_memory":1073741824}},"balloon_actual":4294967296}}}}'
 fi
@@ -143,19 +168,26 @@ fi
                 available_memory: 2048 * MIB,
             }
         );
+        assert_eq!(
+            fs::read_to_string(&log)?,
+            "balloon_stats\n/run/crosvm.sock\n"
+        );
+        fs::write(&log, "")?;
+
         endpoint
             .set_visible_memory(4096 * MIB, 12_288 * MIB)
             .await?;
 
         assert_eq!(
             fs::read_to_string(log)?,
-            "balloon_stats /run/crosvm.sock\nballoon 8589934592 /run/crosvm.sock\n"
+            "balloon\n8589934592\n/run/crosvm.sock\n"
         );
         Ok(())
     }
 
     #[tokio::test(flavor = "current_thread")]
     async fn rejects_missing_available_memory() -> Result<()> {
+        let _guard = EXEC_LOCK.lock().await;
         let directory = tempfile::tempdir()?;
         let binary = directory.path().join("crosvm");
         fs::write(
@@ -165,13 +197,30 @@ fi
         fs::set_permissions(&binary, fs::Permissions::from_mode(0o755))?;
 
         let endpoint = CrosvmEndpoint::new(&binary, Path::new("/run/crosvm.sock"));
+        let message = endpoint.query_balloon().await.unwrap_err().to_string();
         assert!(
-            endpoint
-                .query_balloon()
-                .await
-                .unwrap_err()
-                .to_string()
-                .contains("available memory")
+            message.contains("available memory"),
+            "unexpected error: {message}"
+        );
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn reports_crosvm_stdout_on_command_failure() -> Result<()> {
+        let _guard = EXEC_LOCK.lock().await;
+        let directory = tempfile::tempdir()?;
+        let binary = directory.path().join("crosvm");
+        fs::write(
+            &binary,
+            "#!/bin/sh\nprintf '%s\\n' 'unexpected response: connection refused'\nexit 1\n",
+        )?;
+        fs::set_permissions(&binary, fs::Permissions::from_mode(0o755))?;
+
+        let endpoint = CrosvmEndpoint::new(&binary, Path::new("/run/crosvm.sock"));
+        let message = endpoint.query_balloon().await.unwrap_err().to_string();
+        assert!(
+            message.contains("unexpected response: connection refused"),
+            "unexpected error: {message}"
         );
         Ok(())
     }
