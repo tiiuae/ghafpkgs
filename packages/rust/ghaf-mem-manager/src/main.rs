@@ -9,7 +9,7 @@ use std::{
     path::PathBuf,
     time::{Duration, Instant},
 };
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 mod crosvm;
 mod qmp;
@@ -38,9 +38,16 @@ impl CrosvmEndpointState {
         self.consecutive_errors = 0;
     }
 
+    /// Returns true when a ready endpoint exhausts its error budget. The
+    /// endpoint then returns to the startup grace period so a restarted VM can
+    /// recover without restarting the manager.
     fn record_error(&mut self) -> bool {
         self.consecutive_errors += 1;
-        self.ready && self.consecutive_errors >= MAX_CONSECUTIVE_ERRORS
+        let exhausted = self.ready && self.consecutive_errors >= MAX_CONSECUTIVE_ERRORS;
+        if exhausted {
+            self.ready = false;
+        }
+        exhausted
     }
 }
 
@@ -177,7 +184,7 @@ async fn monitor_qemu(args: &Args) -> Result<()> {
             let (conn, task, mut receiver) = match qmp.connect().await {
                 Ok(ctr) => ctr,
                 Err(e) => {
-                    warn!("Connection to {qmp} failed: {e}, trying again later",);
+                    warn!("Connection to {qmp} failed: {e:#}, trying again later",);
                     continue;
                 }
             };
@@ -223,10 +230,10 @@ async fn monitor_qemu(args: &Args) -> Result<()> {
                 } => Ok(()),
             } {
                 errors += 1;
-                if errors >= 5 {
+                if errors >= MAX_CONSECUTIVE_ERRORS {
                     Err(e)?;
                 } else {
-                    warn!("Got error {e} with {qmp} for the {errors}th time");
+                    warn!("Got error {e:#} with {qmp} for the {errors}th time");
                 }
             } else {
                 errors = 0;
@@ -238,6 +245,9 @@ async fn monitor_qemu(args: &Args) -> Result<()> {
 async fn monitor_crosvm(args: &Args) -> Result<()> {
     if args.maximum == usize::MAX {
         bail!("--maximum is required for the crosvm backend");
+    }
+    if args.maximum == 0 {
+        bail!("--maximum must be greater than zero");
     }
 
     let mut endpoints: HashMap<_, CrosvmEndpointState> = args
@@ -260,7 +270,17 @@ async fn monitor_crosvm(args: &Args) -> Result<()> {
         for (endpoint, state) in &mut endpoints {
             let result = async {
                 let balloon = endpoint.query_balloon().await?;
-                let visible_memory = args.maximum.saturating_sub(balloon.balloon_actual);
+                if !state.ready {
+                    state.record_success();
+                }
+                let Some(visible_memory) = args.maximum.checked_sub(balloon.balloon_actual) else {
+                    bail!(
+                        "crosvm reports {} B reclaimed on {endpoint}, above --maximum {} B; \
+                         --maximum must match the VM's configured memory size",
+                        balloon.balloon_actual,
+                        args.maximum
+                    );
+                };
                 let stats = MemoryStats {
                     balloon_size: visible_memory,
                     base_memory: args.maximum,
@@ -298,15 +318,18 @@ async fn monitor_crosvm(args: &Args) -> Result<()> {
 
             if let Err(error) = result {
                 if state.record_error() {
-                    return Err(error);
-                }
-                if state.ready {
+                    error!(
+                        "Crosvm endpoint {endpoint} failed {} consecutive times: {error:#}; \
+                         waiting for it to become reachable again",
+                        state.consecutive_errors
+                    );
+                } else if state.ready {
                     warn!(
-                        "Got error {error} with {endpoint} for the {}th time",
+                        "Got error {error:#} with {endpoint} for the {}th time",
                         state.consecutive_errors
                     );
                 } else {
-                    warn!("Crosvm endpoint {endpoint} is not ready: {error}; trying again");
+                    warn!("Crosvm endpoint {endpoint} is not ready: {error:#}; trying again");
                 }
             } else {
                 state.record_success();
@@ -316,6 +339,9 @@ async fn monitor_crosvm(args: &Args) -> Result<()> {
 }
 
 async fn monitor_memory(args: Args) -> Result<()> {
+    if args.socket.is_empty() {
+        bail!("at least one --socket is required");
+    }
     if args.minimum > args.maximum {
         bail!("--minimum cannot exceed --maximum");
     }
@@ -350,6 +376,15 @@ mod tests {
             assert!(!state.record_error());
         }
         assert!(state.record_error());
+        assert!(!state.ready);
+
+        for _ in 0..MAX_CONSECUTIVE_ERRORS {
+            assert!(!state.record_error());
+        }
+
+        state.record_success();
+        assert!(state.ready);
+        assert_eq!(state.consecutive_errors, 0);
     }
 
     fn stats(balloon_size: usize, available_memory: usize) -> MemoryStats {
