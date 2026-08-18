@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import subprocess
-import json
 
 from ghaf_usb_applet.api_client import APIClient
 from ghaf_usb_applet.logger import logger
@@ -31,7 +30,7 @@ class USBDeviceNotification:
         return th
 
     def notify_user(self, msg):
-        logger.info(f"Device notification: {json.dumps(msg, indent=4)}")
+        logger.debug("Device notification: %s", msg)
         event = msg.get("event", "")
         if event == "usb_select_vm":
             self.show_notif_window(msg)
