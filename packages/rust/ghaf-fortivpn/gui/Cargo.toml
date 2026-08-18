@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 TII (SSRC) and the Ghaf contributors
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "ghaf-fortivpn"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[dependencies]
+rfd = { version = "0.16.0", default-features = false, features = ["tokio", "xdg-portal"] }
+tokio = { version = "1.53.1", features = ["rt"] }
+zbus = { version = "5.16.0", default-features = false, features = ["blocking-api", "tokio"] }
+zeroize = "1.8.2"
+
+[dependencies.libcosmic]
+git = "https://github.com/pop-os/libcosmic"
+default-features = false
+features = ["tokio", "wayland", "winit"]

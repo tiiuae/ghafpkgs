@@ -48,6 +48,8 @@ Python applications and utilities, all modernized with `pyproject.toml` + `uv`.
 High-performance system utilities written in Rust.
 
 - **`ghaf-kill-switch-app`** - GUI Application for kill switch
+- **`ghaf-fortivpn`** - Secure COSMIC certificate importer for Fortinet VPN profiles
+- **`ghaf-fortivpn-service`** - Hardened certificate-import backend for `net-vm`
 - **`ghaf-mem-manager`** - Memory management utilities
 - **`ghaf-nw-packet-forwarder`** - Network packet forwarding service
 
@@ -92,6 +94,8 @@ nix develop
 nix build .#ghaf-audio-control
 nix build .#ghaf-mem-manager
 nix build .#ghaf-kill-switch-app
+nix build .#ghaf-fortivpn
+nix build .#ghaf-fortivpn-service
 nix build .#ghaf-usb-applet
 nix build .#gps-websock
 nix build .#vsockproxy
