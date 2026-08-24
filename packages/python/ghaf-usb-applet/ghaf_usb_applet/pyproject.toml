@@ -21,7 +21,7 @@ dependencies = [
 
 # Ignore formatting error "E402 Module level import not at top of file"
 # Ordering is required to select gtk version
-[tool.ruff]
+[tool.ruff.lint]
 ignore = ["E402"]
 
 [project.urls]

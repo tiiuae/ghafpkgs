@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import argparse
-from ghaf_usb_applet.notification_handler import USBDeviceNotification
+
 from ghaf_usb_applet.logger import setup_logger
+from ghaf_usb_applet.notification_handler import USBDeviceNotification
 
 
 def build_parser():

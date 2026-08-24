@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 # SPDX-FileCopyrightText: 2022-2026 TII (SSRC) and the Ghaf contributors
 # SPDX-License-Identifier: Apache-2.0
 
@@ -90,7 +88,7 @@ async def handler(websocket, gps_state):
                 output = gps_state.message
             try:
                 await websocket.send(output)
-            except Exception:
+            except websockets.exceptions.WebSocketException:
                 print("Client disconnected.")
                 break
     print("Closing websocket...")

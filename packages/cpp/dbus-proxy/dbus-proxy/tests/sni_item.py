@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # SPDX-FileCopyrightText: 2022-2026 TII (SSRC) and the Ghaf contributors
 # SPDX-License-Identifier: Apache-2.0
 """
@@ -14,8 +13,9 @@ This script:
 4. Sits idle so the proxy can discover and introspect it
 """
 
-import sys
 import signal
+import sys
+
 from gi.repository import Gio, GLib
 
 BUS_NAME = "org.kde.StatusNotifierItem-99999-1"
@@ -175,7 +175,7 @@ def on_name_acquired(connection, name):
             None,
         )
         print(f"[*] Registered with watcher using unique name: {unique}")
-    except Exception as e:
+    except GLib.Error as e:
         print(f"[*] Watcher registration skipped (normal if no watcher): {e}")
 
     print("[*] Fake SNI item is running. Press Ctrl+C to quit.")

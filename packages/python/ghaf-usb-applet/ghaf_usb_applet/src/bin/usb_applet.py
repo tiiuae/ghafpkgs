@@ -1,9 +1,10 @@
 # SPDX-FileCopyrightText: 2022-2026 TII (SSRC) and the Ghaf contributors
 # SPDX-License-Identifier: Apache-2.0
 
+import argparse
+
 from ghaf_usb_applet.applet import start_usb_applet
 from ghaf_usb_applet.logger import setup_logger
-import argparse
 
 
 def main():

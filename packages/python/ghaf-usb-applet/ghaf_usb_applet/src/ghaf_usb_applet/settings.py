@@ -5,12 +5,12 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
-from gi.repository import Gtk, Gdk, Pango, GLib
+import json
+
+from gi.repository import Gdk, GLib, Gtk, Pango
 
 from ghaf_usb_applet.api_client import APIClient
 from ghaf_usb_applet.logger import logger
-
-import json
 
 
 class OptionsPopover(Gtk.Popover):
@@ -136,7 +136,7 @@ class DeviceSettings(Gtk.ApplicationWindow):
         try:
             self._model = self.apiclient.get_devices_pretty()
             logger.info(json.dumps(self._model, indent=4, sort_keys=True))
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - GUI boundary: any failure is shown to the user
             logger.exception("Failed fetching devices")
             GLib.idle_add(self._notify_error, "Device Error", f"Message: {e}")
             return
@@ -185,9 +185,9 @@ class DeviceSettings(Gtk.ApplicationWindow):
         if self._active_popover:
             try:
                 self._active_popover.popdown()
-            except Exception:
-                # Ignore GTK errors when popover is already closed or invalid
-                pass
+            except Exception as e:  # noqa: BLE001 - GTK raises freely when the popover is already gone
+                # Non-fatal: the popover is already closed or invalid
+                logger.debug(f"Ignoring popdown failure: {e}")
             self._active_popover = None
 
         key = getattr(row, "_l1_key", None)
