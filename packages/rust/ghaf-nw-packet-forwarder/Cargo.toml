@@ -16,7 +16,7 @@ clap = { version = "4.6.6", features = ["derive"] }
 lazy_static = "1.5.0"
 
 # Logging
-log = "0.4.33"
+log = "0.4.34"
 env_logger = "0.11.11"
 syslog = "7.0.0"
 tracing = { version = "0.1.44", optional = true }
