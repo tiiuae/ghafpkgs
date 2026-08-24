@@ -76,6 +76,8 @@
           "*.txt"
           #TODO: fix the MD
           "*.md"
+          # Imported QEMU device models follow QEMU's formatting.
+          "packages/qemu/**/sources/**"
         ];
       };
 
