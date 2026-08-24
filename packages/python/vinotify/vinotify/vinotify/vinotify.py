@@ -16,7 +16,7 @@ def send_path(path, cid, port):
             s.connect((cid, port))
             message = f"{path}\n"
             s.sendall(message.encode())
-    except Exception as e:
+    except OSError as e:
         logger.error(f"Failed to send message: {e}")
 
 
@@ -92,7 +92,7 @@ def guest_mode(path, port):
                     try:
                         stat_info = os.stat(filepath)
                         os.utime(filepath, (stat_info.st_atime, stat_info.st_mtime))
-                    except Exception as e:
+                    except OSError as e:
                         logger.error(f"Error: {e}")
 
 

@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: 2022-2026 TII (SSRC) and the Ghaf contributors
 # SPDX-License-Identifier: Apache-2.0
 
-import subprocess
 import json
+import subprocess
 
 from ghaf_usb_applet.api_client import APIClient
 from ghaf_usb_applet.logger import logger
@@ -68,5 +68,5 @@ class USBDeviceNotification:
         logger.debug(cmd)
         try:
             subprocess.Popen(cmd)
-        except Exception as e:
+        except OSError as e:
             logger.error(f"Failed to launch 'usb_device' popup menu, Error: {e}")

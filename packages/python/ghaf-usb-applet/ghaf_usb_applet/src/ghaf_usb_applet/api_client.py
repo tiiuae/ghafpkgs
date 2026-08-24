@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: 2022-2026 TII (SSRC) and the Ghaf contributors
 # SPDX-License-Identifier: Apache-2.0
 
-import socket
 import json
+import socket
 import threading
 import time
 
@@ -110,9 +110,12 @@ class APIClient:
                 allowed_vms = dev.get("allowed_vms", None)
                 if allowed_vms is None or len(allowed_vms) == 0:
                     continue
-                if len(allowed_vms) > 1:
-                    if "None" not in allowed_vms and "none" not in allowed_vms:
-                        allowed_vms.insert(0, "None")
+                if (
+                    len(allowed_vms) > 1
+                    and "None" not in allowed_vms
+                    and "none" not in allowed_vms
+                ):
+                    allowed_vms.insert(0, "None")
                 vm = dev.get("vm", None)
                 if vm is None:
                     dev["vm"] = "None"

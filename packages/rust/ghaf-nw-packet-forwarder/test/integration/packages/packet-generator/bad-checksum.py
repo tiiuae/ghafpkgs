@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: 2022-2026 TII (SSRC) and the Ghaf contributors
 # SPDX-License-Identifier: Apache-2.0
-from scapy.all import get_if_addr, IP, UDP, DNS, DNSQR, DNSRR, send
+from scapy.all import DNS, DNSQR, DNSRR, IP, UDP, get_if_addr, send
 
 
 def main():

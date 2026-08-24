@@ -5,15 +5,15 @@ import gi
 
 gi.require_version("Gtk", "3.0")
 gi.require_version("AyatanaAppIndicator3", "0.1")
-from gi.repository import AyatanaAppIndicator3 as AppIndicator3
-from gi.repository import Gtk, GLib
-
-from ghaf_usb_applet.logger import logger
-from ghaf_usb_applet.api_client import APIClient
-from ghaf_usb_applet.notification_handler import USBDeviceNotification
-
-import threading
 import subprocess
+import threading
+
+from gi.repository import AyatanaAppIndicator3 as AppIndicator3
+from gi.repository import GLib, Gtk
+
+from ghaf_usb_applet.api_client import APIClient
+from ghaf_usb_applet.logger import logger
+from ghaf_usb_applet.notification_handler import USBDeviceNotification
 
 
 class USBApplet:
@@ -108,7 +108,7 @@ class USBApplet:
             for i in range(5):
                 try:
                     devs = self.apiclient.get_devices_pretty()
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001 - retry boundary: any failure is retried, then surfaced
                     if i < 4:
                         logger.error(
                             f"Failed to fetch device list, trying again({i}). Error {e}"

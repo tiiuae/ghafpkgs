@@ -67,7 +67,7 @@ def main():
     # than inferred.
     scheme, separator, host = args.server.strip().rpartition("://")
     if not separator:
-        scheme, host = "ldap", host
+        scheme = "ldap"
     scheme = scheme.lower()
     if scheme not in ("ldap", "ldaps"):
         print(
@@ -135,7 +135,7 @@ def main():
             ]
             print("|".join(map(str, user_data)))
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - top-level CLI boundary: report and exit 1
         print(f"An error occurred: {e}", file=sys.stderr)
         sys.exit(1)
 
