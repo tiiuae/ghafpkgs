@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # ghaf-nvidia-qemu pinned to 10.1.5, plus two NVIDIA sync-forward guest bridges (sysbus
-# MMIO devices relaying guest IPC to host proxies): BPMP via /dev/bpmp-host, and
+# MMIO devices relaying guest IPC to host proxies): BPMP via the
+# GHAF_BPMP_HOST-selected per-VM device, and
 # DCE display IPC via /dev/dce-host. The BPMP bridge emits its own guest /bpmp DT
 # node; the DCE one does not (the GPU-VM's hand-written DTS carries dce-virtual-pa
 # directly).
