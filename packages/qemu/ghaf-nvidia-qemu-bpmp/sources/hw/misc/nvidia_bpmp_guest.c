@@ -16,7 +16,7 @@ DECLARE_INSTANCE_CHECKER(NvidiaBpmpGuestState, NVIDIA_BPMP_GUEST, TYPE_NVIDIA_BP
 #define MRQ      0x0500
 
 #define MEM_SIZE 0x600
-#define HOST_DEVICE_PATH "/dev/bpmp-host"
+#define DEFAULT_HOST_DEVICE_PATH "/dev/bpmp-host"
 #define MESSAGE_SIZE 0x0200
 
 /*
@@ -159,12 +159,16 @@ static const MemoryRegionOps nvidia_bpmp_guest_ops = {
 static void nvidia_bpmp_guest_instance_init(Object *obj)
 {
 	NvidiaBpmpGuestState *s = NVIDIA_BPMP_GUEST(obj);
+	const char *host_device_path = getenv("GHAF_BPMP_HOST");
+
+	if (!host_device_path || !*host_device_path)
+		host_device_path = DEFAULT_HOST_DEVICE_PATH;
 
 	/* allocate memory map region */
 	memory_region_init_io(&s->iomem, obj, &nvidia_bpmp_guest_ops, s, TYPE_NVIDIA_BPMP_GUEST, MEM_SIZE);
 	sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->iomem);
 
-	s->host_device_fd = open(HOST_DEVICE_PATH, O_RDWR); // Open the device with read/write access
+	s->host_device_fd = open(host_device_path, O_RDWR); // Open the device with read/write access
 
 	if (s->host_device_fd < 0)
 	{
