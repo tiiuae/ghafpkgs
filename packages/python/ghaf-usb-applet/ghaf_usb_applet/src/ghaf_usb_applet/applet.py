@@ -11,13 +11,13 @@ import threading
 from gi.repository import AyatanaAppIndicator3 as AppIndicator3
 from gi.repository import GLib, Gtk
 
-from ghaf_usb_applet.api_client import APIClient
+from ghaf_usb_applet.api_client import DEFAULT_PORT, APIClient
 from ghaf_usb_applet.logger import logger
 from ghaf_usb_applet.notification_handler import USBDeviceNotification
 
 
 class USBApplet:
-    def __init__(self, port=2000):
+    def __init__(self, port=DEFAULT_PORT):
         self.device_map = {}
         self.radio_groups = {}
         self.apiclient = APIClient(port=port)
@@ -57,7 +57,9 @@ class USBApplet:
                     else:
                         self.refresh_device_list()
                         GLib.idle_add(
-                            self._notify_error, "Device Error", f"Message: {res}"
+                            self._notify_error,
+                            "Device Error",
+                            res.get("error", "Unknown error"),
                         )
 
     def _build_devices_submenu(self):
@@ -118,19 +120,19 @@ class USBApplet:
                     else:
                         if notify_error:
                             self._notify_error(
-                                "Server Error!", f"Device fetch failed: {e}"
+                                "Server Error", f"Device fetch failed: {e}"
                             )
                         return
 
             def _apply():
-                self.clear_menu()
-                self.device_map = devs or {}
-                self.radio_groups.clear()
-                self._build_devices_submenu()
+                with self.lock:
+                    self.clear_menu()
+                    self.device_map = devs or {}
+                    self.radio_groups.clear()
+                    self._build_devices_submenu()
                 return GLib.SOURCE_REMOVE
 
-            with self.lock:
-                GLib.idle_add(_apply)
+            GLib.idle_add(_apply)
 
         if async_:
             threading.Thread(target=_fetch_and_update, daemon=True).start()
@@ -150,7 +152,7 @@ class USBApplet:
         dialog.destroy()
 
 
-def start_usb_applet(port=2000):
+def start_usb_applet(port=DEFAULT_PORT):
     applet = USBApplet(port=port)
     notif = USBDeviceNotification(server_port=port)
     th = notif.monitor(applet.refresh_device_list)

@@ -3,6 +3,7 @@
 
 import argparse
 
+from ghaf_usb_applet.api_client import DEFAULT_PORT
 from ghaf_usb_applet.logger import setup_logger
 from ghaf_usb_applet.vm_selection import show_device_setting
 
@@ -12,7 +13,12 @@ def parse_args():
 
     parser.add_argument("--title", type=str, default="USB Device", help="Window title")
     parser.add_argument("--loglevel", type=str, default="info", help="Log level")
-    parser.add_argument("--port", type=int, default=2000, help="vHotPlug server port")
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=DEFAULT_PORT,
+        help=f"vhotplug server port (default: {DEFAULT_PORT})",
+    )
     parser.add_argument(
         "--device_node",
         type=str,

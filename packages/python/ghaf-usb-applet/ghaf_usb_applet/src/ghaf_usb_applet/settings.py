@@ -5,18 +5,18 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
-import json
 
 from gi.repository import Gdk, GLib, Gtk, Pango
 
-from ghaf_usb_applet.api_client import APIClient
+from ghaf_usb_applet.api_client import DEFAULT_PORT, APIClient
 from ghaf_usb_applet.logger import logger
 
 
 class OptionsPopover(Gtk.Popover):
-    def __init__(self, parent_widget, title, options, selected, on_chosen):
+    def __init__(self, parent_widget, options, selected, on_chosen):
         super().__init__(has_arrow=True)
         self.set_parent(parent_widget)
+        self.set_position(Gtk.PositionType.RIGHT)
         self._selected = selected
         self._on_chosen = on_chosen
 
@@ -26,12 +26,6 @@ class OptionsPopover(Gtk.Popover):
         box.set_margin_start(12)
         box.set_margin_end(12)
         self.set_child(box)
-
-        head = Gtk.Label()
-        safe = title.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-        head.set_markup(f"<b>{safe}</b>")
-        head.set_xalign(0.0)
-        box.append(head)
 
         group_head = None
         for opt in options:
@@ -56,11 +50,11 @@ class OptionsPopover(Gtk.Popover):
 
 
 class DeviceSettings(Gtk.ApplicationWindow):
-    def __init__(self, port, **kwargs):
+    def __init__(self, port=DEFAULT_PORT, **kwargs):
         super().__init__(**kwargs)
         self.apiclient = APIClient(port=port)
         self.apiclient.connect()
-        self.set_title("USB Devices")
+        self.set_title("USB Passthrough Settings")
         self.set_default_size(700, 220)
         self._active_popover = None
 
@@ -71,15 +65,11 @@ class DeviceSettings(Gtk.ApplicationWindow):
         root.set_margin_end(22)
         self.set_child(root)
 
-        title = Gtk.Label(label="USB Passthrough Settings")
-        title.add_css_class("title-1")
+        title = Gtk.Label(label="Attach USB devices to VMs")
+        title.add_css_class("title-3")
         title.set_xalign(0.0)
+        title.set_wrap(True)
         root.append(title)
-
-        section_lbl = Gtk.Label(label="Passthrough Options")
-        section_lbl.add_css_class("title-3")
-        section_lbl.set_xalign(0.0)
-        root.append(section_lbl)
 
         self.list = Gtk.ListBox()
         self.list.add_css_class("boxed-list")
@@ -135,7 +125,7 @@ class DeviceSettings(Gtk.ApplicationWindow):
     def refresh(self):
         try:
             self._model = self.apiclient.get_devices_pretty()
-            logger.info(json.dumps(self._model, indent=4, sort_keys=True))
+            logger.debug("USB device inventory: %s", self._model)
         except Exception as e:  # noqa: BLE001 - GUI boundary: any failure is shown to the user
             logger.exception("Failed fetching devices")
             GLib.idle_add(self._notify_error, "Device Error", f"Message: {e}")
@@ -145,9 +135,23 @@ class DeviceSettings(Gtk.ApplicationWindow):
     def _rebuild_rows(self):
         for ch in list(self.list):
             self.list.remove(ch)
-        for key, data in self._model.items():
-            self.list.append(self._build_row(key, data))
+        if not self._model:
+            self.list.append(self._build_empty_row())
+        else:
+            for key, data in self._model.items():
+                self.list.append(self._build_row(key, data))
         self.list.show()
+
+    def _build_empty_row(self):
+        row = Gtk.ListBoxRow()
+        row.set_activatable(False)
+        row.set_selectable(False)
+        label = Gtk.Label(label="No USB devices detected")
+        label.add_css_class("dim-label")
+        label.set_margin_top(14)
+        label.set_margin_bottom(14)
+        row.set_child(label)
+        return row
 
     def _build_row(self, l1_key, data):
         row = Gtk.ListBoxRow()
@@ -169,6 +173,9 @@ class DeviceSettings(Gtk.ApplicationWindow):
 
         right = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         right.set_halign(Gtk.Align.END)
+        lbl_target = Gtk.Label(label="Attached to:")
+        lbl_target.add_css_class("dim-label")
+        right.append(lbl_target)
         value = Gtk.Label(label=str(data.get("vm")))
         value.add_css_class("dim-label")
         right.append(value)
@@ -199,7 +206,6 @@ class DeviceSettings(Gtk.ApplicationWindow):
 
         pop = OptionsPopover(
             parent_widget=row,
-            title=key,
             options=options,
             selected=selected,
             on_chosen=lambda opt, k=key, r=row: self._apply_choice(k, opt, r),
@@ -229,8 +235,8 @@ class DeviceSettings(Gtk.ApplicationWindow):
                 return True
             GLib.idle_add(
                 self._notify_error,
-                "Failed to attach",
-                f"{res.get('error', 'Unknown error!')}",
+                "Device Error",
+                res.get("error", "Unknown error"),
             )
             return False
         return True
@@ -259,7 +265,7 @@ class DeviceSettings(Gtk.ApplicationWindow):
 
 
 class SettingsMenu(Gtk.Application):
-    def __init__(self, port):
+    def __init__(self, port=DEFAULT_PORT):
         super().__init__(application_id="ghaf.usb.settings")
         self.port = port
 

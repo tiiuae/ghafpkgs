@@ -8,9 +8,19 @@ import time
 
 from ghaf_usb_applet.logger import logger
 
+DEFAULT_PORT = 2000
+DEFAULT_CID = 2
+
+
+def format_product_name(product_name, max_len=None):
+    if product_name is None or product_name.isdigit():
+        return "<unknown device>"
+    name = product_name.replace("_", " ")
+    return name[:max_len] if max_len else name
+
 
 class APIClient:
-    def __init__(self, port=2000, cid=2):
+    def __init__(self, port=DEFAULT_PORT, cid=DEFAULT_CID):
         self.port = port
         self.cid = cid
         self.sock = None
@@ -24,7 +34,10 @@ class APIClient:
     def send(self, msg):
         data = json.dumps(msg) + "\n"
         self.sock.sendall(data.encode("utf-8"))
-        return self.recv()
+        response = self.recv()
+        if response is None:
+            return {"result": "error", "error": "connection closed"}
+        return response
 
     def recv(self):
         buffer = ""
@@ -62,7 +75,9 @@ class APIClient:
 
     # pylint: disable=too-many-positional-arguments
     @classmethod
-    def recv_notifications(cls, callback, port=2000, cid=2, reconnect_delay=3):
+    def recv_notifications(
+        cls, callback, port=DEFAULT_PORT, cid=DEFAULT_CID, reconnect_delay=3
+    ):
         client = cls(port=port, cid=cid)
 
         def _listener():
@@ -120,13 +135,11 @@ class APIClient:
                 if vm is None:
                     dev["vm"] = "None"
                 if "device_node" in dev and "product_name" in dev:
-                    product_name = dev.get("product_name")
-                    if product_name is None:
+                    raw_name = dev.get("product_name")
+                    if raw_name is None:
                         continue
 
-                    if product_name.isdigit():
-                        product_name = "<unknown device>"
-                    product_name = product_name.replace("_", " ")
+                    product_name = format_product_name(raw_name)
                     if product_name not in device_map:
                         device_map[product_name] = dev
                     else:

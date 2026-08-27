@@ -12,6 +12,8 @@
   libayatana-appindicator,
   wrapGAppsHook4,
   pygobject3,
+  makeDesktopItem,
+  copyDesktopItems,
 }:
 
 buildPythonApplication {
@@ -29,6 +31,19 @@ buildPythonApplication {
   nativeBuildInputs = [
     wrapGAppsHook4
     gobject-introspection
+    copyDesktopItems
+  ];
+
+  desktopItems = [
+    (makeDesktopItem {
+      name = "ghaf.usb.settings";
+      desktopName = "USB Passthrough Settings";
+      comment = "Configure USB device passthrough to virtual machines";
+      icon = "drive-harddisk-usb-symbolic";
+      exec = "usb_settings";
+      categories = [ "Settings" ];
+      noDisplay = true;
+    })
   ];
 
   buildInputs = [
