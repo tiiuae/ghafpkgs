@@ -125,12 +125,8 @@ class APIClient:
                 allowed_vms = dev.get("allowed_vms", None)
                 if allowed_vms is None or len(allowed_vms) == 0:
                     continue
-                if (
-                    len(allowed_vms) > 1
-                    and "None" not in allowed_vms
-                    and "none" not in allowed_vms
-                ):
-                    allowed_vms.insert(0, "None")
+                if "None" not in allowed_vms and "none" not in allowed_vms:
+                    allowed_vms.append("None")
                 vm = dev.get("vm", None)
                 if vm is None:
                     dev["vm"] = "None"

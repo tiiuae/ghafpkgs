@@ -10,8 +10,6 @@ from gi.repository import Gdk, Gio, GLib, Gtk
 from ghaf_usb_applet.api_client import DEFAULT_PORT, APIClient
 from ghaf_usb_applet.logger import logger
 
-SELECT = "Select"
-
 
 class DeviceSetting(Gtk.Application):
     def __init__(
@@ -30,7 +28,7 @@ class DeviceSetting(Gtk.Application):
 
         self.win = Gtk.ApplicationWindow(application=self, title=self.title)
         self.win.set_resizable(False)
-        self.win.set_default_size(360, 160)
+        self.win.set_default_size(360, 200)
 
         key = Gtk.EventControllerKey()
         key.connect("key-pressed", self._on_key_pressed)
@@ -48,31 +46,29 @@ class DeviceSetting(Gtk.Application):
         lbl_title.set_markup(f"<b>New device:</b> {product}")
         outer.append(lbl_title)
 
-        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        outer.append(row)
-
-        lbl_dd = Gtk.Label(label="Target:", xalign=0)
-        lbl_dd.set_width_chars(8)
-        row.append(lbl_dd)
+        lbl_target = Gtk.Label(label="Attached to:", xalign=0)
+        outer.append(lbl_target)
 
         allowed = list(self.device.get("allowed_vms") or [])
+        if "None" not in allowed and "none" not in allowed:
+            allowed.append("None")
 
-        current = self.device.get("vm", "")
-        options = allowed
-        if current not in allowed:
-            options = options + [SELECT]
-            selected_idx = len(allowed)
-        else:
-            selected_idx = allowed.index(current)
-
-        model = Gtk.StringList.new(options)
-        dropdown = Gtk.DropDown.new(model=model, expression=None)
-        dropdown.set_selected(selected_idx)
-        dropdown.set_hexpand(True)
-        row.append(dropdown)
-
+        current = self.device.get("vm") or "None"
         device_id = self.device.get("device_node", "")
-        dropdown.connect("notify::selected", self._on_selected, device_id, allowed)
+
+        radio_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        outer.append(radio_box)
+
+        group_head = None
+        for vm in allowed:
+            btn = Gtk.CheckButton.new_with_label(vm)
+            if group_head is None:
+                group_head = btn
+            else:
+                btn.set_group(group_head)
+            btn.set_active(vm == current)
+            btn.connect("toggled", self._on_toggled, device_id, vm)
+            radio_box.append(btn)
 
         actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         actions.add_css_class("linked")
@@ -84,21 +80,13 @@ class DeviceSetting(Gtk.Application):
         actions.append(btn_close)
         self.win.present()
 
-    def _on_selected(
-        self, dropdown: Gtk.DropDown, _pspec, device_id: str, allowed: list
-    ):
-        idx = dropdown.get_selected()
-        choice = dropdown.get_model().get_string(idx)
-        if choice == SELECT:
+    def _on_toggled(self, btn: Gtk.CheckButton, device_id: str, choice: str):
+        if not btn.get_active() or choice == self.device.get("vm"):
+            return
+
+        if choice.lower() == "none":
             self.apiclient.usb_detach(device_id)
-            return
-
-        if choice not in allowed:
-            logger.error(f"Invalid choice '{choice}'; allowed options are {allowed}")
-            return
-
-        if choice == self.device.get("vm"):
-            logger.info(f"Device already assigned to VM '{choice}'")
+            self.device["vm"] = choice
             return
 
         if device_id:
@@ -106,7 +94,6 @@ class DeviceSetting(Gtk.Application):
             res = self.apiclient.usb_attach(device_id, choice)
             logger.debug("Passthrough response: %s", res)
             if res.get("event", "") == "usb_attached" or res.get("result", "") == "ok":
-                dropdown.set_selected(idx)
                 self.device["vm"] = choice
             else:
                 GLib.idle_add(
