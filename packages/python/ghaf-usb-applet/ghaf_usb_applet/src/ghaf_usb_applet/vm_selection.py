@@ -7,7 +7,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
 from gi.repository import Gdk, Gio, GLib, Gtk
 
-from ghaf_usb_applet.api_client import APIClient
+from ghaf_usb_applet.api_client import DEFAULT_PORT, APIClient
 from ghaf_usb_applet.logger import logger
 
 SELECT = "Select"
@@ -94,22 +94,26 @@ class DeviceSetting(Gtk.Application):
             return
 
         if choice not in allowed:
-            logger.error(f"Invalid choice, Selected:{choice} Allowed:{allowed}")
+            logger.error(f"Invalid choice '{choice}'; allowed options are {allowed}")
             return
 
         if choice == self.device.get("vm"):
-            logger.info(f"Device already passed to the VM:{choice}")
+            logger.info(f"Device already assigned to VM '{choice}'")
             return
 
         if device_id:
-            logger.info(f"Device PASS req to the VM:{choice} for device: {device_id}")
+            logger.info(f"Requesting passthrough of {device_id} to VM '{choice}'")
             res = self.apiclient.usb_attach(device_id, choice)
-            logger.info(f"Device PASS response:{res}")
+            logger.debug("Passthrough response: %s", res)
             if res.get("event", "") == "usb_attached" or res.get("result", "") == "ok":
                 dropdown.set_selected(idx)
                 self.device["vm"] = choice
             else:
-                GLib.idle_add(self._notify_error, "Device Error", f"Message: {res}")
+                GLib.idle_add(
+                    self._notify_error,
+                    "Device Error",
+                    res.get("error", "Unknown error"),
+                )
 
     def _on_key_pressed(self, _ctrl, keyval, _keycode, _state):
         if keyval == Gdk.KEY_Escape:
@@ -126,7 +130,7 @@ class DeviceSetting(Gtk.Application):
 
 
 def show_device_setting(
-    device: dict, title: str, apiclient: APIClient = None, port: int = 2000
+    device: dict, title: str, apiclient: APIClient = None, port: int = DEFAULT_PORT
 ):
     client = apiclient
     if apiclient is None:

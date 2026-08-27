@@ -1,37 +1,35 @@
 # SPDX-FileCopyrightText: 2022-2026 TII (SSRC) and the Ghaf contributors
 # SPDX-License-Identifier: Apache-2.0
 
-import json
 import subprocess
 
-from ghaf_usb_applet.api_client import APIClient
+from ghaf_usb_applet.api_client import (
+    DEFAULT_CID,
+    DEFAULT_PORT,
+    APIClient,
+    format_product_name,
+)
 from ghaf_usb_applet.logger import logger
 
 
-def format_product_name(dev):
-    product_name = dev.get("product_name", None)
-    if product_name is None:
-        dev["product_name"] = "<unknown device>"
-    else:
-        product_name = product_name.replace("_", " ")
-        dev["product_name"] = product_name[:20]
-
-
 class USBDeviceNotification:
-    def __init__(self, server_port=2000):
+    def __init__(self, server_port=DEFAULT_PORT):
         self.port = server_port
         self.callback = None
 
     def monitor(self, callback):
         th, apiclient = APIClient.recv_notifications(
-            callback=self.notify_user, port=self.port, cid=2, reconnect_delay=3
+            callback=self.notify_user,
+            port=self.port,
+            cid=DEFAULT_CID,
+            reconnect_delay=3,
         )
         self.apiclient = apiclient
         self.callback = callback
         return th
 
     def notify_user(self, msg):
-        logger.info(f"Device notification: {json.dumps(msg, indent=4)}")
+        logger.debug("Device notification: %s", msg)
         event = msg.get("event", "")
         if event == "usb_select_vm":
             self.show_notif_window(msg)
@@ -42,13 +40,12 @@ class USBDeviceNotification:
         dev = msg.get("usb_device", {})
         allowed = msg.get("allowed_vms", [])
         if len(allowed) < 2:
-            logger.error("VMs not available to make choice")
+            logger.error("Not enough VMs available to prompt for a choice")
             return
         dev["allowed_vms"] = allowed
-        format_product_name(dev)
+        name = format_product_name(dev.get("product_name"), max_len=20)
+        dev["product_name"] = name
 
-        name = dev.get("product_name", "<unknown device>")
-        name = name.replace("_", " ")
         cmd = [
             "usb_device",
             "--title",
