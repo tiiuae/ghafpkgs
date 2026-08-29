@@ -56,6 +56,18 @@ nix build .#update-deps
 - Gracefully handles missing tools (e.g., cargo-upgrade)
 - Provides colored output for better visibility
 
+### Nix Hash Refresh
+Updating a lock file invalidates the hashes the Nix expression pins, so those are
+refreshed in the same pass:
+- **Go**: `vendorHash` in `default.nix`, resolved from the hash mismatch of a trial build
+- **Rust**: crane's `outputHashes` in `default.nix`, one entry per `git+` source in
+  `Cargo.lock`, prefetched with `nix-prefetch-git`
+
+Crane needs a hash for every git dependency. Without one it resolves the dependency
+with `builtins.fetchGit { allRefs = true; }` during evaluation, which mirrors every
+ref the remote advertises -- GitHub serves `refs/pull/*` -- and prints the whole
+fetch to the eval log. A package with no `outputHashes` block is left alone.
+
 ### Safe Operation
 - Only updates lock files, doesn't modify source dependencies
 - Provides clear output of what's being updated
@@ -65,8 +77,8 @@ nix build .#update-deps
 
 | Package Type | Lock Files Only (Default) | Source Upgrade (`--upgrade`) | Files Updated |
 |-------------|---------------------------|------------------------------|---------------|
-| **Rust**    | `cargo update` | `cargo upgrade` + `cargo update` | `Cargo.lock` + `Cargo.toml` |
-| **Go**      | `go get -u=patch` + `go mod tidy` | `go get -u` + `go mod tidy` | `go.mod`, `go.sum` |
+| **Rust**    | `cargo update` | `cargo upgrade` + `cargo update` | `Cargo.lock` + `Cargo.toml` + `default.nix` |
+| **Go**      | `go get -u=patch` + `go mod tidy` | `go get -u` + `go mod tidy` | `go.mod`, `go.sum` + `default.nix` |
 | **Python**  | `uv sync --upgrade` | `uv add --upgrade <deps>` + sync | `uv.lock` + `pyproject.toml` |
 | **Node.js** | `npm update` | `npm upgrade` | `package-lock.json` + `package.json` |
 

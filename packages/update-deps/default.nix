@@ -21,6 +21,7 @@
   # Nix tools
   nix,
   nix-prefetch,
+  nix-prefetch-git,
 }:
 
 writeShellApplication {
@@ -47,6 +48,7 @@ writeShellApplication {
     # Nix tools
     nix
     nix-prefetch
+    nix-prefetch-git
     # System tools
     git
     findutils
@@ -148,12 +150,102 @@ writeShellApplication {
           log "$YELLOW" "Running cargo update..."
           cargo update
 
+          # Refresh crane outputHashes in default.nix if it has them
+          if [[ -f "default.nix" ]]; then
+            update_rust_output_hashes "$dir"
+          fi
+
           log "$GREEN" "Rust dependencies updated successfully"
         else
           log "$RED" "No Cargo.toml found in $dir"
           return 1
         fi
       )
+    }
+
+    # Function to refresh crane outputHashes in a Rust package's default.nix
+    #
+    # Crane needs a hash for every git dependency in Cargo.lock. Without one it
+    # falls back to `builtins.fetchGit { allRefs = true; }` at evaluation time,
+    # which mirrors every ref the remote advertises (GitHub serves refs/pull/*)
+    # and prints the whole fetch to the eval log. The hashes therefore have to
+    # be refreshed whenever cargo update moves a git revision.
+    update_rust_output_hashes() {
+      local dir=$1
+      local nix_file="$dir/default.nix"
+
+      if [[ ! -f "$nix_file" ]]; then
+        return 0
+      fi
+
+      # Only packages that vendor git dependencies carry the block
+      if ! grep -q "outputHashes" "$nix_file"; then
+        log "$YELLOW" "No outputHashes found in $nix_file, skipping..."
+        return 0
+      fi
+
+      if [[ ! -f "$dir/Cargo.lock" ]]; then
+        log "$YELLOW" "No Cargo.lock found in $dir, skipping outputHashes..."
+        return 0
+      fi
+
+      log "$YELLOW" "Updating crane outputHashes in $nix_file..."
+
+      local entries_file
+      entries_file=$(mktemp)
+
+      local source body head_part url rev hash
+      while IFS= read -r source; do
+        # Cargo.lock records git sources as git+<url>[?params]#<rev>
+        body=''${source#git+}
+        rev=''${body##*#}
+        head_part=''${body%%#*}
+        url=''${head_part%%\?*}
+
+        log "$YELLOW" "Prefetching $url at ''${rev:0:7}..."
+
+        # Same fetch options as the fetchgit derivation crane builds
+        hash=$(nix-prefetch-git --quiet --fetch-submodules --fetch-lfs \
+          --url "$url" --rev "$rev" 2>/dev/null \
+          | grep -oP '"hash": "\K[^"]+' || true)
+
+        if [[ -z "$hash" ]]; then
+          log "$RED" "Failed to prefetch $url at $rev"
+          log "$YELLOW" "Leaving outputHashes in $nix_file untouched"
+          rm -f "$entries_file"
+          return 1
+        fi
+
+        printf '      "%s" = "%s";\n' "$source" "$hash" >> "$entries_file"
+      done < <(grep -o 'source = "git+[^"]*"' "$dir/Cargo.lock" \
+        | sed 's/^source = "//; s/"$//' | sort -u)
+
+      # An empty attrset is written as `outputHashes = { };`, so normalise it to
+      # the block form before splicing the freshly computed entries into it
+      sed -i 's/outputHashes = { };/outputHashes = {\n    };/' "$nix_file"
+
+      awk -v entries="$entries_file" '
+        /^[[:space:]]*outputHashes = \{[[:space:]]*$/ {
+          print
+          while ((getline line < entries) > 0) print line
+          in_block = 1
+          next
+        }
+        in_block && /^[[:space:]]*\};[[:space:]]*$/ { in_block = 0; print; next }
+        in_block { next }
+        { print }
+      ' "$nix_file" > "$nix_file.new" && mv "$nix_file.new" "$nix_file"
+
+      rm -f "$entries_file"
+
+      # Line lengths change with the hashes, so hand the result back to treefmt
+      local repo_root
+      repo_root=$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")
+      if ! (cd "$repo_root" && nix fmt -- "$nix_file" >/dev/null 2>&1); then
+        log "$YELLOW" "Could not run nix fmt on $nix_file, format it manually"
+      fi
+
+      log "$GREEN" "Updated outputHashes in $nix_file"
     }
 
     # Function to update Go dependencies
