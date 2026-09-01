@@ -39,7 +39,7 @@ class USBDeviceNotification:
     def show_notif_window(self, msg):
         dev = msg.get("usb_device", {})
         allowed = msg.get("allowed_vms", [])
-        if len(allowed) < 2:
+        if len(allowed) < 1:
             logger.error("Not enough VMs available to prompt for a choice")
             return
         dev["allowed_vms"] = allowed
@@ -49,7 +49,7 @@ class USBDeviceNotification:
         cmd = [
             "usb_device",
             "--title",
-            "New device attached!",
+            "New USB device attached",
             "--device_node",
             dev.get("device_node", ""),
             "--product_name",

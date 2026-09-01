@@ -55,7 +55,8 @@ class DeviceSettings(Gtk.ApplicationWindow):
         self.apiclient = APIClient(port=port)
         self.apiclient.connect()
         self.set_title("USB Passthrough Settings")
-        self.set_default_size(700, 220)
+        self.set_default_size(700, 400)
+        self.set_resizable(False)
         self._active_popover = None
 
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
@@ -65,41 +66,33 @@ class DeviceSettings(Gtk.ApplicationWindow):
         root.set_margin_end(22)
         self.set_child(root)
 
+        title_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        root.append(title_row)
+
         title = Gtk.Label(label="Attach USB devices to VMs")
         title.add_css_class("title-3")
         title.set_xalign(0.0)
         title.set_wrap(True)
-        root.append(title)
+        title.set_hexpand(True)
+        title_row.append(title)
+
+        refresh_button = Gtk.Button.new_from_icon_name("view-refresh-symbolic")
+        refresh_button.set_tooltip_text("Refresh devices")
+        refresh_button.connect("clicked", self.on_refresh_clicked)
+        title_row.append(refresh_button)
 
         self.list = Gtk.ListBox()
         self.list.add_css_class("boxed-list")
         self.list.set_selection_mode(Gtk.SelectionMode.SINGLE)
         self.list.set_activate_on_single_click(True)
         self.list.connect("row-activated", self._on_row_activated)
-        root.append(self.list)
 
-        # self.close = Gtk.Button(label = "Close")
-        # self.close.set_halign(0.0)
-        # root.append(self.close)
-
-        hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        hbox.set_margin_top(10)
-        hbox.set_margin_bottom(10)
-        hbox.set_margin_start(10)
-        hbox.set_margin_end(10)
-        root.append(hbox)
-
-        spacer = Gtk.Box()
-        spacer.set_hexpand(True)
-        hbox.append(spacer)
-
-        refresh_button = Gtk.Button(label="Refresh")
-        refresh_button.connect("clicked", self.on_refresh_clicked)
-        hbox.append(refresh_button)
-
-        close_button = Gtk.Button(label="Close")
-        close_button.connect("clicked", self.on_close_clicked)
-        hbox.append(close_button)
+        scroller = Gtk.ScrolledWindow()
+        scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroller.set_max_content_height(300)
+        scroller.set_propagate_natural_height(True)
+        scroller.set_child(self.list)
+        root.append(scroller)
 
         self._model = {}
         self.refresh()
@@ -111,9 +104,6 @@ class DeviceSettings(Gtk.ApplicationWindow):
 
     def on_refresh_clicked(self, widget):
         self.refresh()
-
-    def on_close_clicked(self, widget):
-        self.destroy()
 
     def _notify_error(self, title: str, msg: str) -> None:
         dlg = Gtk.AlertDialog()
