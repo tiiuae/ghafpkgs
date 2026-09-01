@@ -28,7 +28,7 @@ class DeviceSetting(Gtk.Application):
 
         self.win = Gtk.ApplicationWindow(application=self, title=self.title)
         self.win.set_resizable(False)
-        self.win.set_default_size(360, 200)
+        self.win.set_default_size(400, 300)
 
         key = Gtk.EventControllerKey()
         key.connect("key-pressed", self._on_key_pressed)
@@ -43,10 +43,10 @@ class DeviceSetting(Gtk.Application):
 
         product = self.device.get("product_name") or "USB Device"
         lbl_title = Gtk.Label(xalign=0)
-        lbl_title.set_markup(f"<b>New device:</b> {product}")
+        lbl_title.set_markup(f"<b>{product}</b>")
         outer.append(lbl_title)
 
-        lbl_target = Gtk.Label(label="Attached to:", xalign=0)
+        lbl_target = Gtk.Label(label="Attach it to:", xalign=0)
         outer.append(lbl_target)
 
         allowed = list(self.device.get("allowed_vms") or [])
@@ -57,7 +57,13 @@ class DeviceSetting(Gtk.Application):
         device_id = self.device.get("device_node", "")
 
         radio_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-        outer.append(radio_box)
+
+        scroller = Gtk.ScrolledWindow()
+        scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroller.set_max_content_height(200)
+        scroller.set_propagate_natural_height(True)
+        scroller.set_child(radio_box)
+        outer.append(scroller)
 
         group_head = None
         for vm in allowed:
