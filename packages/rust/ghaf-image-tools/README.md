@@ -9,6 +9,11 @@ command names and arguments. Ghaf retains NixOS options, trust configuration,
 and platform layout policy; this package owns image construction mechanics.
 Platform orchestration and runtime update tools are not migrated in this slice.
 
+**Known blocker:** the inherited sparse LUKS conversion also skips allocated
+zero-filled data. A deliberately written 4 KiB zero block does not round-trip.
+The marker-only integration test below does not catch this. Do not treat the
+LUKS builder as ready for filesystem images until zero preservation is fixed.
+
 ## Commands
 
 - `ghaf-initialize-verity-lvm --update-dir DIR --image FILE --root-size-mib N
@@ -60,9 +65,10 @@ metadata, optional filesystems, overlong streams, and LUKS decryption.
   atomic replacement. Errors before replacement preserve the original. Forced
   termination may leave temporary files; an error syncing the parent directory
   after replacement cannot undo publication.
-- Sparse LUKS ciphertext preserves allocated input data; skipped zero regions
-  do **not** decrypt to guaranteed zeroes. This is for filesystem images whose
-  free regions do not carry meaningful data, not arbitrary byte-exact wrapping.
+- Sparse LUKS ciphertext preserves nonzero input data; skipped zero regions
+  do **not** decrypt to guaranteed zeroes, even when explicitly allocated in the
+  source. This needs extent-aware copying or dense encryption; it is not merely
+  an unused-space difference and can affect filesystem correctness.
 - These are offline image-building tools, not runtime block-device managers.
   Native dependency upgrades require rerunning the integration tests. Passing
   them does not establish boot, rollback, power-loss, or hardware acceptance.
