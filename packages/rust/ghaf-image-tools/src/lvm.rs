@@ -66,24 +66,24 @@ impl Plan {
             options.root_size_mib > 0 && options.verity_size_mib > 0,
             "slot capacities must be positive"
         );
-        let manifests = fs::read_dir(&options.update_dir)?
-            .map(|entry| entry.map(|entry| entry.path()))
-            .collect::<std::io::Result<Vec<_>>>()?
-            .into_iter()
-            .filter(|path| {
-                path.extension().is_some_and(|ext| ext == "manifest")
-                    && path
-                        .symlink_metadata()
-                        .is_ok_and(|metadata| metadata.is_file())
-            })
-            .collect::<Vec<_>>();
-        ensure!(
-            manifests.len() == 1,
-            "Expected exactly one update manifest in {}",
-            options.update_dir.display()
-        );
-        let manifest: Manifest = serde_json::from_reader(File::open(&manifests[0])?)
-            .context("invalid image manifest")?;
+        let mut manifest = None;
+        for entry in fs::read_dir(&options.update_dir)? {
+            let entry = entry?;
+            if entry
+                .path()
+                .extension()
+                .is_some_and(|ext| ext == "manifest")
+                && entry.file_type()?.is_file()
+            {
+                ensure!(
+                    manifest.replace(entry.path()).is_none(),
+                    "multiple update manifests"
+                );
+            }
+        }
+        let manifest: Manifest =
+            serde_json::from_reader(File::open(manifest.context("missing update manifest")?)?)
+                .context("invalid image manifest")?;
         ensure!(manifest.manifest_version == 2, "manifest_version must be 2");
         for (artifact, capacity) in [
             (&manifest.root, options.root_size_mib),
@@ -168,12 +168,9 @@ impl Options {
                     "--yes",
                     "--force",
                     "--force",
-                    "--zero",
-                    "y",
-                    "--metadatasize",
-                    "4M",
-                    "--dataalignment",
-                    "1M",
+                    "--zero=y",
+                    "--metadatasize=4M",
+                    "--dataalignment=1M",
                 ])
                 .arg(&path),
         )?;
@@ -279,13 +276,7 @@ impl Lvm {
         let mut command = Command::new(&self.binary);
         command
             .arg(action)
-            .args([
-                "--driverloaded",
-                "n",
-                "--nolocking",
-                "--config",
-                &self.config,
-            ])
+            .args(["--driverloaded=n", "--nolocking", "--config", &self.config])
             .env("LVM_SYSTEM_DIR", self.work.path().join("lvm"))
             .env("LVM_OFFLINE_HOST", "ghaf-image")
             .env("LVM_OFFLINE_DESCRIPTION", "ghaf-image-builder")
@@ -302,58 +293,32 @@ impl Lvm {
         process::run(
             self.command("lvcreate")
                 .env("LVM_OFFLINE_UUID_SEED", format!("{}:lv:{name}", self.vg))
-                .args([
-                    "--yes",
-                    "--activate",
-                    "n",
-                    "--zero",
-                    "n",
-                    "--wipesignatures",
-                    "n",
-                    "--size",
-                    &format!("{size}M"),
-                    "--name",
-                    name,
-                    &self.vg,
-                ]),
+                .args(["--yes", "--activate=n", "--zero=n", "--wipesignatures=n"])
+                .args(["--size", &format!("{size}M"), "--name", name, &self.vg]),
         )
     }
 
     fn offset(&self, lv: &str) -> Result<u64> {
-        let start = process::output(
-            self.command("pvs")
-                .args([
-                    "--noheadings",
-                    "--units",
-                    "b",
-                    "--nosuffix",
-                    "-o",
-                    "pe_start",
-                ])
-                .arg(&self.image),
-        )?;
-        let extent = process::output(self.command("vgs").args([
-            "--noheadings",
-            "--units",
-            "b",
-            "--nosuffix",
-            "-o",
-            "vg_extent_size",
-            &self.vg,
-        ]))?;
-        let ranges = process::output(self.command("lvs").args([
-            "--noheadings",
-            "--segments",
-            "-o",
-            "seg_pe_ranges",
-            &format!("{}/{lv}", self.vg),
-        ]))?;
         extent_offset(
-            start.trim().parse()?,
-            extent.trim().parse()?,
+            self.report("pvs", "pe_start", &self.image)?.parse()?,
+            self.report("vgs", "vg_extent_size", &self.vg)?.parse()?,
             &self.image,
-            ranges.trim(),
+            &self.report("lvs", "seg_pe_ranges", format!("{}/{lv}", self.vg))?,
         )
+    }
+
+    fn report(
+        &self,
+        command: &str,
+        field: &str,
+        target: impl AsRef<std::ffi::OsStr>,
+    ) -> Result<String> {
+        let mut query = self.command(command);
+        query.args(["--noheadings", "--units=b", "--nosuffix", "-o", field]);
+        if command == "lvs" {
+            query.arg("--segments");
+        }
+        Ok(process::output(query.arg(target))?.trim().to_owned())
     }
 }
 

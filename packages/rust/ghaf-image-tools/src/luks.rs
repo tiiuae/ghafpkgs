@@ -7,7 +7,7 @@ use clap::Parser;
 use std::{
     fs::File,
     io::{Read, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::Command,
 };
 
@@ -64,13 +64,11 @@ impl Options {
                 crypt("luksFormat")
                     .args([
                         "--batch-mode",
-                        "--type",
-                        "luks1",
+                        "--type=luks1",
                         // This temporary passphrase has 256 random bits, not
                         // human entropy. Avoid repeating a costly KDF for each
                         // extent. The caller's final key uses cryptsetup defaults.
-                        "--pbkdf-force-iterations",
-                        "1000",
+                        "--pbkdf-force-iterations=1000",
                         "--align-payload",
                         &(header_size / 512).to_string(),
                         "--uuid",
@@ -86,12 +84,7 @@ impl Options {
             // qemu-img's content-based sparse detection must not skip them.
             let secret = format!(
                 "secret,id=construction,file={}",
-                option_value(
-                    construction_key
-                        .path()
-                        .to_str()
-                        .context("key path must be UTF-8")?
-                )
+                qemu_path(construction_key.path())?
             );
             for extent in &extents {
                 let window = format!(
@@ -101,11 +94,11 @@ impl Options {
                 );
                 let source = format!(
                     "{window},file.driver=file,file.filename={}",
-                    option_value(image.to_str().context("image path must be UTF-8")?)
+                    qemu_path(&image)?
                 );
                 let target = format!(
                     "{window},file.driver=luks,file.key-secret=construction,file.file.driver=file,file.file.filename={}",
-                    option_value(temporary.to_str().context("image path must be UTF-8")?)
+                    qemu_path(temporary)?
                 );
                 process::run(Command::new("qemu-img").args([
                     "convert",
@@ -114,8 +107,7 @@ impl Options {
                     "--no-create",
                     "--image-opts",
                     "--target-image-opts",
-                    "--sparse-size",
-                    "0",
+                    "--sparse-size=0",
                     &source,
                     &target,
                 ]))?;
@@ -163,9 +155,12 @@ impl Options {
     }
 }
 
-fn option_value(value: &str) -> String {
+fn qemu_path(path: &Path) -> Result<String> {
     // QEMU's comma-separated option syntax escapes a literal comma by doubling it.
-    value.replace(',', ",,")
+    Ok(path
+        .to_str()
+        .context("QEMU path must be UTF-8")?
+        .replace(',', ",,"))
 }
 
 fn validate_uuid(uuid: &str) -> Result<()> {
@@ -191,6 +186,9 @@ mod tests {
         assert!(validate_uuid("01234567-89AB-4cde-8fab-0123456789ab").is_ok());
         assert!(validate_uuid("01234567-89ab-4cde-8fab-0123456789az").is_err());
         assert!(validate_uuid("01234567-89ab-4cde-8fab-0123456789ab-extra").is_err());
-        assert_eq!(option_value("/tmp/with,comma"), "/tmp/with,,comma");
+        assert_eq!(
+            qemu_path(Path::new("/tmp/with,comma")).unwrap(),
+            "/tmp/with,,comma"
+        );
     }
 }

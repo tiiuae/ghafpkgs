@@ -4,21 +4,15 @@
 # patched cryptsetup project retain their upstream licenses.
 
 diff --git a/lib/luks2/luks2_luks1_convert.c b/lib/luks2/luks2_luks1_convert.c
-index 79a1420..172676f 100644
+index 6c2d32f..b2e76d7 100644
 --- a/lib/luks2/luks2_luks1_convert.c
 +++ b/lib/luks2/luks2_luks1_convert.c
-@@ -7,6 +7,8 @@
-  * Copyright (C) 2015-2026 Milan Broz
-  */
+@@ -9,2 +9,4 @@
  
 +#include <sys/stat.h>
 +
  #include "luks2_internal.h"
- #include "../luks1/luks.h"
- #include "../luks1/af.h"
-@@ -492,8 +494,18 @@ out:
- static int luks_header_in_use(struct crypt_device *cd)
- {
+@@ -494,4 +496,14 @@ static int luks_header_in_use(struct crypt_device *cd)
  	int r;
 +	struct stat st;
 +	const char *path;
@@ -33,4 +27,3 @@ index 79a1420..172676f 100644
 +			return 0;
 +	}
  	if (r < 0)
- 		log_err(cd, _("Cannot check status of device with uuid: %s."), crypt_get_uuid(cd));

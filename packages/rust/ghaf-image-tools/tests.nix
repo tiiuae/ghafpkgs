@@ -33,31 +33,30 @@
         }
         EOF
         ln -s payload payload-link
+        initialize() {
+          ghaf-initialize-verity-lvm --update-dir payload-link \
+            --root-size-mib 1 --verity-size-mib 1 "$@"
+        }
 
-        ghaf-initialize-verity-lvm \
-          --update-dir payload-link --root-size-mib 1 --verity-size-mib 1 \
+        initialize \
           --create-inactive-slots --swap-size-mib 2 --persist-size-mib 3 \
           --print-plan > plan.json
         test "$(jq -r .lv_suffix plan.json)" = 1_deadbeef
         test "$(jq -r .minimum_pv_size_mib plan.json)" = 73
-        ! ghaf-initialize-verity-lvm \
-          --update-dir payload --root-size-mib 1 --verity-size-mib 1 \
-          --device /dev/null 2> device.err
+        ! initialize --device /dev/null 2> device.err
         grep -q '^Usage:' device.err
 
         truncate -s 96M first.img
         truncate -s 96M second.img
         for image in first.img second.img; do
-          ghaf-initialize-verity-lvm \
-            --update-dir payload --root-size-mib 1 --verity-size-mib 1 \
-            --vg-name ghaf_test --image "$image"
+          initialize --vg-name ghaf_test --image "$image"
         done
         mkdir -p stock-lvm/archive stock-lvm/backup
         export LVM_SYSTEM_DIR=$PWD/stock-lvm
-        pvck --driverloaded n --nolocking --config 'global { locking_type = 0 }' \
-          --dump metadata first.img > first-metadata.txt
-        pvck --driverloaded n --nolocking --config 'global { locking_type = 0 }' \
-          --dump metadata second.img > second-metadata.txt
+        for image in first second; do
+          pvck --driverloaded n --nolocking --config 'global { locking_type = 0 }' \
+            --dump metadata "$image.img" > "$image-metadata.txt"
+        done
         cmp first-metadata.txt second-metadata.txt
         cmp first.img second.img
         grep 'ghaf_test {' first-metadata.txt
@@ -66,8 +65,7 @@
 
         # Exercise the shared bounded writer with locally formatted files too.
         truncate -s 256M complete.img
-        ghaf-initialize-verity-lvm \
-          --update-dir payload --root-size-mib 1 --verity-size-mib 1 \
+        initialize \
           --create-inactive-slots --swap-size-mib 4 --persist-size-mib 128 \
           --vg-name ghaf_complete --image complete.img
         pvck --driverloaded n --nolocking --config 'global { locking_type = 0 }' \
@@ -79,9 +77,7 @@
         truncate -s $((1024 * 1024 + 1)) overlong-root.raw
         zstd --force overlong-root.raw -o payload/ghaf_root_1_deadbeef.raw.zst
         truncate -s 96M overlong.img
-        ! ghaf-initialize-verity-lvm \
-          --update-dir payload --root-size-mib 1 --verity-size-mib 1 \
-          --vg-name ghaf_test --image overlong.img 2> overlong.err
+        ! initialize --vg-name ghaf_test --image overlong.img 2> overlong.err
         grep -q 'Payload for root_1_deadbeef exceeds its 1 MiB logical volume' \
           overlong.err
         test "$(stat -c%s overlong.img)" -eq $((96 * 1024 * 1024))
@@ -89,9 +85,7 @@
         # A decoder failure must be propagated, not hidden by its stdout pipe.
         printf 'not a zstd stream' > payload/ghaf_root_1_deadbeef.raw.zst
         truncate -s 96M corrupt.img
-        ! ghaf-initialize-verity-lvm \
-          --update-dir payload --root-size-mib 1 --verity-size-mib 1 \
-          --vg-name ghaf_test --image corrupt.img 2> corrupt.err
+        ! initialize --vg-name ghaf_test --image corrupt.img 2> corrupt.err
         grep -q 'failed to decompress' corrupt.err
         touch "$out"
       '';

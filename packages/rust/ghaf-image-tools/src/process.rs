@@ -20,17 +20,11 @@ pub fn run(command: &mut Command) -> Result<()> {
 }
 
 pub fn output(command: &mut Command) -> Result<String> {
-    let output = command
-        .stderr(Stdio::inherit())
-        .output()
-        .with_context(|| format!("start {}", command.get_program().display()))?;
-    ensure!(
-        output.status.success(),
-        "{} failed: {}",
-        command.get_program().display(),
-        output.status
-    );
-    String::from_utf8(output.stdout).context("command output is not UTF-8")
+    consume(command, |stdout| {
+        let mut text = String::new();
+        stdout.read_to_string(&mut text)?;
+        Ok(text)
+    })
 }
 
 /// A failed consumer must terminate and reap its producer, including when the
