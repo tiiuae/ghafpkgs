@@ -164,6 +164,12 @@
         # Decrypted sparse holes are unspecified, so start each case fresh.
         rm plaintext.img exported-header
         done
+        for size in 0 513; do
+          truncate -s "$size" invalid.img
+          if ghaf-wrap-luks-image --image invalid.img \
+            --uuid 01234567-89ab-4cde-8fab-0123456789ab --key-file key; then exit 1; fi
+          test "$(stat -c%s invalid.img)" -eq "$size"
+        done
         touch "$out"
       '';
 }

@@ -10,41 +10,6 @@ use std::{
 
 pub const MIB: u64 = 1024 * 1024;
 
-/// Enumerate data, not nonzero bytes. Written zeroes must remain data when
-/// encrypting; only filesystem-reported holes may be omitted by the caller.
-pub fn data_extents(file: &File) -> Result<Vec<std::ops::Range<u64>>> {
-    use rustix::fs::{SeekFrom, seek};
-    use rustix::io::Errno;
-
-    file.sync_all()?;
-    let size = file.metadata()?.len();
-    ensure!(
-        size > 0 && size.is_multiple_of(512),
-        "image size must be a positive multiple of 512 bytes"
-    );
-    let mut extents = Vec::new();
-    let mut cursor = 0;
-    while cursor < size {
-        let start = match seek(file, SeekFrom::Data(cursor)) {
-            Ok(start) => start,
-            Err(Errno::NXIO) => break, // No more data before EOF.
-            Err(error) => return Err(error).context("discover image data extents"),
-        };
-        let end = seek(file, SeekFrom::Hole(start)).context("discover image holes")?;
-        ensure!(
-            cursor <= start
-                && start < end
-                && end <= size
-                && start.is_multiple_of(512)
-                && end.is_multiple_of(512),
-            "invalid or unaligned image extent {start}..{end}"
-        );
-        extents.push(start..end);
-        cursor = end;
-    }
-    Ok(extents)
-}
-
 pub fn mib(value: u64) -> Result<u64> {
     value
         .checked_mul(MIB)
@@ -139,28 +104,6 @@ pub fn safe_name(name: &str) -> Result<()> {
 mod tests {
     use super::*;
     use std::io::Cursor;
-
-    #[test]
-    fn data_extents_include_written_zeroes() -> Result<()> {
-        let mut image = tempfile::tempfile()?;
-        image.set_len(8 * MIB)?;
-        image.seek(SeekFrom::Start(MIB))?;
-        image.write_all(&[0; 4096])?;
-        image.seek(SeekFrom::Start(7 * MIB))?;
-        image.write_all(&[42; 4096])?;
-        let ranges = data_extents(&image)?;
-        for offset in [MIB, 7 * MIB] {
-            assert!(
-                ranges
-                    .iter()
-                    .any(|range| range.start <= offset && offset + 4096 <= range.end)
-            );
-        }
-        assert!(ranges.windows(2).all(|pair| pair[0].end <= pair[1].start));
-        image.set_len(513)?;
-        assert!(data_extents(&image).is_err());
-        Ok(())
-    }
 
     #[test]
     fn overlong_payload_cannot_change_the_following_extent() -> Result<()> {

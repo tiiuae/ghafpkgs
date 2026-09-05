@@ -30,13 +30,15 @@ not implemented. Unit tests can also run with `cargo test --locked`.
 - The creation-only writer emits LVM2 format-text with one PV, one metadata
   area and contiguous LVs (4 MiB extents, 5 MiB data offset). It does not edit
   existing volumes. Stock LVM owns activation and subsequent metadata changes.
-- LUKS encrypts filesystem-reported data extents, including written zeroes,
+- LUKS uses `qemu-img map -f raw --output=json` to select data extents,
+  including written zeroes,
   through raw slices above QEMU's LUKS driver to preserve crypto sector offsets.
   Only source holes are skipped; callers must reserve them for unused space,
   since they do **not** decrypt to guaranteed zeroes. Do not sparsify meaningful
   zeroes or mutate the source during conversion. Sizes must be sector-aligned;
-  unsupported extent queries fail. Filesystems reporting all bytes as data
-  remain correct but produce dense output.
+  failed or invalid extent maps abort. Filesystems reporting all bytes as data
+  remain correct but produce dense output. UUID validation is delegated to
+  cryptsetup.
 - LUKS publishes by atomic rename after checking type, UUID, offset and key.
   Earlier errors preserve the original; forced termination can leave temporary
   files, and a directory-sync error after rename cannot undo publication.
