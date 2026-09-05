@@ -3,10 +3,12 @@
 
 # Ghaf image tools
 
-Shared Rust LVM/LUKS builders, retaining the existing CLI arguments and plan
-JSON. Run either command with `--help`. Individual Nix outputs keep QEMU out
-of LVM-only closures; `ghaf-image-tools` contains both. Native patches live in
-`packages/storage`. Ghaf owns trust and platform policy, not another builder.
+Shared Rust LVM/LUKS builders. LVM takes `--manifest PATH` and resolves payloads
+beside it; the plan JSON is unchanged. The VG is `pool`, and the LUKS header
+reservation is 32 MiB. Run either command with `--help`. Individual outputs keep QEMU out
+of LVM-only closures; `ghaf-image-tools` contains both. LVM metadata is written
+directly in Rust; only cryptsetup needs an offline patch in `packages/storage`.
+Ghaf owns trust and platform policy, not another builder.
 
 ```sh
 timeout 2h nix build .#ghaf-image-tools \
@@ -22,8 +24,12 @@ not implemented. Unit tests can also run with `cargo test --locked`.
 ## Contracts
 
 - LVM modifies a disposable, initially zero-filled image. Discard it on error.
-  Writes are capacity-bounded and decompressor failures propagate. Manifest
+  Writes are capacity-bounded, unpacked lengths must match the manifest, and
+  decompressor failures propagate. Manifest
   authentication is the caller's responsibility.
+- The creation-only writer emits LVM2 format-text with one PV, one metadata
+  area and contiguous LVs (4 MiB extents, 5 MiB data offset). It does not edit
+  existing volumes. Stock LVM owns activation and subsequent metadata changes.
 - LUKS encrypts filesystem-reported data extents, including written zeroes,
   through raw slices above QEMU's LUKS driver to preserve crypto sector offsets.
   Only source holes are skipped; callers must reserve them for unused space,
@@ -38,6 +44,4 @@ not implemented. Unit tests can also run with `cargo test --locked`.
   removed, leaving the caller's key with normal cryptsetup KDF defaults.
 - Tests cover bounded writes, subprocess cleanup, deterministic metadata,
   optional filesystems, zero-data preservation, sparse output and final keys.
-  Rerun them after native dependency upgrades. They do not establish hardware
-  boot, update, rollback or power-loss acceptance. Runtime/platform tools are
-  outside this migration.
+  Rerun them after native dependency upgrades.

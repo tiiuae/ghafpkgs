@@ -11,34 +11,29 @@ use std::{
     process::Command,
 };
 
-#[derive(Debug, Parser)]
+const HEADER_SIZE: u64 = 32 * image::MIB;
+
+#[derive(Parser)]
 #[command(about = "Wrap a sparse regular-file image in LUKS2 without kernel devices")]
 pub struct Options {
     #[arg(long)]
-    pub image: PathBuf,
+    image: PathBuf,
     #[arg(long)]
-    pub uuid: String,
+    uuid: String,
     #[arg(long)]
-    pub key_file: PathBuf,
-    #[arg(long, default_value_t = 32)]
-    pub header_size_mib: u64,
+    key_file: PathBuf,
 }
 
 impl Options {
     pub fn run(&self) -> Result<()> {
         validate_uuid(&self.uuid)?;
-        ensure!(
-            self.header_size_mib >= 16,
-            "LUKS2 conversion needs at least 16 MiB of header space"
-        );
         let image = image::regular_file(&self.image)?;
         let extents = image::data_extents(&File::open(&image)?)?;
         let key_file = image::regular_file(&self.key_file)?;
-        let header_size = image::mib(self.header_size_mib)?;
         let size = image
             .metadata()?
             .len()
-            .checked_add(header_size)
+            .checked_add(HEADER_SIZE)
             .context("LUKS image size overflow")?;
         let cryptsetup = std::env::var_os("GHAF_CRYPTSETUP_OFFLINE")
             .context("GHAF_CRYPTSETUP_OFFLINE is not configured")?;
@@ -70,7 +65,7 @@ impl Options {
                         // extent. The caller's final key uses cryptsetup defaults.
                         "--pbkdf-force-iterations=1000",
                         "--align-payload",
-                        &(header_size / 512).to_string(),
+                        &(HEADER_SIZE / 512).to_string(),
                         "--uuid",
                         &self.uuid,
                         "--key-file",
@@ -141,8 +136,8 @@ impl Options {
                 .context("missing LUKS payload offset")?
                 .parse()?;
             ensure!(
-                offset == header_size,
-                "LUKS payload offset mismatch: expected {header_size}, got {offset}"
+                offset == HEADER_SIZE,
+                "LUKS payload offset mismatch: expected {HEADER_SIZE}, got {offset}"
             );
             process::run(
                 crypt("open")

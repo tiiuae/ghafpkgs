@@ -13,7 +13,6 @@
 }:
 let
   craneLib = crane.mkLib pkgs;
-  lvmOffline = callPackage ../../storage/lvm2-offline { };
   cryptsetupOffline = callPackage ../../storage/cryptsetup-offline { };
   commonArgs = {
     src = craneLib.cleanCargoSource ./.;
@@ -38,7 +37,6 @@ let
         mv "$out/bin/ghaf-initialize-verity-lvm" "$lvm/bin/"
         mv "$out/bin/ghaf-wrap-luks-image" "$luks/bin/"
         wrapProgram "$lvm/bin/ghaf-initialize-verity-lvm" \
-          --set GHAF_LVM_OFFLINE "${lvmOffline.bin}/bin/lvm" \
           --prefix PATH : "${
             lib.makeBinPath [
               btrfs-progs
