@@ -1,0 +1,141 @@
+# SPDX-FileCopyrightText: 2026 TII (SSRC) and the Ghaf contributors
+# SPDX-License-Identifier: Apache-2.0
+{
+  runCommand,
+  imageTools,
+  cryptsetupOffline,
+  jq,
+  lvm2,
+  zstd,
+}:
+{
+  plan =
+    runCommand "ghaf-initialize-verity-lvm-plan"
+      {
+        nativeBuildInputs = [
+          imageTools.lvm
+          jq
+          lvm2
+          zstd
+        ];
+      }
+      ''
+        mkdir payload
+        printf 'root\n' > root.raw
+        printf 'verity\n' > verity.raw
+        zstd root.raw -o payload/ghaf_root_1_deadbeef.raw.zst
+        zstd verity.raw -o payload/ghaf_verity_1_deadbeef.raw.zst
+        cat > payload/ghaf_1_deadbeef.manifest <<'EOF'
+        {
+          "manifest_version": 2,
+          "root": { "file": "ghaf_root_1_deadbeef.raw.zst", "unpacked_size": 5 },
+          "verity": { "file": "ghaf_verity_1_deadbeef.raw.zst", "unpacked_size": 7 }
+        }
+        EOF
+        ln -s payload payload-link
+
+        ghaf-initialize-verity-lvm \
+          --update-dir payload-link --root-size-mib 1 --verity-size-mib 1 \
+          --create-inactive-slots --swap-size-mib 2 --persist-size-mib 3 \
+          --print-plan > plan.json
+        test "$(jq -r .lv_suffix plan.json)" = 1_deadbeef
+        test "$(jq -r .minimum_pv_size_mib plan.json)" = 73
+        ! ghaf-initialize-verity-lvm \
+          --update-dir payload --root-size-mib 1 --verity-size-mib 1 \
+          --device /dev/null 2> device.err
+        grep -q '^Usage:' device.err
+
+        truncate -s 96M first.img
+        truncate -s 96M second.img
+        for image in first.img second.img; do
+          ghaf-initialize-verity-lvm \
+            --update-dir payload --root-size-mib 1 --verity-size-mib 1 \
+            --vg-name ghaf_test --image "$image"
+        done
+        mkdir -p stock-lvm/archive stock-lvm/backup
+        export LVM_SYSTEM_DIR=$PWD/stock-lvm
+        pvck --driverloaded n --nolocking --config 'global { locking_type = 0 }' \
+          --dump metadata first.img > first-metadata.txt
+        pvck --driverloaded n --nolocking --config 'global { locking_type = 0 }' \
+          --dump metadata second.img > second-metadata.txt
+        cmp first-metadata.txt second-metadata.txt
+        cmp first.img second.img
+        grep 'ghaf_test {' first-metadata.txt
+        grep 'root_1_deadbeef {' first-metadata.txt
+        grep 'verity_1_deadbeef {' first-metadata.txt
+
+        # Exercise the shared bounded writer with locally formatted files too.
+        truncate -s 256M complete.img
+        ghaf-initialize-verity-lvm \
+          --update-dir payload --root-size-mib 1 --verity-size-mib 1 \
+          --create-inactive-slots --swap-size-mib 4 --persist-size-mib 128 \
+          --vg-name ghaf_complete --image complete.img
+        pvck --driverloaded n --nolocking --config 'global { locking_type = 0 }' \
+          --dump metadata complete.img > complete-metadata.txt
+        for name in root_empty verity_empty swap persist; do
+          grep "$name {" complete-metadata.txt
+        done
+
+        truncate -s $((1024 * 1024 + 1)) overlong-root.raw
+        zstd --force overlong-root.raw -o payload/ghaf_root_1_deadbeef.raw.zst
+        truncate -s 96M overlong.img
+        ! ghaf-initialize-verity-lvm \
+          --update-dir payload --root-size-mib 1 --verity-size-mib 1 \
+          --vg-name ghaf_test --image overlong.img 2> overlong.err
+        grep -q 'Payload for root_1_deadbeef exceeds its 1 MiB logical volume' \
+          overlong.err
+        test "$(stat -c%s overlong.img)" -eq $((96 * 1024 * 1024))
+
+        # A decoder failure must be propagated, not hidden by its stdout pipe.
+        printf 'not a zstd stream' > payload/ghaf_root_1_deadbeef.raw.zst
+        truncate -s 96M corrupt.img
+        ! ghaf-initialize-verity-lvm \
+          --update-dir payload --root-size-mib 1 --verity-size-mib 1 \
+          --vg-name ghaf_test --image corrupt.img 2> corrupt.err
+        grep -q 'failed to decompress' corrupt.err
+        touch "$out"
+      '';
+  roundtrip =
+    runCommand "ghaf-wrap-luks-image-roundtrip"
+      {
+        nativeBuildInputs = [
+          imageTools.luks
+          cryptsetupOffline
+        ];
+      }
+      ''
+        # Exercise QEMU option escaping and the x86 empty bootstrap key too.
+        mkdir 'with,comma'
+        cd 'with,comma'
+        for passphrase in test-passphrase ""; do
+        truncate -s 64M plaintext.img
+        printf 'ghaf-luks-start' | dd of=plaintext.img conv=notrunc status=none
+        printf 'ghaf-luks-end' | dd of=plaintext.img bs=1 seek=$((64 * 1024 * 1024 - 13)) \
+          conv=notrunc status=none
+        printf '%s' "$passphrase" > key
+
+        ghaf-wrap-luks-image \
+          --image plaintext.img \
+          --uuid 01234567-89ab-4cde-8fab-0123456789ab \
+          --key-file key \
+          --header-size-mib 32
+        test "$(stat -c%s plaintext.img)" -eq $((96 * 1024 * 1024))
+        test "$(du -B1 plaintext.img | cut -f1)" -lt $((40 * 1024 * 1024))
+        printf 'wrong-passphrase' > wrong-key
+        ! cryptsetup --disable-locks open --test-passphrase \
+          --key-file wrong-key plaintext.img
+
+        mkdir -p /tmp/cryptsetup
+        cryptsetup reencrypt --decrypt --force-offline-reencrypt \
+          --batch-mode --key-file key \
+          --header exported-header plaintext.img
+        truncate -s 64M plaintext.img
+        test "$(dd if=plaintext.img bs=1 count=15 status=none)" = ghaf-luks-start
+        test "$(dd if=plaintext.img bs=1 skip=$((64 * 1024 * 1024 - 13)) \
+          count=13 status=none)" = ghaf-luks-end
+        # Decrypted sparse holes are unspecified, so start each case fresh.
+        rm plaintext.img exported-header
+        done
+        touch "$out"
+      '';
+}

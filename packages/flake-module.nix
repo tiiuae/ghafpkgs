@@ -37,6 +37,7 @@ let
     // nvidiaQemuPackages
     // rustPackages
     // cppPackages
+    // import ./storage { inherit callPackage; }
     // utilityPackages;
 in
 {
