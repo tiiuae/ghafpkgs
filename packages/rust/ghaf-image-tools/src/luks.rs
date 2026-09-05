@@ -32,6 +32,7 @@ impl Options {
             "LUKS2 conversion needs at least 16 MiB of header space"
         );
         let image = image::regular_file(&self.image)?;
+        let extents = image::data_extents(&File::open(&image)?)?;
         let key_file = image::regular_file(&self.key_file)?;
         let header_size = image::mib(self.header_size_mib)?;
         let size = image
@@ -65,6 +66,11 @@ impl Options {
                         "--batch-mode",
                         "--type",
                         "luks1",
+                        // This temporary passphrase has 256 random bits, not
+                        // human entropy. Avoid repeating a costly KDF for each
+                        // extent. The caller's final key uses cryptsetup defaults.
+                        "--pbkdf-force-iterations",
+                        "1000",
                         "--align-payload",
                         &(header_size / 512).to_string(),
                         "--uuid",
@@ -75,36 +81,45 @@ impl Options {
                     .arg(temporary),
             )?;
 
-            // qemu-img copies only allocated data. Sparse ciphertext holes
-            // decrypt to unspecified bytes; filesystems initialize their metadata.
-            process::run(
-                Command::new("qemu-img")
-                    .arg("convert")
-                    .args([
-                        "--object",
-                        &format!(
-                            "secret,id=construction,file={}",
-                            option_value(
-                                construction_key
-                                    .path()
-                                    .to_str()
-                                    .context("key path must be UTF-8")?
-                            )
-                        ),
-                        "--no-create",
-                        "--target-is-zero",
-                        "--source-format",
-                        "raw",
-                        "--target-image-opts",
-                        "--sparse-size",
-                        "4k",
-                    ])
-                    .arg(&image)
-                    .arg(format!(
-                        "driver=luks,key-secret=construction,file.driver=file,file.filename={}",
-                        option_value(temporary.to_str().context("image path must be UTF-8")?)
-                    )),
-            )?;
+            // Raw slices ABOVE the LUKS driver preserve absolute crypto sector
+            // numbers. Copy all bytes within each data extent, including zeroes;
+            // qemu-img's content-based sparse detection must not skip them.
+            let secret = format!(
+                "secret,id=construction,file={}",
+                option_value(
+                    construction_key
+                        .path()
+                        .to_str()
+                        .context("key path must be UTF-8")?
+                )
+            );
+            for extent in &extents {
+                let window = format!(
+                    "driver=raw,offset={},size={}",
+                    extent.start,
+                    extent.end - extent.start
+                );
+                let source = format!(
+                    "{window},file.driver=file,file.filename={}",
+                    option_value(image.to_str().context("image path must be UTF-8")?)
+                );
+                let target = format!(
+                    "{window},file.driver=luks,file.key-secret=construction,file.file.driver=file,file.file.filename={}",
+                    option_value(temporary.to_str().context("image path must be UTF-8")?)
+                );
+                process::run(Command::new("qemu-img").args([
+                    "convert",
+                    "--object",
+                    &secret,
+                    "--no-create",
+                    "--image-opts",
+                    "--target-image-opts",
+                    "--sparse-size",
+                    "0",
+                    &source,
+                    &target,
+                ]))?;
+            }
 
             process::run(crypt("convert").args(["--type", "luks2"]).arg(temporary))?;
             process::run(

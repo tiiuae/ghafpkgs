@@ -9,11 +9,6 @@ command names and arguments. Ghaf retains NixOS options, trust configuration,
 and platform layout policy; this package owns image construction mechanics.
 Platform orchestration and runtime update tools are not migrated in this slice.
 
-**Known blocker:** the inherited sparse LUKS conversion also skips allocated
-zero-filled data. A deliberately written 4 KiB zero block does not round-trip.
-The marker-only integration test below does not catch this. Do not treat the
-LUKS builder as ready for filesystem images until zero preservation is fixed.
-
 ## Commands
 
 - `ghaf-initialize-verity-lvm --update-dir DIR --image FILE --root-size-mib N
@@ -49,7 +44,9 @@ For development, `cargo test --locked` and `cargo clippy --locked --all-targets
 -- -D warnings` exercise the Rust library. Tests cover bounded writes, malformed
 extent reports, checked arithmetic, producer failures, cleanup, and publication.
 Nix integration tests additionally check stock-LVM-readable deterministic
-metadata, optional filesystems, overlong streams, and LUKS decryption.
+metadata, optional filesystems, overlong streams, and LUKS decryption, including
+written zero blocks, mixed sectors, distant extents, sparse output, and final
+key-slot KDF settings.
 
 ## Correctness boundaries
 
@@ -65,10 +62,18 @@ metadata, optional filesystems, overlong streams, and LUKS decryption.
   atomic replacement. Errors before replacement preserve the original. Forced
   termination may leave temporary files; an error syncing the parent directory
   after replacement cannot undo publication.
-- Sparse LUKS ciphertext preserves nonzero input data; skipped zero regions
-  do **not** decrypt to guaranteed zeroes, even when explicitly allocated in the
-  source. This needs extent-aware copying or dense encryption; it is not merely
-  an unused-space difference and can affect filesystem correctness.
+- LUKS copying uses `SEEK_DATA`/`SEEK_HOLE`, not zero-byte detection. QEMU copies
+  each data extent with sparsification disabled through raw slices above the
+  LUKS driver, preserving written zeroes and absolute crypto sector offsets.
+  Only filesystem-reported holes are skipped. The caller must ensure those
+  holes are unused space: they do **not** decrypt to guaranteed zeroes. Do not
+  mutate the source while wrapping it or sparsify meaningful zero data first.
+  Unsupported extent queries fail; filesystems reporting the whole file as data
+  remain correct but produce dense output. Image sizes must be sector-aligned.
+- The construction passphrase has 256 random bits and uses a cheap temporary
+  PBKDF2 slot to avoid an expensive KDF for every extent. That slot is removed
+  before publication; the caller's retained key uses cryptsetup's normal KDF
+  defaults. The integration test verifies the final slot, not just unlock.
 - These are offline image-building tools, not runtime block-device managers.
   Native dependency upgrades require rerunning the integration tests. Passing
   them does not establish boot, rollback, power-loss, or hardware acceptance.

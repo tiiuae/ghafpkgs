@@ -101,6 +101,7 @@
         nativeBuildInputs = [
           imageTools.luks
           cryptsetupOffline
+          jq
         ];
       }
       ''
@@ -109,6 +110,13 @@
         cd 'with,comma'
         for passphrase in test-passphrase ""; do
         truncate -s 64M plaintext.img
+        # Written zero data is not a hole. Also cover mixed zero/nonzero sectors
+        # and a distant extent to check that encryption uses absolute offsets.
+        dd if=/dev/zero of=plaintext.img bs=4096 seek=4 count=1 conv=notrunc status=none
+        dd if=/dev/zero of=plaintext.img bs=4096 seek=8192 count=2 conv=notrunc status=none
+        printf 'middle' | dd of=plaintext.img bs=1 seek=$((32 * 1024 * 1024 + 512)) \
+          conv=notrunc status=none
+        dd if=plaintext.img of=expected-middle bs=4096 skip=8192 count=2 status=none
         printf 'ghaf-luks-start' | dd of=plaintext.img conv=notrunc status=none
         printf 'ghaf-luks-end' | dd of=plaintext.img bs=1 seek=$((64 * 1024 * 1024 - 13)) \
           conv=notrunc status=none
@@ -121,6 +129,12 @@
           --header-size-mib 32
         test "$(stat -c%s plaintext.img)" -eq $((96 * 1024 * 1024))
         test "$(du -B1 plaintext.img | cut -f1)" -lt $((40 * 1024 * 1024))
+        # The cheap construction slot is gone; the retained key uses the
+        # normal LUKS2 KDF, not its temporary 1000-iteration PBKDF2 setting.
+        cryptsetup --disable-locks luksDump --dump-json-metadata plaintext.img | \
+          jq -e '(.keyslots | length) == 1 and
+            ([.keyslots[].kdf | .type == "argon2id" or
+              (.type == "pbkdf2" and .iterations > 1000)] | all)'
         printf 'wrong-passphrase' > wrong-key
         ! cryptsetup --disable-locks open --test-passphrase \
           --key-file wrong-key plaintext.img
@@ -130,6 +144,8 @@
           --batch-mode --key-file key \
           --header exported-header plaintext.img
         truncate -s 64M plaintext.img
+        dd if=plaintext.img bs=4096 skip=4 count=1 status=none | cmp -n 4096 - /dev/zero
+        dd if=plaintext.img bs=4096 skip=8192 count=2 status=none | cmp - expected-middle
         test "$(dd if=plaintext.img bs=1 count=15 status=none)" = ghaf-luks-start
         test "$(dd if=plaintext.img bs=1 skip=$((64 * 1024 * 1024 - 13)) \
           count=13 status=none)" = ghaf-luks-end
