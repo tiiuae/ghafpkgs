@@ -1,5 +1,7 @@
 # SPDX-FileCopyrightText: 2026 TII (SSRC) and the Ghaf contributors
-# SPDX-License-Identifier: LGPL-2.1-or-later
+# SPDX-License-Identifier: Apache-2.0
+# This license covers Ghaf-authored changes only. Upstream context and the
+# patched LVM2 project retain their upstream licenses.
 
 diff --git a/lib/commands/toolcontext.c b/lib/commands/toolcontext.c
 index 62e829a..41f2d7c 100644

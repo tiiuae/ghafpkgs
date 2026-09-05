@@ -1,5 +1,7 @@
 # SPDX-FileCopyrightText: 2026 TII (SSRC) and the Ghaf contributors
-# SPDX-License-Identifier: GPL-2.0-or-later
+# SPDX-License-Identifier: Apache-2.0
+# This license covers Ghaf-authored changes only. Upstream context and the
+# patched cryptsetup project retain their upstream licenses.
 
 diff --git a/lib/luks2/luks2_luks1_convert.c b/lib/luks2/luks2_luks1_convert.c
 index 79a1420..172676f 100644
