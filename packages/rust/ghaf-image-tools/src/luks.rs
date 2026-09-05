@@ -35,9 +35,11 @@ impl Options {
             .len()
             .checked_add(HEADER_SIZE)
             .context("LUKS image size overflow")?;
-        let cryptsetup = std::env::var_os("GHAF_CRYPTSETUP_OFFLINE")
-            .context("GHAF_CRYPTSETUP_OFFLINE is not configured")?;
-
+        let mut volume_key = tempfile::NamedTempFile::new()?;
+        let mut random = [0; 64];
+        File::open("/dev/urandom")?.read_exact(&mut random)?;
+        volume_key.write_all(&random)?;
+        volume_key.flush()?;
         let mut construction_key = tempfile::NamedTempFile::new()?;
         let mut random = [0; 32];
         File::open("/dev/urandom")?.read_exact(&mut random)?;
@@ -49,29 +51,37 @@ impl Options {
         image::replace_image(&image, |temporary| {
             File::options().write(true).open(temporary)?.set_len(size)?;
             let crypt = |action: &str| {
-                let mut command = Command::new(&cryptsetup);
+                let mut command = Command::new("cryptsetup");
                 // Every header operation below targets our private temporary
                 // file. No other writer can access it; no shared /tmp lock path.
                 command.args(["--disable-locks", action]);
                 command
             };
-            process::run(
-                crypt("luksFormat")
+            let format = |kind: &str, key: &Path| {
+                let mut command = crypt("luksFormat");
+                command
                     .args([
                         "--batch-mode",
-                        "--type=luks1",
-                        // This temporary passphrase has 256 random bits, not
-                        // human entropy. Avoid repeating a costly KDF for each
-                        // extent. The caller's final key uses cryptsetup defaults.
-                        "--pbkdf-force-iterations=1000",
-                        "--align-payload",
+                        "--type",
+                        kind,
+                        "--cipher=aes-xts-plain64",
+                        "--key-size=512",
+                        "--offset",
                         &(HEADER_SIZE / 512).to_string(),
                         "--uuid",
                         &self.uuid,
-                        "--key-file",
+                        "--volume-key-file",
                     ])
-                    .arg(construction_key.path())
-                    .arg(temporary),
+                    .arg(volume_key.path())
+                    .arg("--key-file")
+                    .arg(key)
+                    .arg(temporary);
+                command
+            };
+            // The random construction passphrase permits a cheap KDF for each
+            // QEMU extent. The final header uses the caller's key and default KDF.
+            process::run(
+                format("luks1", construction_key.path()).arg("--pbkdf-force-iterations=1000"),
             )?;
 
             // Raw slices ABOVE the LUKS driver preserve absolute crypto sector
@@ -108,20 +118,9 @@ impl Options {
                 ]))?;
             }
 
-            process::run(crypt("convert").args(["--type", "luks2"]).arg(temporary))?;
-            process::run(
-                crypt("luksAddKey")
-                    .args(["--batch-mode", "--key-file"])
-                    .arg(construction_key.path())
-                    .arg(temporary)
-                    .arg(&key_file),
-            )?;
-            process::run(
-                crypt("luksRemoveKey")
-                    .args(["--batch-mode", "--key-file"])
-                    .arg(construction_key.path())
-                    .arg(temporary),
-            )?;
+            // Replace only the header, retaining the volume key and payload
+            // parameters. Unlike convert, luksFormat needs no device-mapper check.
+            process::run(format("luks2", &key_file).arg("--sector-size=512"))?;
             process::run(crypt("isLuks").args(["--type", "luks2"]).arg(temporary))?;
             ensure!(
                 process::output(crypt("luksUUID").arg(temporary))?.trim()

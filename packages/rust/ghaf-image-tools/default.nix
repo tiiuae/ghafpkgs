@@ -10,10 +10,10 @@
   util-linux,
   zstd,
   qemu-utils,
+  cryptsetup,
 }:
 let
   craneLib = crane.mkLib pkgs;
-  cryptsetupOffline = callPackage ../../storage/cryptsetup-offline { };
   commonArgs = {
     src = craneLib.cleanCargoSource ./.;
     strictDeps = true;
@@ -45,14 +45,18 @@ let
             ]
           }"
         wrapProgram "$luks/bin/ghaf-wrap-luks-image" \
-          --set GHAF_CRYPTSETUP_OFFLINE "${cryptsetupOffline}/bin/cryptsetup" \
-          --prefix PATH : "${lib.makeBinPath [ qemu-utils ]}"
+          --prefix PATH : "${
+            lib.makeBinPath [
+              qemu-utils
+              cryptsetup
+            ]
+          }"
         ln -s "$lvm/bin/ghaf-initialize-verity-lvm" "$out/bin/"
         ln -s "$luks/bin/ghaf-wrap-luks-image" "$out/bin/"
       '';
       passthru.tests =
         callPackage ./tests.nix {
-          inherit imageTools cryptsetupOffline;
+          inherit imageTools;
         }
         // {
           clippy = craneLib.cargoClippy (

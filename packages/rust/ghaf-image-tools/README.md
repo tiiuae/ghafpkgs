@@ -7,7 +7,7 @@ Shared Rust LVM/LUKS builders. LVM takes `--manifest PATH` and resolves payloads
 beside it; the plan JSON is unchanged. The VG is `pool`, and the LUKS header
 reservation is 32 MiB. Run either command with `--help`. Individual outputs keep QEMU out
 of LVM-only closures; `ghaf-image-tools` contains both. LVM metadata is written
-directly in Rust; only cryptsetup needs an offline patch in `packages/storage`.
+directly in Rust; encryption uses unpatched QEMU and cryptsetup.
 Ghaf owns trust and platform policy, not another builder.
 
 ```sh
@@ -40,8 +40,10 @@ not implemented. Unit tests can also run with `cargo test --locked`.
 - LUKS publishes by atomic rename after checking type, UUID, offset and key.
   Earlier errors preserve the original; forced termination can leave temporary
   files, and a directory-sync error after rename cannot undo publication.
-  The 256-bit random construction key uses a cheap temporary KDF; that slot is
-  removed, leaving the caller's key with normal cryptsetup KDF defaults.
+  A temporary LUKS1 header lets QEMU encrypt the data. Stock cryptsetup then
+  recreates the header as LUKS2 with the same random volume key, cipher, sector
+  size and offset, but only the caller's passphrase and default KDF. Temporary
+  key files are private and removed on normal exit.
 - Tests cover bounded writes, subprocess cleanup, deterministic metadata,
   optional filesystems, zero-data preservation, sparse output and final keys.
   Rerun them after native dependency upgrades.
