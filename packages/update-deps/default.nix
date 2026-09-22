@@ -73,6 +73,8 @@ writeShellApplication {
           echo "Usage: update-deps [OPTIONS]"
           echo ""
           echo "Automatically update dependencies for all packages in the repository."
+          echo "Run it after bumping the flake inputs (nix flake update): Rust packages"
+          echo "using libcosmic are pinned to the libcosmic of nixpkgs' cosmic-settings."
           echo ""
           echo "OPTIONS:"
           echo "  -u, --upgrade    Upgrade source dependencies (not just lock files)"
@@ -150,6 +152,11 @@ writeShellApplication {
           log "$YELLOW" "Running cargo update..."
           cargo update
 
+          # cargo update moves libcosmic to its latest master; pin it back
+          if grep -q 'name = "libcosmic"' Cargo.lock; then
+            pin_libcosmic
+          fi
+
           # Refresh crane outputHashes in default.nix if it has them
           if [[ -f "default.nix" ]]; then
             update_rust_output_hashes "$dir"
@@ -161,6 +168,26 @@ writeShellApplication {
           return 1
         fi
       )
+    }
+
+    # COSMIC applets must use the libcosmic of the COSMIC release they run
+    # under, or they read theme/config keys that the desktop does not provide.
+    # Revisions of nixpkgs' cosmic-settings, set in main().
+    LIBCOSMIC_REV=""
+    COSMIC_PANEL_REV=""
+
+    # Look up a crate's git revision in a Cargo.lock
+    lock_rev() {
+      grep -A2 "^name = \"$2\"$" "$1" | grep -oP 'source = "git\+[^#"]*#\K[0-9a-f]+' | head -1
+    }
+
+    # Pin libcosmic (and cosmic-panel, if used) in the current Rust package
+    pin_libcosmic() {
+      log "$YELLOW" "Pinning libcosmic to ''${LIBCOSMIC_REV:0:7} (nixpkgs cosmic-settings)..."
+      cargo update -p libcosmic --precise "$LIBCOSMIC_REV"
+      if grep -q 'name = "cosmic-panel-config"' Cargo.lock; then
+        cargo update -p cosmic-panel-config --precise "$COSMIC_PANEL_REV"
+      fi
     }
 
     # Function to refresh crane outputHashes in a Rust package's default.nix
@@ -204,8 +231,10 @@ writeShellApplication {
 
         log "$YELLOW" "Prefetching $url at ''${rev:0:7}..."
 
-        # Same fetch options as the fetchgit derivation crane builds
-        hash=$(nix-prefetch-git --quiet --fetch-submodules --fetch-lfs \
+        # Same fetch options as the fetchgit derivation crane builds. Run outside
+        # the repository: --fetch-lfs runs `git lfs install`, which fails on the
+        # repository's pre-commit hooks.
+        hash=$(cd / && nix-prefetch-git --quiet --fetch-submodules --fetch-lfs \
           --url "$url" --rev "$rev" 2>/dev/null \
           | grep -oP '"hash": "\K[^"]+' || true)
 
@@ -506,6 +535,14 @@ writeShellApplication {
       fi
 
       log "$GREEN" "Repository root: $repo_root"
+
+      if grep -rqs --include=Cargo.lock 'name = "libcosmic"' "$repo_root/packages"; then
+        local cosmic_src
+        cosmic_src=$(nix build --no-link --print-out-paths --inputs-from "$repo_root" nixpkgs#cosmic-settings.src)
+        LIBCOSMIC_REV=$(lock_rev "$cosmic_src/Cargo.lock" libcosmic)
+        COSMIC_PANEL_REV=$(lock_rev "$cosmic_src/Cargo.lock" cosmic-panel-config)
+        log "$GREEN" "COSMIC applets will be pinned to nixpkgs cosmic-settings: libcosmic ''${LIBCOSMIC_REV:0:7}, cosmic-panel ''${COSMIC_PANEL_REV:0:7}"
+      fi
 
       # Look for packages directory
       local packages_dir="$repo_root/packages"

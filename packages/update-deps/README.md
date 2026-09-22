@@ -68,6 +68,17 @@ with `builtins.fetchGit { allRefs = true; }` during evaluation, which mirrors ev
 ref the remote advertises -- GitHub serves `refs/pull/*` -- and prints the whole
 fetch to the eval log. A package with no `outputHashes` block is left alone.
 
+### COSMIC Applets (libcosmic)
+A COSMIC applet has to use the same libcosmic as the COSMIC desktop it runs on,
+otherwise it reads theme and config keys the desktop does not provide. For every
+Rust package whose `Cargo.lock` contains `libcosmic`, the plain `cargo update` is
+therefore followed by pinning `libcosmic` (and `cosmic-panel-config`, if present)
+to the revisions in the `Cargo.lock` of `cosmic-settings` from this flake's nixpkgs,
+which also ships the default theme and config the applets read.
+
+update-deps does not bump flake inputs, so run it **after** `nix flake update`
+to pick up a new COSMIC release.
+
 ### Safe Operation
 - Only updates lock files, doesn't modify source dependencies
 - Provides clear output of what's being updated
