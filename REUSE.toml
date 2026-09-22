@@ -36,6 +36,7 @@ path = [
   "packages/rust/ghaf-nw-packet-forwarder/Cargo.lock",
   "packages/rust/ghaf-nw-packet-forwarder/flake.lock",
   "packages/rust/ghaf-usb-passthrough-applet/Cargo.lock",
+  "packages/rust/ghaf-usb-passthrough-applet/data/ae.tii.CosmicAppletUsbPassthrough.desktop",
   "packages/update-deps/README.md",
   "SECURITY.md"
 ]

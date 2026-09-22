@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Exec=cosmic-applet-usb-passthrough
+Categories=COSMIC;
+Keywords=COSMIC;Applet;USB;Passthrough;
+Name=USB Passthrough
+Comment=Attach USB devices to virtual machines
+Icon=drive-harddisk-usb-symbolic
+StartupNotify=true
+Terminal=false
+NoDisplay=true
+X-CosmicApplet=true
+X-CosmicShrinkable=true
+X-CosmicHoverPopup=Auto
+X-OverflowPriority=10
