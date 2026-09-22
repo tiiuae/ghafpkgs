@@ -4,13 +4,24 @@
  */
 //! Client for the vhotplug USB passthrough API (newline-delimited JSON over vsock).
 
+use std::io;
+use std::time::Duration;
+
+use cosmic::iced::futures::Stream;
+use cosmic::iced::futures::channel::mpsc;
 use serde::Deserialize;
+use serde_json::{Value, json};
+use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
+use tokio_vsock::{VsockAddr, VsockStream};
 
 pub const HOST_CID: u32 = 2;
 pub const DEFAULT_PORT: u32 = 2000;
 
 const UNKNOWN_DEVICE: &str = "<unknown device>";
 const NOTIFICATION_NAME_LEN: usize = 20;
+const RECONNECT_DELAY: Duration = Duration::from_secs(3);
+const LIST_ATTEMPTS: u32 = 5;
+const LIST_RETRY_DELAY: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
@@ -113,9 +124,127 @@ pub fn pending_device(ev: &Event) -> Option<(String, String)> {
     Some((dev.device_node.clone()?, name))
 }
 
+async fn connect(port: u32) -> io::Result<BufReader<VsockStream>> {
+    let stream = VsockStream::connect(VsockAddr::new(HOST_CID, port)).await?;
+    Ok(BufReader::new(stream))
+}
+
+async fn read_line<R: AsyncBufRead + Unpin>(reader: &mut R) -> io::Result<Option<String>> {
+    let mut line = String::new();
+    Ok((reader.read_line(&mut line).await? > 0).then_some(line))
+}
+
+/// Sends one JSON message and reads one JSON reply line.
+async fn request<S>(stream: &mut BufReader<S>, msg: &Value) -> io::Result<Response>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
+    stream.write_all(format!("{msg}\n").as_bytes()).await?;
+    let line = read_line(stream)
+        .await?
+        .ok_or_else(|| io::Error::new(io::ErrorKind::UnexpectedEof, "connection closed"))?;
+    serde_json::from_str(&line).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+}
+
+async fn call(port: u32, msg: &Value) -> io::Result<Response> {
+    request(&mut connect(port).await?, msg).await
+}
+
+pub async fn list_devices(port: u32) -> Result<Vec<Entry>, String> {
+    let resp = call(port, &json!({"action": "usb_list"}))
+        .await
+        .map_err(|e| format!("Device fetch failed: {e}"))?;
+    if resp.result.as_deref() != Some("ok") {
+        let error = resp.error.unwrap_or_else(|| "unknown error".into());
+        return Err(format!("Device fetch failed: {error}"));
+    }
+    Ok(build_entries(resp.usb_devices.unwrap_or_default()))
+}
+
+pub async fn list_devices_retry(port: u32) -> Result<Vec<Entry>, String> {
+    let mut attempt = 1;
+    loop {
+        match list_devices(port).await {
+            Err(e) if attempt < LIST_ATTEMPTS => {
+                tracing::error!("{e}, trying again ({attempt})");
+                attempt += 1;
+                tokio::time::sleep(LIST_RETRY_DELAY).await;
+            }
+            result => return result,
+        }
+    }
+}
+
+/// Passes `device_node` through to `vm`, or detaches it when `vm` is "None".
+pub async fn attach(port: u32, device_node: String, vm: String) -> Result<(), String> {
+    let detach = vm.eq_ignore_ascii_case("none");
+    let msg = if detach {
+        json!({"action": "usb_detach", "device_node": device_node})
+    } else {
+        json!({"action": "usb_attach", "device_node": device_node, "vm": vm})
+    };
+    let resp = call(port, &msg).await.map_err(|e| e.to_string())?;
+    if detach {
+        Ok(())
+    } else {
+        attach_outcome(&resp)
+    }
+}
+
+/// Calls `on_event` for every JSON line until the connection closes, which
+/// is reported as an error so the caller reconnects.
+async fn read_events<R: AsyncBufRead + Unpin>(
+    reader: &mut R,
+    mut on_event: impl FnMut(Event),
+) -> io::Result<()> {
+    while let Some(line) = read_line(reader).await? {
+        match serde_json::from_str::<Event>(&line) {
+            Ok(event) => on_event(event),
+            Err(e) => tracing::error!("Invalid JSON in notification ({e}): {}", line.trim()),
+        }
+    }
+    Err(io::Error::new(
+        io::ErrorKind::UnexpectedEof,
+        "notification connection closed by remote",
+    ))
+}
+
+async fn listen(port: u32, output: &mut mpsc::Sender<Event>) -> io::Result<()> {
+    let mut stream = connect(port).await?;
+    let resp = request(&mut stream, &json!({"action": "enable_notifications"})).await?;
+    if resp.result.as_deref() != Some("ok") {
+        tracing::error!("Failed to enable notifications: {resp:?}");
+    }
+    tracing::info!("Listening for vhotplug notifications on port {port}");
+    read_events(&mut stream, |event| {
+        if let Err(e) = output.try_send(event) {
+            tracing::warn!("Dropping notification: {e}");
+        }
+    })
+    .await
+}
+
+/// Endless stream of vhotplug notifications; reconnects after failures.
+pub fn events(port: &u32) -> impl Stream<Item = Event> + use<> {
+    let port = *port;
+    cosmic::iced::stream::channel(16, async move |mut output: mpsc::Sender<Event>| {
+        loop {
+            if let Err(e) = listen(port, &mut output).await {
+                tracing::warn!(
+                    "Notification listener error: {e}; reconnecting in {}s",
+                    RECONNECT_DELAY.as_secs()
+                );
+            }
+            tokio::time::sleep(RECONNECT_DELAY).await;
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+    use tokio::io::{AsyncWriteExt, BufReader, duplex};
 
     fn device(
         node: &str,
@@ -263,5 +392,59 @@ mod tests {
         .unwrap();
         assert_eq!(ev.event, "usb_select_vm");
         assert_eq!(ev.usb_device.unwrap().device_node.as_deref(), Some("/x"));
+    }
+
+    #[tokio::test]
+    async fn request_sends_one_line_and_parses_reply() {
+        let (client, server) = duplex(1024);
+        let server = tokio::spawn(async move {
+            let mut server = BufReader::new(server);
+            let line = read_line(&mut server).await.unwrap().unwrap();
+            server
+                .write_all(b"{\"result\":\"ok\",\"usb_devices\":[]}\n")
+                .await
+                .unwrap();
+            line
+        });
+
+        let resp = request(&mut BufReader::new(client), &json!({"action": "usb_list"}))
+            .await
+            .unwrap();
+
+        assert_eq!(resp.result.as_deref(), Some("ok"));
+        assert_eq!(server.await.unwrap(), "{\"action\":\"usb_list\"}\n");
+    }
+
+    #[tokio::test]
+    async fn request_fails_when_connection_closes_without_reply() {
+        let (client, server) = duplex(1024);
+        let server = tokio::spawn(async move {
+            let mut server = BufReader::new(server);
+            read_line(&mut server).await.unwrap();
+            // dropped here: no reply
+        });
+
+        let result = request(&mut BufReader::new(client), &json!({"action": "usb_list"})).await;
+        server.await.unwrap();
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn read_events_yields_valid_lines_until_eof() {
+        let (mut tx, rx) = duplex(1024);
+        tx.write_all(b"{\"event\":\"usb_connected\"}\nnot json\n{\"event\":\"usb_select_vm\"}\n")
+            .await
+            .unwrap();
+        drop(tx);
+
+        let mut got = Vec::new();
+        let result = read_events(&mut BufReader::new(rx), |e| got.push(e.event)).await;
+
+        assert!(
+            result.is_err(),
+            "EOF must be reported so the caller reconnects"
+        );
+        assert_eq!(got, ["usb_connected", "usb_select_vm"]);
     }
 }
