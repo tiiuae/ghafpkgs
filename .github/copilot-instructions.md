@@ -244,7 +244,7 @@ This provides:
 **Available Packages** (see `nix flake show` for full list):
 - Art: `ghaf-artwork`, `ghaf-theme`, `ghaf-wallpapers`
 - Python: `ghaf-usb-applet`, `gps-websock`, `ldap-query`, `vinotify`
-- Rust: `ghaf-kill-switch-app`, `ghaf-mem-manager`, `ghaf-nw-packet-forwarder`
+- Rust: `ghaf-kill-switch`, `ghaf-mem-manager`, `ghaf-nw-packet-forwarder`
 - Go: `swtpm-proxy-shim`
 - C++: `dbus-proxy`, `ghaf-audio-control`, `vsockproxy`
 - Tools: `update-deps`

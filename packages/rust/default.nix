@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 { callPackage, crane }:
 {
-  ghaf-kill-switch-app = callPackage ./ghaf-kill-switch-app { inherit crane; };
+  ghaf-kill-switch = callPackage ./ghaf-kill-switch { inherit crane; };
   ghaf-usb-passthrough-applet = callPackage ./ghaf-usb-passthrough-applet { inherit crane; };
   ghaf-mem-manager = callPackage ./ghaf-mem-manager { inherit crane; };
   ghaf-nw-packet-forwarder = callPackage ./ghaf-nw-packet-forwarder { inherit crane; };

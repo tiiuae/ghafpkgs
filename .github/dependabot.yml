@@ -35,7 +35,7 @@ updates:
     schedule:
       interval: weekly
   - package-ecosystem: cargo
-    directory: /packages/rust/ghaf-kill-switch-app
+    directory: /packages/rust/ghaf-kill-switch
     schedule:
       interval: weekly
     ignore:

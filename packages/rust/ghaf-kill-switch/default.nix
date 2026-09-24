@@ -8,13 +8,6 @@
 let
   craneLib = crane.mkLib pkgs;
 
-  # libraries that may be dlopen()'d at runtime by winit/iced/wgpu, etc.
-  dlopenLibraries = with pkgs; [
-    libxkbcommon # input handling
-    wayland # wayland client lib
-    vulkan-loader # vulkan ICD loader
-  ];
-
   # Common arguments can be set here to avoid repeating them later
   # Note: changes here will rebuild all dependency crates
   commonArgs = {
@@ -22,20 +15,19 @@ let
     strictDeps = true;
 
     # Add metadata from Cargo.toml
-    pname = "ghaf-kill-switch-app";
+    pname = "ghaf-kill-switch";
     version = "0.1.0";
 
+    # Links the libraries libcosmic dlopen()s and wraps the binary with the
+    # COSMIC icon and default-theme data dirs, as nixpkgs COSMIC apps do.
     nativeBuildInputs = with pkgs; [
       pkg-config
-      makeWrapper # we will use this to wrap the installed binary
+      libcosmicAppHook
     ];
 
     # Environment variables for build
     CARGO_BUILD_INCREMENTAL = "false";
     RUST_BACKTRACE = "1";
-
-    # Include dlopen libs so they are present at build time / available to patchelf if needed
-    buildInputs = dlopenLibraries;
 
     # Pin the tree hash of every git dependency in Cargo.lock. Without these,
     # crane resolves each one with `builtins.fetchGit { allRefs = true; }` at
@@ -89,7 +81,7 @@ let
   );
 
   # Build the actual application
-  ghaf-kill-switch-app = craneLib.buildPackage (
+  ghaf-kill-switch = craneLib.buildPackage (
     commonArgs
     // {
       inherit cargoArtifacts;
@@ -98,46 +90,27 @@ let
         inherit cargoTest cargoClippy;
       };
 
-      # After install, make a wrapper that ensures LD_LIBRARY_PATH contains
-      # the library search path for our dlopen-able libraries.
       postInstall = ''
-        if [ -x "$out/bin/ghaf-kill-switch-app" ]; then
-          mv "$out/bin/ghaf-kill-switch-app" "$out/bin/cosmic-applet-killswitch"
-          wrapProgram "$out/bin/cosmic-applet-killswitch" \
-            --prefix LD_LIBRARY_PATH : ${pkgs.lib.makeLibraryPath dlopenLibraries}
-        fi
-        mkdir -p $out/share/applications
-        cat > $out/share/applications/ae.tii.CosmicAppletKillSwitch.desktop <<EOF
-        [Desktop Entry]
-        Type=Application
-        Exec=cosmic-applet-killswitch
-        Categories=COSMIC;
-        Name=Kill Switch
-        Comment=Privacy control applet for microphone, camera and WiFi
-        Icon=security-high-symbolic
-        StartupNotify=true
-        Terminal=false
-        NoDisplay=true
-        X-CosmicApplet=true
-        X-CosmicHoverPopup=Auto
-        EOF
+        install -Dm644 data/ae.tii.CosmicAppletKillSwitch.desktop -t $out/share/applications
       '';
 
       # Metadata for the final package
       meta = {
         description = "Kill Switch app for Ghaf virtualization platform";
         longDescription = ''
-          A simple graphical user interface (GUI) application built using Iced
-          library in Rust. It implements a "Kill Switch" functionality allowing
-          users to enable or disable their microphone, camera
-          and WiFi via toggler controls.
+          COSMIC panel applet that blocks the microphone, camera, Wi-Fi and
+          Bluetooth by detaching them from their VMs through the device
+          manager (vhotplug) API.
         '';
         homepage = "https://ghaf.dev";
         license = lib.licenses.asl20;
-        platforms = lib.platforms.linux;
-        mainProgram = "ghaf-kill-switch-app";
+        platforms = [
+          "x86_64-linux"
+          "aarch64-linux"
+        ];
+        mainProgram = "cosmic-applet-kill-switch";
       };
     }
   );
 in
-ghaf-kill-switch-app
+ghaf-kill-switch

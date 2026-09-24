@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Exec=cosmic-applet-kill-switch
+Categories=COSMIC;
+Keywords=COSMIC;Applet;Privacy;Killswitch;
+Name=Kill Switch
+Comment=Block microphone, camera, Wi-Fi and Bluetooth access
+Icon=security-high-symbolic
+StartupNotify=true
+Terminal=false
+NoDisplay=true
+X-CosmicApplet=true
+X-CosmicShrinkable=true
+X-CosmicHoverPopup=Auto
+X-OverflowPriority=10

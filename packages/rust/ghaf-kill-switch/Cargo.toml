@@ -2,17 +2,18 @@
 # SPDX-License-Identifier: Apache-2.0
 
 [package]
-name = "ghaf-kill-switch-app"
+name = "ghaf-kill-switch"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-serde = { version = "1.0", features = ["derive"] }
+clap = { version = "4.6.7", features = ["derive"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
 tokio = { version = "1.53.1", features = ["full"] }
-
-# Logging
-log = "0.4.34"
-systemd-journal-logger = "2.2.2"
+tokio-vsock = "0.7.2"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 
 # Pinned in Cargo.lock (not with `rev`) so that libcosmic crates pulled in by
 # cosmic-panel resolve to the same revision. Keep it at the revision used by

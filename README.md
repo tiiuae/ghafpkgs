@@ -47,7 +47,7 @@ Python applications and utilities, all modernized with `pyproject.toml` + `uv`.
 ### 🦀 Rust (`packages/rust/`)
 High-performance system utilities written in Rust.
 
-- **`ghaf-kill-switch-app`** - GUI Application for kill switch
+- **`ghaf-kill-switch`** - GUI Application for kill switch
 - **`ghaf-mem-manager`** - Memory management utilities
 - **`ghaf-nw-packet-forwarder`** - Network packet forwarding service
 
@@ -91,7 +91,7 @@ nix develop
 # Build specific packages
 nix build .#ghaf-audio-control
 nix build .#ghaf-mem-manager
-nix build .#ghaf-kill-switch-app
+nix build .#ghaf-kill-switch
 nix build .#ghaf-usb-applet
 nix build .#gps-websock
 nix build .#vsockproxy
