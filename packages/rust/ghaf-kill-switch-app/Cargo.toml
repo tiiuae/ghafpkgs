@@ -14,6 +14,10 @@ tokio = { version = "1.53.1", features = ["full"] }
 log = "0.4.34"
 systemd-journal-logger = "2.2.2"
 
+# Pinned in Cargo.lock (not with `rev`) so that libcosmic crates pulled in by
+# cosmic-panel resolve to the same revision. Keep it at the revision used by
+# the COSMIC release on the target (nixpkgs cosmic-settings Cargo.lock);
+# a newer libcosmic expects theme config keys that older COSMIC lacks.
 [dependencies.libcosmic]
 git = "https://github.com/pop-os/libcosmic"
 default-features = false

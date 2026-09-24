@@ -38,3 +38,7 @@ updates:
     directory: /packages/rust/ghaf-kill-switch-app
     schedule:
       interval: weekly
+    ignore:
+      # Pinned to nixpkgs' cosmic-settings by update-deps (see Cargo.toml)
+      - dependency-name: libcosmic
+      - dependency-name: cosmic-panel-config
