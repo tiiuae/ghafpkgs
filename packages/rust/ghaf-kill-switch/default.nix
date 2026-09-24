@@ -16,7 +16,7 @@ let
 
     # Add metadata from Cargo.toml
     pname = "ghaf-kill-switch";
-    version = "0.1.0";
+    version = "0.2.0";
 
     # Links the libraries libcosmic dlopen()s and wraps the binary with the
     # COSMIC icon and default-theme data dirs, as nixpkgs COSMIC apps do.
