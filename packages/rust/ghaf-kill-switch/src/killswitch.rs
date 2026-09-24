@@ -24,7 +24,7 @@ pub enum Device {
 impl Device {
     pub const ALL: [Self; 4] = [Self::Microphone, Self::Camera, Self::WiFi, Self::Bluetooth];
 
-    /// Short name of the device, as the `ghaf-killswitch` script calls it.
+    /// Name of the device on the `ghaf-kill-switch` command line.
     pub fn arg(self) -> &'static str {
         match self {
             Self::Microphone => "mic",
@@ -50,6 +50,10 @@ impl Device {
             Self::WiFi => "network-wireless-symbolic",
             Self::Bluetooth => "bluetooth-symbolic",
         }
+    }
+
+    pub fn from_arg(arg: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|d| d.arg() == arg)
     }
 
     fn bus(self) -> &'static str {

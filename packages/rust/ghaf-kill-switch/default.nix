@@ -98,9 +98,9 @@ let
       meta = {
         description = "Kill Switch app for Ghaf virtualization platform";
         longDescription = ''
-          COSMIC panel applet that blocks the microphone, camera, Wi-Fi and
-          Bluetooth by detaching them from their VMs through the device
-          manager (vhotplug) API.
+          ghaf-kill-switch command and COSMIC panel applet that block the
+          microphone, camera, Wi-Fi and Bluetooth by detaching them from their
+          VMs through the device manager (vhotplug) API.
         '';
         homepage = "https://ghaf.dev";
         license = lib.licenses.asl20;
@@ -108,7 +108,7 @@ let
           "x86_64-linux"
           "aarch64-linux"
         ];
-        mainProgram = "cosmic-applet-kill-switch";
+        mainProgram = "ghaf-kill-switch";
       };
     }
   );

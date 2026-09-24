@@ -5,7 +5,7 @@
 mod api;
 mod app;
 mod config;
-mod killswitch;
+pub mod killswitch;
 
 pub use api::DEFAULT_PORT;
 
