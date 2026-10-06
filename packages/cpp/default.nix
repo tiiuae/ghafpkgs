@@ -4,5 +4,6 @@
 {
   dbus-proxy = callPackage ./dbus-proxy { };
   ghaf-audio-control = callPackage ./ghaf-audio-control { };
+  led-proxy = callPackage ./led-proxy { };
   vsockproxy = callPackage ./vsockproxy { };
 }
