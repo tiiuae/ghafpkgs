@@ -1,0 +1,39 @@
+#!/bin/bash
+
+# Copyright 2026 TII (CRC) and the Ghaf contributors
+# SPDX-License-Identifier: Apache-2.0
+set -eu
+
+type="$1"
+led="$2"
+
+case "$type" in
+    mute)
+        numid="$(
+            amixer -c 0 controls |
+            sed -n "/name='Master Playback Switch'/s/^numid=\([0-9]*\).*/\1/p" |
+            head -n1
+        )"
+
+        if [ -z "$numid" ]; then
+            echo "Master Playback Switch not found" >&2
+            exit 1
+        fi
+
+        printf 'numid=%s\n' "$numid" \
+            > /sys/class/sound/ctl-led/speaker/card0/attach
+
+        printf '%s\n' audio-mute \
+            > "/sys/class/leds/$led/trigger"
+        ;;
+
+    micmute)
+        printf '%s\n' audio-micmute \
+            > "/sys/class/leds/$led/trigger"
+        ;;
+
+    *)
+        echo "Usage: $0 {mute|micmute} LED_NAME" >&2
+        exit 2
+        ;;
+esac
