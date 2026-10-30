@@ -35,8 +35,19 @@ void method_call_reply_callback(GObject* source, GAsyncResult* res, gpointer use
         g_dbus_method_invocation_return_value(context->invocation, result);
         g_variant_unref(result);
     } else {
-        Log::error() << "Method call [" << context->call_number
-                     << "] failed: " << (error ? error->message : "Unknown error");
+        /* Don't log error for unknown properties, a property may be optional */
+        if (g_error_matches(error, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_PROPERTY) ||
+            (g_error_matches(error, G_DBUS_ERROR, G_DBUS_ERROR_INVALID_ARGS) && error &&
+             error->message && strstr(error->message, "No such property") != nullptr)) {
+
+            Log::verbose() << "Method verb call [" << context->call_number
+                           << "] failed (Code: " << (error ? error->code : -1)
+                           << "): " << (error ? error->message : "Unknown error");
+        } else {
+            Log::error() << "Method error call [" << context->call_number
+                         << "] failed (Code: " << (error ? error->code : -1)
+                         << "): " << (error ? error->message : "Unknown error");
+        }
         proxy_return_error(context->invocation, error);
         g_clear_error(&error);
     }
