@@ -14,6 +14,11 @@
 #include <unordered_map>
 #include <vector>
 
+static gboolean is_sni_item_name(const char* name) {
+    return g_str_has_prefix(name, SNI_ITEM_BUS_NAME_PREFIX) ||
+           g_str_has_prefix(name, SNI_ITEM_FDO_BUS_NAME_PREFIX);
+}
+
 // Render an SVG file to a GdkTexture at the given size using librsvg + Cairo.
 static GdkTexture* load_svg_as_texture(const char* path, int size) {
     g_autoptr(GError) err = nullptr;
@@ -589,7 +594,7 @@ char* SniProxy::resolve_unique_to_wellknown(const char* unique_name) {
     int sni_name_count = 0;
     g_variant_get(result, "(as)", &iter);
     while (g_variant_iter_next(iter, "&s", &name)) {
-        if (!g_str_has_prefix(name, SNI_ITEM_BUS_NAME_PREFIX))
+        if (!is_sni_item_name(name))
             continue;
 
         sni_name_count++;
@@ -718,8 +723,7 @@ void SniProxy::on_watcher_method_call(GDBusConnection* connection, const char* s
             }
 
             if (g_strcmp0(service, sender) != 0 &&
-                !(g_str_has_prefix(service, SNI_ITEM_BUS_NAME_PREFIX) &&
-                  name_owned_by_sender(connection, service, sender))) {
+                !(is_sni_item_name(service) && name_owned_by_sender(connection, service, sender))) {
                 Log::error() << "Rejecting RegisterStatusNotifierItem from " << sender
                              << " for bus name " << service << ": not owned by the caller";
                 g_dbus_method_invocation_return_error_literal(
@@ -1778,6 +1782,12 @@ void SniProxy::discover_and_proxy_item(const char* bus_name, const char* object_
         return;
     }
 
+    // The GIVC tunnel only lets org.kde.* names through, so in renamer mode a
+    // freedesktop-named item is re-exported under a generated org.kde. name.
+    const bool generate_target_name =
+        bus_name[0] == ':' ||
+        (renamer_mode_ && g_str_has_prefix(bus_name, SNI_ITEM_FDO_BUS_NAME_PREFIX));
+
     Log::info() << "Discovering SNI item: " << bus_name;
 
     auto item_owner = std::make_unique<SniItem>();
@@ -1794,7 +1804,7 @@ void SniProxy::discover_and_proxy_item(const char* bus_name, const char* object_
 
     // Target bus name: same as source for well-known names,
     // generated for unique names (fallback when PID resolution fails)
-    if (bus_name[0] == ':') {
+    if (generate_target_name) {
         g_autofree gchar* gen_name =
             g_strdup_printf("org.kde.StatusNotifierItem.proxy_%d_%d", getpid(), ++proxy_counter_);
         item->target_bus_name = gen_name;
@@ -1831,7 +1841,7 @@ void SniProxy::discover_and_proxy_item(const char* bus_name, const char* object_
     // entirely.  The gui-vm proxy can address these apps directly by their
     // well-known name — the renamer only needs to advertise them via the
     // watcher signals.
-    if (renamer_mode_ && bus_name[0] != ':') {
+    if (renamer_mode_ && !generate_target_name) {
         item->ready = TRUE;
         const char* registered_name = item->target_bus_name.c_str();
         g_ptr_array_add(registered_items_, g_strdup(registered_name));
@@ -2009,7 +2019,7 @@ void SniProxy::on_name_owner_changed(G_GNUC_UNUSED GDBusConnection* connection,
     Log::verbose() << "[SIGNAL] NameOwnerChanged: name=" << " old_owner='"
                    << "' ";
 
-    if (!g_str_has_prefix(name, SNI_ITEM_BUS_NAME_PREFIX)) {
+    if (!is_sni_item_name(name)) {
         if (name[0] == ':' && old_owner[0] != '\0' && new_owner[0] == '\0') {
             // Unique name vanished: clean up pending registrations
             if (g_hash_table_contains(self.pending_items_, name)) {
@@ -2122,7 +2132,7 @@ void SniProxy::initial_scan() {
     const char* name;
     g_variant_get(result, "(as)", &iter);
     while (g_variant_iter_next(iter, "&s", &name)) {
-        if (g_str_has_prefix(name, SNI_ITEM_BUS_NAME_PREFIX)) {
+        if (is_sni_item_name(name)) {
             Log::info() << "Found existing SNI item: " << name;
             if (!g_hash_table_contains(sni_items_, name)) {
                 discover_and_proxy_item(name);
