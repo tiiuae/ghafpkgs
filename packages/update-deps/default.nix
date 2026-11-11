@@ -131,11 +131,20 @@ writeShellApplication {
     # Function to update Rust dependencies
     update_rust_deps() {
       local dir=$1
+      local snapshot
       log "$BLUE" "Updating Rust dependencies in $dir"
 
       (
         cd "$dir"
         if [[ -f "Cargo.toml" ]]; then
+          # Restored if the libcosmic pin fails, so a package is never left with
+          # a Cargo.toml and Cargo.lock that disagree
+          snapshot=$(mktemp -d)
+          cp Cargo.toml "$snapshot/"
+          if [[ -f "Cargo.lock" ]]; then
+            cp Cargo.lock "$snapshot/"
+          fi
+
           if [[ "$UPGRADE_SOURCE" == "true" ]]; then
             log "$PURPLE" "UPGRADE MODE: Updating source dependencies in Cargo.toml"
 
@@ -154,7 +163,17 @@ writeShellApplication {
 
           # cargo update moves libcosmic to its latest master; pin it back
           if grep -q 'name = "libcosmic"' Cargo.lock; then
-            pin_libcosmic
+            if ! pin_libcosmic; then
+              log "$RED" "Could not pin libcosmic to ''${LIBCOSMIC_REV:0:7} in $dir"
+              log "$RED" "Restoring Cargo.toml and Cargo.lock, skipping $dir"
+              cp "$snapshot/Cargo.toml" Cargo.toml
+              if [[ -f "$snapshot/Cargo.lock" ]]; then
+                cp "$snapshot/Cargo.lock" Cargo.lock
+              fi
+              rm -rf "$snapshot"
+              echo "$dir" >> "$SKIPPED_FILE"
+              exit 0
+            fi
           fi
 
           # Refresh crane outputHashes in default.nix if it has them
@@ -162,6 +181,7 @@ writeShellApplication {
             update_rust_output_hashes "$dir"
           fi
 
+          rm -rf "$snapshot"
           log "$GREEN" "Rust dependencies updated successfully"
         else
           log "$RED" "No Cargo.toml found in $dir"
@@ -176,6 +196,9 @@ writeShellApplication {
     LIBCOSMIC_REV=""
     COSMIC_PANEL_REV=""
 
+    # Packages skipped because their libcosmic pin could not be resolved
+    SKIPPED_FILE=$(mktemp)
+
     # Look up a crate's git revision in a Cargo.lock
     lock_rev() {
       grep -A2 "^name = \"$2\"$" "$1" | grep -oP 'source = "git\+[^#"]*#\K[0-9a-f]+' | head -1
@@ -184,9 +207,9 @@ writeShellApplication {
     # Pin libcosmic (and cosmic-panel, if used) in the current Rust package
     pin_libcosmic() {
       log "$YELLOW" "Pinning libcosmic to ''${LIBCOSMIC_REV:0:7} (nixpkgs cosmic-settings)..."
-      cargo update -p libcosmic --precise "$LIBCOSMIC_REV"
+      cargo update -p libcosmic --precise "$LIBCOSMIC_REV" || return 1
       if grep -q 'name = "cosmic-panel-config"' Cargo.lock; then
-        cargo update -p cosmic-panel-config --precise "$COSMIC_PANEL_REV"
+        cargo update -p cosmic-panel-config --precise "$COSMIC_PANEL_REV" || return 1
       fi
     }
 
@@ -555,6 +578,15 @@ writeShellApplication {
       fi
 
       log "$GREEN" "Dependency update process completed!"
+
+      if [[ -s "$SKIPPED_FILE" ]]; then
+        log "$RED" "⚠️  Skipped packages, left unchanged and needing manual attention:"
+        while IFS= read -r skipped; do
+          log "$RED" "      - $skipped"
+        done < "$SKIPPED_FILE"
+      fi
+      rm -f "$SKIPPED_FILE"
+
       if [[ "$UPGRADE_SOURCE" == "true" ]]; then
         log "$YELLOW" "⚠️  UPGRADE MODE was used - please review ALL changes and test builds!"
       else
