@@ -34,6 +34,8 @@ constexpr const gchar* SNI_WATCHER_OBJECT_PATH = "/StatusNotifierWatcher";
 constexpr const gchar* SNI_ITEM_INTERFACE = "org.kde.StatusNotifierItem";
 constexpr const gchar* SNI_ITEM_OBJECT_PATH = "/StatusNotifierItem";
 constexpr const gchar* SNI_ITEM_BUS_NAME_PREFIX = "org.kde.StatusNotifierItem-";
+// Chromium-based apps register under the freedesktop name instead.
+constexpr const gchar* SNI_ITEM_FDO_BUS_NAME_PREFIX = "org.freedesktop.StatusNotifierItem-";
 constexpr const gchar* SNI_SIGNAL_ITEM_REGISTERED = "StatusNotifierItemRegistered";
 constexpr const gchar* SNI_SIGNAL_ITEM_UNREGISTERED = "StatusNotifierItemUnregistered";
 constexpr const gchar* DBUS_INTERFACE_DBUS = "org.freedesktop.DBus";
