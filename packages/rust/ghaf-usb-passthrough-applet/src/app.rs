@@ -15,7 +15,7 @@ use cosmic::{Application, Element, Task};
 
 use crate::{api, config};
 
-const ICON: &str = "drive-harddisk-usb-symbolic";
+const ICON: &str = "drive-removable-media-symbolic";
 const ICON_ATTENTION: &str = "dialog-warning-symbolic";
 const POPUP_WIDTH: f32 = 300.0;
 /// How long the new-device notification stays on screen.
