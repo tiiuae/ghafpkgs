@@ -39,7 +39,7 @@ buildPythonApplication {
       name = "ghaf.usb.settings";
       desktopName = "USB Passthrough Settings";
       comment = "Configure USB device passthrough to virtual machines";
-      icon = "drive-harddisk-usb-symbolic";
+      icon = "drive-removable-media-symbolic";
       exec = "usb_settings";
       categories = [ "Settings" ];
       noDisplay = true;
